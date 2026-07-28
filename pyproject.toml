@@ -1,0 +1,141 @@
+[project]
+name = "flight-agent-evaluator"
+version = "0.1.0"
+description = "Evaluation, replay, and fault-injection platform for aviation AI agents."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Tanmay Mangal", email = "254906467+tanmay-alpha@users.noreply.github.com" }]
+keywords = ["aviation", "ai-agent", "evaluation", "replay", "deterministic"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "pydantic>=2.13.4,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator"
+Documentation = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator/blob/main/docs/PROJECT_PLAN.md"
+Repository = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator"
+"Bug Tracker" = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1,<10",
+    "pytest-cov>=6.0,<7",
+    "ruff>=0.16.0,<1",
+    "mypy>=1.16.0,<2",
+    "pre-commit>=4.2.3,<5",
+    "hypothesis>=6.161.8,<7",
+]
+
+[tool.uv.build-backend]
+module-path = "uv_build"
+version-field = "version"
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+strict_markers = true
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "-W", "error::Warning",
+    "-W", "default::DeprecationWarning:pydantic",
+    "--tb=short",
+    "--cov=flight_agent_evaluator",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=xml",
+    "--import-mode=importlib",
+]
+xfail_strict = true
+filterwarnings = [
+    "error",
+    "default::DeprecationWarning:pydantic",
+]
+
+[tool.coverage.run]
+source = ["flight_agent_evaluator"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+strict_equality = true
+files = ["src", "tests", "scripts"]
+show_error_codes = true
+pretty = true
+
+# pydantic v2 mypy plugin — use for strict field checking on contracts
+plugins = ["pydantic.mypy"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "UP",     # pyupgrade
+    "SIM",    # flake8-simplify
+    "ANN",    # annotations
+    "S",      # Bandit (security)
+    "C4",     # flake8-comprehensions
+    "TCH",    # type checking
+    "ARG",    # flake8-unused-arguments
+    "PIE",    # flake8-pie
+    "PERF",   # Perflint
+    "Q",      # flake8-quotes
+]
+ignore = [
+    "ANN401", # dynamcially typed Any in annotations is sometimes required for JSON types
+    "E501",   # line length handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",   # assert allowed in tests
+    "ANN",    # test helpers may not need annotations
+]
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "double"
+multiline-quotes = "double"
+docstring-quotes = "double"
+avoid-escape = true
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+split-on-trailing-comma = true
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "pydantic.Field",
+    "pydantic.BaseModel.model_construct",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/*
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint (ruff check)
+        run: uv run ruff check src tests
+
+      - name: Format check (ruff format)
+        run: uv run ruff format --check src tests
+
+      - name: Run tests with coverage
+        run: uv run pytest --cov=flight_agent_evaluator --cov-report=xml
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: coverage.xml
+          retention-days: 14
+
+      - name: Enforce coverage gate (main branch only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          TOTAL=$(uv run python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('coverage.xml')
+          root = tree.getroot()
+          # Find the line-rate for the whole package
+          for elem in root.iter():
+              if elem.get('branch-rate'):
+                  line_rate = float(elem.get('line-rate', '0'))
+                  pct = line_rate * 100
+                  print(f'{pct:.1f}')
+                  break
+          ")
+          echo "Total coverage: ${TOTAL}%"
+          if [ "$(echo "$TOTAL < 90" | bc)" -eq 1 ]; then
+            echo "Coverage ${TOTAL}% below 90% threshold"
+            exit 1
+          fi
+        shell: bash
