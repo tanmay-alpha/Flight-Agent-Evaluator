@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout
@@ -35,10 +35,13 @@ jobs:
         run: uv sync --frozen
 
       - name: Lint (ruff check)
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests scripts
 
       - name: Format check (ruff format)
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests scripts
+
+      - name: Type check (mypy)
+        run: uv run mypy src tests scripts
 
       - name: Run tests with coverage
         run: uv run pytest --cov=flight_agent_evaluator --cov-report=xml
@@ -57,13 +60,13 @@ jobs:
           import xml.etree.ElementTree as ET
           tree = ET.parse('coverage.xml')
           root = tree.getroot()
-          # Find the line-rate for the whole package
+          total = 0.0
           for elem in root.iter():
-              if elem.get('branch-rate'):
+              if elem.get('branch-rate') is not None:
                   line_rate = float(elem.get('line-rate', '0'))
-                  pct = line_rate * 100
-                  print(f'{pct:.1f}')
+                  total = line_rate * 100
                   break
+          print(f'{total:.1f}')
           ")
           echo "Total coverage: ${TOTAL}%"
           if [ "$(echo "$TOTAL < 90" | bc)" -eq 1 ]; then

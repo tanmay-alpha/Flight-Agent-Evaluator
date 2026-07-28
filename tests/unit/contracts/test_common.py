@@ -244,7 +244,8 @@ class TestUtcDateTime:
     def test_now_returns_aware(self) -> None:
         now = UtcDateTime.now()
         assert now.tzinfo is not None
-        assert now.utcoffset().total_seconds() == 0
+        assert now.utcoffset() is not None
+        assert now.utcoffset().total_seconds() == 0  # type: ignore[union-attr]
 
     def test_require_rejects_naive(self) -> None:
         with pytest.raises(ValueError):

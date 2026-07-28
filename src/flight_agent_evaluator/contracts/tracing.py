@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
-from flight_agent_evaluator.contracts.base import Any, ContractModel
+from flight_agent_evaluator.contracts.base import ContractModel
 from flight_agent_evaluator.contracts.common import (
     NonNegativeDuration,
     UtcDateTime,

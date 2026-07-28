@@ -17,6 +17,16 @@ from flight_agent_evaluator.providers.errors import (
     ProviderUnavailableError,
 )
 
+_ProviderErrorSubclass = type[
+    ProviderUnavailableError
+    | ProviderTimeoutError
+    | ProviderRateLimitError
+    | ProviderAuthenticationError
+    | ProviderDataNotFoundError
+    | ProviderInvalidResponseError
+    | ProviderQuotaExhaustedError
+]
+
 
 class TestProviderErrorBase:
     def test_is_exception(self) -> None:
@@ -59,7 +69,9 @@ class TestSpecificErrors:
             (ProviderQuotaExhaustedError, "provider_quota_exhausted", False),
         ],
     )
-    def test_error_properties(self, cls, expected_code, expected_retryable) -> None:
+    def test_error_properties(
+        self, cls: _ProviderErrorSubclass, expected_code: str, expected_retryable: bool
+    ) -> None:
         err = cls(provider="p", safe_message="msg")
         assert err.error_code == expected_code
         assert err.retryable == expected_retryable

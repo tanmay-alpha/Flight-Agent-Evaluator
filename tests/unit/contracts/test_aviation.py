@@ -96,6 +96,7 @@ class TestFlightStatusQuery:
         q = FlightStatusQuery(
             flight_identity=_identity(),
         )
+        assert q.flight_identity is not None
         assert q.flight_identity.flight_number == "AA1"
 
 
