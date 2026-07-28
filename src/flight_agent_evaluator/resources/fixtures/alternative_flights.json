@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "alternative_flights",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "origin_iata": "JFK",
+    "destination_iata": "LAX",
+    "departure_date": "2026-07-28"
+  },
+  "offers": [
+    {
+      "offer_id": "OFFER-001",
+      "airline_iata": "AA",
+      "segments": [
+        {
+          "segment_index": 1,
+          "flight_id": {
+            "flight_number": "AA123",
+            "marketing_airline_iata": "AA",
+            "operating_airline_iata": "AA",
+            "is_codeshare": false
+          },
+          "departure_airport": "JFK",
+          "arrival_airport": "LAX",
+          "departure_time": "2026-07-28T08:00:00+00:00",
+          "arrival_time": "2026-07-28T11:30:00+00:00",
+          "cabin_class": "economy",
+          "aircraft_type": "B738"
+        }
+      ],
+      "total_price": {
+        "amount": "250.00",
+        "currency": "USD"
+      },
+      "booking_class": "Y"
+    },
+    {
+      "offer_id": "OFFER-002",
+      "airline_iata": "DL",
+      "segments": [
+        {
+          "segment_index": 1,
+          "flight_id": {
+            "flight_number": "DL456",
+            "marketing_airline_iata": "DL",
+            "operating_airline_iata": "DL",
+            "is_codeshare": false
+          },
+          "departure_airport": "JFK",
+          "arrival_airport": "LAX",
+          "departure_time": "2026-07-28T10:00:00+00:00",
+          "arrival_time": "2026-07-28T13:30:00+00:00",
+          "cabin_class": "economy",
+          "aircraft_type": "A320"
+        }
+      ],
+      "total_price": {
+        "amount": "275.00",
+        "currency": "USD"
+      },
+      "booking_class": "Y"
+    },
+    {
+      "offer_id": "OFFER-003",
+      "airline_iata": "UA",
+      "segments": [
+        {
+          "segment_index": 1,
+          "flight_id": {
+            "flight_number": "UA789",
+            "marketing_airline_iata": "UA",
+            "operating_airline_iata": "UA",
+            "is_codeshare": false
+          },
+          "departure_airport": "JFK",
+          "arrival_airport": "LAX",
+          "departure_time": "2026-07-28T14:00:00+00:00",
+          "arrival_time": "2026-07-28T17:30:00+00:00",
+          "cabin_class": "economy",
+          "aircraft_type": "B739"
+        }
+      ],
+      "total_price": {
+        "amount": "310.00",
+        "currency": "USD"
+      },
+      "booking_class": "Y"
+    }
+  ]
+}
