@@ -1,22 +1,31 @@
+# EditorConfig: https://editorconfig.org
+# Default: UTF-8, LF line endings, final newline, no trailing whitespace.
+# Cross-platform byte-identical fixture hashing requires LF everywhere except
+# PowerShell scripts (.ps1), where CRLF is conventional on Windows.
+
 root = true
 
 [*]
-end_of_line = crlf
-insert_final_newline = true
 charset = utf-8
+end_of_line = lf
+insert_final_newline = true
 trim_trailing_whitespace = true
 
-[*.{py,pyi,toml,yaml,yml,md,rst,txt}]
+[*.{py,pyi,toml,yaml,yml,json,md,rst,txt}]
 indent_style = space
 indent_size = 4
 
 [*.{json,yaml,yml}]
+indent_size = 2
+
+[*.{sh,bash}]
 indent_style = space
 indent_size = 2
 
-[*.{sh,bash,ps1}]
+[*.ps1]
+end_of_line = crlf
 indent_style = space
-indent_size = 2
+indent_size = 4
 
 [Makefile]
 indent_style = tab

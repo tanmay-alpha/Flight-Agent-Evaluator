@@ -14,14 +14,10 @@ wheels/
 MANIFEST
 
 # Virtual environments
-.env
-.venv
+.venv/
 env/
 venv/
 ENV/
-
-# uv
-.venv/
 
 # Installer logs
 pip-log.txt
@@ -55,9 +51,10 @@ Thumbs.db
 .DS_Store
 desktop.ini
 
-# Secrets
+# Secrets — never track credentials or local environment overrides
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.p12
@@ -70,6 +67,5 @@ id_ed25519
 # Claude local settings (must not be tracked)
 .claude/settings.local.json
 
-# Release artifacts
-release/
-out/
+# Coverage artifacts
+coverage.xml

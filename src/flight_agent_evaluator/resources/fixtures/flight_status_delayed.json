@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_delayed",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "AS142",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "AS142",
+    "marketing_airline_iata": "AS",
+    "operating_airline_iata": "AS",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "JFK",
+    "name": "John F. Kennedy International Airport",
+    "city": "New York",
+    "country": "US",
+    "timezone": "America/New_York"
+  },
+  "destination": {
+    "iata_code": "LHR",
+    "name": "London Heathrow Airport",
+    "city": "London",
+    "country": "GB",
+    "timezone": "Europe/London"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T18:30:00+00:00",
+    "estimated": "2026-07-28T20:15:00+00:00",
+    "actual": null,
+    "delay_minutes": 105
+  },
+  "arrival": {
+    "scheduled": "2026-07-29T06:45:00+01:00",
+    "estimated": "2026-07-29T08:30:00+01:00",
+    "actual": null,
+    "delay_minutes": 105
+  },
+  "status": {
+    "operational_status": "delayed",
+    "delay_minutes": 105,
+    "gate": "B12",
+    "terminal": "4",
+    "remarks": "Synthetic fixture: inbound aircraft delay"
+  },
+  "aircraft_type": "B789"
+}
