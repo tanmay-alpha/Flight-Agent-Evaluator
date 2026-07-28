@@ -29,7 +29,7 @@ class TestContractModel:
             x: int
 
         with pytest.raises(ValidationError):
-            Concrete(x=1, y=2)
+            Concrete(x=1, y=2)  # type: ignore[call-arg,unused-ignore]
 
     def test_frozen_immutable(self) -> None:
         class Concrete(ContractModel):
@@ -65,7 +65,7 @@ class TestSchemaVersion:
 
     def test_non_negative(self) -> None:
         with pytest.raises(Exception):
-            SchemaVersion(major=-1, minor=0, patch=0)  # type: ignore[call-arg]
+            SchemaVersion(major=-1, minor=0, patch=0)  # type: ignore[call-arg,unused-ignore]
 
     def test_from_string_valid(self) -> None:
         s = SchemaVersion.from_string("2.3.4")
@@ -109,11 +109,11 @@ class TestMoney:
 
     def test_negative_amount_rejected(self) -> None:
         with pytest.raises(Exception):
-            Money(amount=Decimal("-1"), currency="USD")  # type: ignore[call-arg]
+            Money(amount=Decimal("-1"), currency="USD")  # type: ignore[call-arg,unused-ignore]
 
     def test_invalid_amount_raises(self) -> None:
         with pytest.raises(Exception):
-            Money(amount="not-a-number", currency="USD")  # type: ignore[call-arg]
+            Money(amount="not-a-number", currency="USD")  # type: ignore[call-arg,unused-ignore]
 
     def test_currency_upper_cased(self) -> None:
         # Lower case rejected by the pattern (upper-casing happens via validator,
@@ -148,7 +148,7 @@ class TestRawPayloadReference:
 
     def test_invalid_sha256_rejected(self) -> None:
         with pytest.raises(Exception):
-            RawPayloadReference(uri="x", sha256="not-hex")  # type: ignore[call-arg]
+            RawPayloadReference(uri="x", sha256="not-hex")  # type: ignore[call-arg,unused-ignore]
 
 
 # ---------------------------------------------------------------------------

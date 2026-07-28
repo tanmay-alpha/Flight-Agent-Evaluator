@@ -40,7 +40,6 @@ dev = [
 ]
 
 [tool.uv.build-backend]
-module-path = "uv_build"
 version-field = "version"
 
 [build-system]

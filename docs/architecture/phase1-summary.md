@@ -45,7 +45,7 @@ invariant as typed Pydantic contracts before any evaluator logic touches them.
 - **uv** for environment and dependency management
 - **ruff** for linting and formatting (configured in `pyproject.toml`)
 - **pytest** with branch coverage (90% gate)
-- **GitHub Actions** CI with matrix across Python 3.10/3.11/3.12
+- **GitHub Actions** CI with matrix across Python 3.11/3.12/3.13
 
 ## Key design decisions
 
@@ -92,9 +92,10 @@ flight_agent_evaluator/
 
 | Metric | Value |
 |--------|-------|
-| Test count | 104 |
-| Coverage | 91.8% (target ≥90%) |
+| Test count | 215 |
+| Coverage | 95.94% (target ≥90%) |
 | Contract modules | 9 |
 | Provider implementations | 1 (fixture) |
 | Pydantic models | 30+ |
 | Runtime deps (Phase 1) | pydantic |
+| Quality gates (local) | 15 |

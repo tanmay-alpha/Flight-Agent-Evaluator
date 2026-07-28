@@ -2,7 +2,7 @@
 
 An evaluation, replay, and fault-injection platform for aviation AI agents.
 
-> **Current status: Phase 1 — contract foundation and deterministic fixture provider.**
+> **Current status: Phase 1 complete — contract foundation, deterministic fixture provider, and quality tooling (`scripts/check.py`, 15 gates, ≥90% branch coverage).**
 
 ## Why this project exists
 
@@ -24,7 +24,7 @@ integration. It is a platform.
 | Phase | Goal | Status |
 |-------|------|--------|
 | 0     | Project definition and architecture | Complete |
-| 1     | Contract foundation and deterministic fixture provider | **Current** |
+| 1     | Contract foundation, deterministic fixture provider, quality tooling | Complete |
 | 2     | Scenario runner, replay engine, assertion evaluator | Planned |
 | 3     | MCP gateway, simulated airline services, approval enforcement | Planned |
 | 4     | Agent harness integrations (LangChain, LangGraph, CrewAI) | Planned |

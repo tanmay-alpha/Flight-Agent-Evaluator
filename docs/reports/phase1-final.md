@@ -42,25 +42,27 @@ invariants are encoded as frozen Pydantic models before any evaluator logic touc
 - **pytest** with branch coverage (90% gate)
 - **mypy** strict type checking
 - **pre-commit** hooks configured
-- **GitHub Actions** CI (Python 3.10/3.11/3.12 matrix)
+- **GitHub Actions** CI (Python 3.11/3.12/3.13 matrix)
 
 ## Quality Gate Results
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Tests passing | — | 81 / 81 |
-| Branch coverage | ≥90% | 90.38% |
+| Tests passing | — | 215 / 215 |
+| Branch coverage | ≥90% | 95.94% |
 | ruff lint (F/E/W/B) | 0 errors | 0 errors |
 | ruff format | compliant | compliant |
-| mypy strict | 0 errors | pending (environment check) |
+| mypy strict | 0 errors | 0 errors |
 
 ## Documentation
 
 - `CONTRIBUTING.md` — development setup, quality gates, commit conventions
+- `scripts/check.py` — canonical cross-platform quality gate runner (15 gates)
 - `docs/architecture/phase1-summary.md` — architecture overview and metrics
 - `docs/adr/0001-python-project-foundation.md`
 - `docs/adr/0002-contract-versioning.md`
 - `docs/adr/0003-deterministic-fixture-provider.md`
+- `docs/adr/0004-canonical-json.md`
 
 ## Key Design Decisions
 

@@ -29,7 +29,7 @@ evaluation of agent behaviour under realistic and adversarial conditions.
 
 ## Phases
 
-### Phase 0 — Project definition and architecture *(current)*
+### Phase 0 — Project definition and architecture *(complete)*
 
 - Repository bootstrap.
 - Mission and roadmap.
@@ -40,7 +40,7 @@ Deliverables: this document, `README.md`, `LICENSE`, `CONTRIBUTING.md`,
 `SECURITY.md`, `CODE_OF_CONDUCT.md`, `.gitignore`, `.editorconfig`,
 `.gitattributes`, initial ADRs.
 
-### Phase 1 — Contract foundation and deterministic fixture provider
+### Phase 1 — Contract foundation, deterministic fixture provider, and quality tooling *(complete)*
 
 - uv-managed pure-Python package (`flight-agent-evaluator`) with `src/` layout.
 - Strict Pydantic v2 contracts: aviation, booking/approval, providers,
@@ -48,10 +48,12 @@ Deliverables: this document, `README.md`, `LICENSE`, `CONTRIBUTING.md`,
 - `FlightProvider` `typing.Protocol`.
 - Typed provider errors.
 - `FixtureFlightProvider` using `importlib.resources`.
-- Synthetic fixtures: one delayed flight, two ordered alternatives,
-  a not-found case, health response.
-- ≥90% branch coverage with focused, meaningful tests.
+- Synthetic fixtures: delayed flight, alternative offers, not-found case, health response.
+- ≥90% branch coverage (actual: 95.94%) with 215 focused, meaningful tests.
 - mypy strict, Ruff (lint+format), pre-commit, CI on 3.11/3.12/3.13.
+- `scripts/check.py` — 15-gate cross-platform quality runner.
+- `canonical.py` — deterministic JSON canonicalisation and SHA-256 hashing.
+- `ApprovalRequest.payload_hash` — computed from payload via `canonical_json()`.
 
 ### Phase 2 — Scenario runner, replay engine, assertion evaluator
 
@@ -99,6 +101,8 @@ Deliverables: this document, `README.md`, `LICENSE`, `CONTRIBUTING.md`,
 - `docs/adr/0002-contract-versioning.md` — Strict Pydantic contract versioning.
 - `docs/adr/0003-deterministic-fixture-provider.md` — Deterministic fixture
   provider design.
+- `docs/adr/0004-canonical-json.md` — Canonical JSON and approval hashing.
+- `docs/adr/0005-event-envelope-versioning.md` — Event envelope versioning.
 
 ## Open questions resolved during phases
 

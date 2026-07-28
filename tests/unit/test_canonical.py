@@ -181,11 +181,11 @@ class TestCanonicalJsonNonFinite:
 class TestCanonicalJsonNonStringKeys:
     def test_int_dict_key_rejected(self) -> None:
         with pytest.raises(ValueError, match="Dict keys must be str"):
-            canonical_json({1: "x"})  # type: ignore[dict-item]
+            canonical_json({1: "x"})  # type: ignore[dict-item,unused-ignore]
 
     def test_none_dict_key_rejected(self) -> None:
         with pytest.raises(ValueError, match="Dict keys must be str"):
-            canonical_json({None: "x"})  # type: ignore[dict-item]
+            canonical_json({None: "x"})  # type: ignore[dict-item,unused-ignore]
 
 
 class TestCanonicalJsonUnsupported:
@@ -198,7 +198,7 @@ class TestCanonicalJsonUnsupported:
 
     def test_set_rejected(self) -> None:
         with pytest.raises(ValueError, match="Unsupported type"):
-            canonical_json({1, 2, 3})  # type: ignore[arg-type]
+            canonical_json({1, 2, 3})  # type: ignore[arg-type,unused-ignore]
 
 
 class TestCanonicalHash:
