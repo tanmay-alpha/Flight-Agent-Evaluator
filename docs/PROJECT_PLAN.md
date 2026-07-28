@@ -72,6 +72,27 @@ Deliverables: this document, `README.md`, `LICENSE`, `CONTRIBUTING.md`,
 - LangChain, LangGraph, CrewAI, custom agents.
 - Instrumented tools and approval flows.
 
+### Phase 5 — Fault injection, provider-conflict and security evaluation
+
+- Chaos engine consuming fault specifications.
+- Provider-conflict detection and typed resolution contracts.
+- Security test suite (PII leakage, secret handling, injection resistance).
+- Cross-provider validation harness.
+
+### Phase 6 — Trajectory dataset generation and verifier fine-tuning
+
+- Scenario runner producing reproducible trajectories.
+- Dataset schema and serialisation.
+- Verifier fine-tuning harness (model-agnostic interface).
+- Benchmark metric definitions.
+
+### Phase 7 — Distributed evaluation and public aviation benchmark
+
+- Multi-host execution with deterministic seeding.
+- Public benchmark suite with canonical reference results.
+- Community contribution workflow.
+- Documentation and release automation.
+
 ## Architectural decision records
 
 - `docs/adr/0001-python-project-foundation.md` — Python project foundation.
