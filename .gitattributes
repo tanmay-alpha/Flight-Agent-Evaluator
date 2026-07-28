@@ -1,0 +1,15 @@
+* text=auto
+
+# Treat these as text even if they're binary-ish
+*.json text
+*.toml text
+*.yaml text
+*.yml text
+*.md text
+*.py text
+*.pyi text
+
+# Line endings for shell scripts
+*.sh text eol=lf
+*.bash text eol=lf
+*.ps1 text eol=crlf
