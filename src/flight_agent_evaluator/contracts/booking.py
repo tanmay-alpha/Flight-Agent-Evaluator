@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
+from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.aviation import FlightOffer
 from flight_agent_evaluator.contracts.base import (
     ContractModel,
@@ -102,18 +103,35 @@ ApprovalState = str  # Literal["pending", "granted", "denied", "expired"]
 
 
 class ApprovalRequest(ContractModel):
-    """A request for human approval of a proposed action."""
+    """A request for human approval of a proposed action.
+
+    ``payload_hash`` is computed deterministically from ``proposed_action``
+    via :func:`canonical_hash` and cannot be spoofed — if a caller provides
+    a value, it must match the computed hash.
+    """
 
     schema_version: SchemaVersion = SchemaVersion(major=1, minor=0, patch=0)  # type: ignore[valid-type]
     request_id: str = Field(min_length=1)
     proposed_action: ScopedAction  # type: ignore[valid-type]
-    payload_hash: str = Field(
+    payload_hash: str | None = Field(
+        default=None,
         pattern=r"^[0-9a-f]{64}$",
-        description="SHA-256 hash of the proposed action payload",
+        description="SHA-256 hash of the proposed action payload (computed)",
     )
     created_at: datetime
     expires_at: datetime
     state: str = Field(default="pending")
+
+    @model_validator(mode="after")
+    def _compute_payload_hash(self) -> ApprovalRequest:
+        computed = canonical_hash(self.proposed_action.payload)
+        if self.payload_hash is not None and self.payload_hash != computed:
+            raise ValueError(
+                f"payload_hash mismatch: provided {self.payload_hash!r} "
+                f"does not match computed {computed!r}"
+            )
+        object.__setattr__(self, "payload_hash", computed)
+        return self
 
 
 # ---------------------------------------------------------------------------

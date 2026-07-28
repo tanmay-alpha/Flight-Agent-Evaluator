@@ -160,6 +160,11 @@ def gate_wheel() -> bool:
     print(f"Inspecting: {wheel.name}")
     with zipfile.ZipFile(wheel, "r") as zf:
         names = zf.namelist()
+        # Defensive Zip Slip check: reject members with absolute paths or parent-directory escapes.
+        for name in names:
+            if name.startswith("/") or ".." in name.split("/"):
+                print(f"Suspicious zip member path skipped: {name}")
+                return False
         # Must contain py.typed marker.
         if not any(n.endswith("py.typed") for n in names):
             print("py.typed not found in wheel")
@@ -191,6 +196,11 @@ def gate_sdist() -> bool:
     except tarfile.ReadError:
         print(f"sdist is not a valid tar.gz: {sdist}")
         return False
+    # Defensive Tar Slip check: reject members with absolute paths or parent-directory escapes.
+    for name in names:
+        if name.startswith("/") or ".." in name.split("/"):
+            print(f"Suspicious tar member path skipped: {name}")
+            return False
     # Must contain py.typed.
     if not any(n.endswith("py.typed") for n in names):
         print("py.typed not found in sdist")
@@ -214,7 +224,7 @@ def gate_install_wheel() -> bool:
     with tempfile.TemporaryDirectory(prefix="fae-install-test-") as tmp:
         venv_dir = Path(tmp) / "venv"
         print(f"Creating test venv: {venv_dir}")
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # noqa: S603 — safe: list args, no shell=True
             [PYTHON, "-m", "venv", str(venv_dir)],
             check=False,
         )
@@ -222,7 +232,7 @@ def gate_install_wheel() -> bool:
             print("Failed to create venv")
             return False
         pip = venv_dir / "Scripts" / "pip.exe" if os.name == "nt" else venv_dir / "bin" / "pip"
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # noqa: S603 — safe: list args, no shell=True
             [str(pip), "install", "--quiet", str(wheel)],
             check=False,
         )
@@ -232,7 +242,7 @@ def gate_install_wheel() -> bool:
         python = (
             venv_dir / "Scripts" / "python.exe" if os.name == "nt" else venv_dir / "bin" / "python"
         )
-        import_result = subprocess.run(  # noqa: S603
+        import_result = subprocess.run(  # noqa: S603 — safe: list args, no shell=True
             [str(python), "-c", "import flight_agent_evaluator; print('OK')"],
             check=False,
             capture_output=True,

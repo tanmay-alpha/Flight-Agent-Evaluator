@@ -98,13 +98,32 @@ class TestApprovalRequest:
             proposed_action=ScopedAction(
                 action="rebook",
                 scope="booking",
-                payload={},
+                payload={"flight_id": "AS142"},
             ),
-            payload_hash="a" * 64,
             created_at=datetime.now(UTC),
             expires_at=datetime.now(UTC),
         )
         assert a.state == "pending"
+        assert a.payload_hash is not None
+        # payload_hash must match the canonical hash of the proposed_action payload
+        from flight_agent_evaluator.canonical import canonical_hash
+
+        expected_hash = canonical_hash({"flight_id": "AS142"})
+        assert a.payload_hash == expected_hash
+
+    def test_mismatched_payload_hash_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ApprovalRequest(
+                request_id="req-1",
+                proposed_action=ScopedAction(
+                    action="rebook",
+                    scope="booking",
+                    payload={"flight_id": "AS142"},
+                ),
+                payload_hash="a" * 64,  # wrong hash
+                created_at=datetime.now(UTC),
+                expires_at=datetime.now(UTC),
+            )
 
 
 def _money(amount: int, currency: str) -> Money:
