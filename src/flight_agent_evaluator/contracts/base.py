@@ -6,7 +6,14 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 # ---------------------------------------------------------------------------
 # JSON-serialisable Any — runtime validator ensures contract fields hold only
@@ -76,6 +83,11 @@ class SchemaVersion(ContractModel):
     minor: int = Field(ge=0)
     patch: int = Field(ge=0)
 
+    @field_validator("major", "minor", "patch", mode="before")
+    @classmethod
+    def _coerce_int(cls, value: Any) -> int:
+        return int(value)
+
     @classmethod
     def from_string(cls, value: str) -> SchemaVersion:
         parts = value.split(".")
@@ -90,6 +102,13 @@ class SchemaVersion(ContractModel):
 
     def __str__(self) -> str:
         return f"{self.major}.{self.minor}.{self.patch}"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_from_string(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return cls.from_string(value).model_dump()
+        return value
 
 
 # ---------------------------------------------------------------------------
