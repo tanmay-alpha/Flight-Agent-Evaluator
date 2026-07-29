@@ -27,14 +27,23 @@ def test_path_traversal_rejected(tmp_path: Path):
 
 def test_run_id_traversal_rejected(tmp_path: Path):
     """Run IDs that look like paths must be rejected by the store."""
+    import uuid
+
     store = FileRecordingStore(tmp_path)
     journal = HashChainJournal()
+    journal.append_event(
+        entry_type="run_started",
+        run_id=str(uuid.uuid4()),
+        correlation_id="c",
+        time=datetime.now(UTC),
+        payload={},
+    )
     recording = RunRecording(
-        run_id="placeholder",
+        run_id=uuid.uuid4(),
         scenario_id="x",
         scenario_version=1,
         seed=0,
-        entry_count=0,
+        entry_count=journal.entry_count,
         final_digest=journal.final_digest(),
         started_at=datetime.now(UTC),
         completed_at=datetime.now(UTC),
@@ -57,17 +66,16 @@ def test_unknown_tool_returns_error(tmp_path: Path):
     from flight_agent_evaluator.engine.tool_executor import ToolExecutor
     from flight_agent_evaluator.tools.base import ToolRegistry
 
-    executor = ToolExecutor(FaultEngine(()), registry=ToolRegistry())
-    from flight_agent_evaluator.contracts.tools import ToolCall
+    executor = ToolExecutor(registry=ToolRegistry(), fault_engine=FaultEngine(()))
     import uuid
-    from flight_agent_evaluator.runtime.context import RunContext
+
+    from flight_agent_evaluator.contracts.tools import ToolCall
     from flight_agent_evaluator.runtime.clock import VirtualClock
+    from flight_agent_evaluator.runtime.context import RunContext
     from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 
     clock = VirtualClock()
-    id_factory = DeterministicIdFactory(
-        scenario_id="x", scenario_version=1, seed=0
-    )
+    id_factory = DeterministicIdFactory(scenario_id="x", scenario_version=1, seed=0)
     context = RunContext(
         run_id=uuid.uuid4(),
         scenario_id="x",
@@ -82,13 +90,14 @@ def test_unknown_tool_returns_error(tmp_path: Path):
         trajectory_digest="t",
     )
     import asyncio
+
     call = ToolCall(
         call_id=uuid.uuid4(),
+        run_id=context.run_id,
         tool_name="not.a.real.tool",
         arguments={},
+        start_time=context.clock.now(),
     )
-    result = asyncio.get_event_loop().run_until_complete(
-        executor.execute(call, provider=None, context=context, journal=None)
-    )
+    result = asyncio.run(executor.execute(call, provider=None, context=context, journal=None))
     assert result.status == "failure"
     assert result.error is not None

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import uuid
-from typing import Any
+from typing import Any, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from flight_agent_evaluator.contracts.base import ContractModel
 from flight_agent_evaluator.contracts.common import ToolName
-
 
 # ---------------------------------------------------------------------------
 # Handler protocol (runtime-layer; only typed dicts, no contracts)
@@ -41,7 +39,7 @@ class ToolDefinition(ContractModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: ToolName  # type: ignore[valid-type]
+    name: ToolName
     description: str = Field(min_length=1)
     mutation_class: str = "read_only"
     input_schema: dict[str, Any] = Field(default_factory=dict)
@@ -70,9 +68,7 @@ class ToolRegistry:
         """
         name = handler.tool_name
         if name in self._handlers:
-            raise ValueError(
-                f"Tool handler for {name!r} already registered"
-            )
+            raise ValueError(f"Tool handler for {name!r} already registered")
         self._handlers[name] = handler
 
     def get(self, name: str) -> ToolHandler | None:

@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
-from pathlib import Path
-
-import pytest
 
 from flight_agent_evaluator.contracts.evaluation import (
-    Assertion,
-    AssertionStatus,
+    ToolCalledAssertion,
 )
 from flight_agent_evaluator.contracts.scenarios import (
     BenchmarkScenario,
@@ -33,9 +28,7 @@ def _make_scenario(assertions):
             objective="Test",
         ),
         limits=ScenarioLimits(tool_call_limit=10, time_limit_seconds=60),
-        steps=(
-            ScenarioStep(step_id="step-1", description="Step 1"),
-        ),
+        steps=(ScenarioStep(step_id="step-1", description="Step 1"),),
         assertions=tuple(assertions),
     )
 
@@ -57,11 +50,7 @@ def test_evaluate_empty_assertions():
 
 def test_evaluate_skipped_assertions():
     evaluator = AssertionEvaluator()
-    assertion = Assertion(
-        assertion_id="a-1",
-        assertion_type="tool_called",
-        description="Tool was called",
-    )
+    assertion = ToolCalledAssertion(tool_name="foo")
     scenario = _make_scenario([assertion])
     state = StateSnapshot()
     result = evaluator.evaluate(
