@@ -16,7 +16,7 @@ from flight_agent_evaluator.tools.base import (
 )
 from flight_agent_evaluator.tools.flight import (
     FlightGetStatusHandler,
-    FlightSearchAlternativesHandler,
+    FlightSearchHandler,
     register_default_tools,
 )
 
@@ -25,6 +25,6 @@ __all__ = [
     "ToolHandler",
     "ToolRegistry",
     "FlightGetStatusHandler",
-    "FlightSearchAlternativesHandler",
+    "FlightSearchHandler",
     "register_default_tools",
 ]

@@ -33,3 +33,16 @@ class RunContext:
     correlation_id: str
     scenario_digest: str
     trajectory_digest: str
+
+    def __post_init__(self) -> None:
+        # Convert ``run_id`` (which may be a string from JSON or a UUID)
+        # to a real UUID object. Frozen dataclasses do not allow __setattr__,
+        # so we use object.__setattr__.
+        import uuid as _uuid
+
+        if not isinstance(self.run_id, _uuid.UUID):
+            object.__setattr__(
+                self,
+                "run_id",
+                _uuid.UUID(str(self.run_id)),
+            )

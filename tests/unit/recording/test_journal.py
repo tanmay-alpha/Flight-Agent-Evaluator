@@ -139,13 +139,11 @@ class TestHashChainJournal:
         target = Path("__seq_gap_test__.jsonl")
         try:
             j1 = _build_journal(n=2)
-            lines = j1._write_jsonl_string().rstrip("\n").splitlines()
+            lines = j1.to_jsonl_string().rstrip("\n").splitlines()
             first_obj = json.loads(lines[0])
             third_obj = first_obj.copy()
             third_obj["seq"] = 3
-            third_obj["id"] = str(
-                uuid.UUID("11111111-0000-0000-0000-000000000003")
-            )
+            third_obj["id"] = str(uuid.UUID("11111111-0000-0000-0000-000000000003"))
             third_obj["time"] = third_obj["time"].replace("10:00:00", "10:00:02")
             third_line = json.dumps(third_obj, sort_keys=True, separators=(",", ":"))
             target.write_text(lines[0] + "\n" + third_line + "\n", encoding="utf-8")

@@ -70,9 +70,7 @@ class FaultEngine:
 
 def _build_fault(fault: FaultSpec, digest: str) -> InjectedFault:
     """Construct an ``InjectedFault`` from a ``FaultSpec``."""
-    fault_id = uuid.uuid5(
-        uuid.NAMESPACE_DNS, f"fault|{fault.fault_id}|{digest}"
-    )
+    fault_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"fault|{fault.fault_id}|{digest}")
     status, error = _fault_to_error(fault)
     return InjectedFault(
         fault_id=fault_id,
