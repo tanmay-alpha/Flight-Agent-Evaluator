@@ -9,12 +9,10 @@ import pytest
 
 from flight_agent_evaluator.runtime.clock import (
     DeterministicVirtualClock,
-    VirtualClock,
 )
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 from flight_agent_evaluator.runtime.state import StateSnapshot
-
 
 # ---------------------------------------------------------------------------
 # VirtualClock
@@ -91,57 +89,43 @@ class TestDeterministicIdFactory:
         assert id_a == id_b
 
     def test_different_seed_different_uuid(self):
-        factory_a = DeterministicIdFactory(
-            scenario_id="SCN-001", scenario_version=1, seed=42
-        )
-        factory_b = DeterministicIdFactory(
-            scenario_id="SCN-001", scenario_version=1, seed=99
-        )
+        factory_a = DeterministicIdFactory(scenario_id="SCN-001", scenario_version=1, seed=42)
+        factory_b = DeterministicIdFactory(scenario_id="SCN-001", scenario_version=1, seed=99)
         id_a = factory_a.next(record_type="tool_call", sequence=1)
         id_b = factory_b.next(record_type="tool_call", sequence=1)
         assert id_a != id_b
 
     def test_different_sequence_different_uuid(self):
-        factory = DeterministicIdFactory(
-            scenario_id="SCN-001", scenario_version=1, seed=42
-        )
+        factory = DeterministicIdFactory(scenario_id="SCN-001", scenario_version=1, seed=42)
         id_1 = factory.next(record_type="tool_call", sequence=1)
         id_2 = factory.next(record_type="tool_call", sequence=2)
         assert id_1 != id_2
 
     def test_different_record_type_different_uuid(self):
-        factory = DeterministicIdFactory(
-            scenario_id="SCN-001", scenario_version=1, seed=42
-        )
+        factory = DeterministicIdFactory(scenario_id="SCN-001", scenario_version=1, seed=42)
         id_a = factory.next(record_type="tool_call", sequence=1)
         id_b = factory.next(record_type="tool_result", sequence=1)
         assert id_a != id_b
 
     def test_uuid_version_is_5(self):
-        factory = DeterministicIdFactory(
-            scenario_id="SCN-001", scenario_version=1, seed=42
-        )
+        factory = DeterministicIdFactory(scenario_id="SCN-001", scenario_version=1, seed=42)
         id_ = factory.next(record_type="tool_call", sequence=1)
         assert id_.version == 5
 
     def test_no_uuid4_in_runtime(self):
         """The runtime must never produce UUIDv4 identifiers."""
-        factory = DeterministicIdFactory(
-            scenario_id="SCN-001", scenario_version=1, seed=42
-        )
+        factory = DeterministicIdFactory(scenario_id="SCN-001", scenario_version=1, seed=42)
         for seq in range(10):
             id_ = factory.next(record_type="tool_call", sequence=seq)
             assert id_.version != 4
 
     def test_cross_process_stability(self):
         """Same inputs produce identical UUIDs (simulated by re-instantiation)."""
-        params = dict(scenario_id="SCN-001", scenario_version=1, seed=42)
+        params = {"scenario_id": "SCN-001", "scenario_version": 1, "seed": 42}
         factory_a = DeterministicIdFactory(**params)
         factory_b = DeterministicIdFactory(**params)
         for seq in range(20):
-            assert factory_a.next("tool_call", seq) == factory_b.next(
-                "tool_call", seq
-            )
+            assert factory_a.next("tool_call", seq) == factory_b.next("tool_call", seq)
 
 
 # ---------------------------------------------------------------------------
@@ -151,12 +135,8 @@ class TestDeterministicIdFactory:
 
 class TestRunContext:
     def test_immutable_after_construction(self):
-        clock = DeterministicVirtualClock(
-            start=datetime(2026, 7, 28, 10, 0, 0, tzinfo=UTC)
-        )
-        factory = DeterministicIdFactory(
-            scenario_id="SCN-001", scenario_version=1, seed=42
-        )
+        clock = DeterministicVirtualClock(start=datetime(2026, 7, 28, 10, 0, 0, tzinfo=UTC))
+        factory = DeterministicIdFactory(scenario_id="SCN-001", scenario_version=1, seed=42)
         ctx = RunContext(
             run_id=factory.next("run", 1),
             scenario_id="SCN-001",
@@ -181,19 +161,13 @@ class TestRunContext:
 
 class TestStateSnapshot:
     def test_valid_state_accepted(self):
-        snap = StateSnapshot.model_validate(
-            {"data": {"flights": 3, "cancelled": False}}
-        )
+        snap = StateSnapshot.model_validate({"data": {"flights": 3, "cancelled": False}})
         assert snap.data["flights"] == 3
 
     def test_non_json_value_rejected(self):
         with pytest.raises(Exception):  # Pydantic validation error
-            StateSnapshot.model_validate(
-                {"data": {"value": datetime.now(UTC)}}
-            )
+            StateSnapshot.model_validate({"data": {"value": datetime.now(UTC)}})
 
     def test_nested_dict_validated(self):
-        snap = StateSnapshot.model_validate(
-            {"data": {"nested": {"count": 1, "items": [1, 2, 3]}}}
-        )
+        snap = StateSnapshot.model_validate({"data": {"nested": {"count": 1, "items": [1, 2, 3]}}})
         assert snap.data["nested"]["count"] == 1

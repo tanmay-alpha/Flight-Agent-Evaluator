@@ -9,6 +9,8 @@ Recording schema version: 1
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import datetime
 from typing import Any, Literal
@@ -18,10 +20,10 @@ from pydantic import ConfigDict, Field, model_validator
 from flight_agent_evaluator.contracts.base import ContractModel
 from flight_agent_evaluator.contracts.common import (
     NonEmptyIdentifier,
+    NonNegativeInt,
     PositiveInt,
     SHA256Digest,
 )
-from flight_agent_evaluator.contracts.tools import ToolCall, ToolResult
 
 # ---------------------------------------------------------------------------
 # Recording schema version
@@ -70,9 +72,7 @@ class JournalEntry(ContractModel):
     @model_validator(mode="after")
     def _require_timezone_aware(self) -> JournalEntry:
         if self.time.tzinfo is None or self.time.utcoffset() is None:
-            raise ValueError(
-                f"JournalEntry time must be timezone-aware, got {self.time!r}"
-            )
+            raise ValueError(f"JournalEntry time must be timezone-aware, got {self.time!r}")
         return self
 
 
@@ -88,13 +88,17 @@ class RunRecording(ContractModel):
 
     schema_version: int = Field(default=RECORDING_SCHEMA_VERSION, ge=1)
     run_id: uuid.UUID
-    scenario_id: NonEmptyIdentifier  # type: ignore[valid-type]
+    scenario_id: NonEmptyIdentifier
     scenario_version: PositiveInt
     seed: int
     entry_count: PositiveInt
-    final_digest: SHA256Digest  # type: ignore[valid-type]
+    final_digest: SHA256Digest
     started_at: datetime
     completed_at: datetime
+    tool_calls_made: NonNegativeInt = 0
+    final_response: str | None = None
+    checkpoints: tuple[str, ...] = Field(default_factory=tuple)
+    evaluation: Any | None = None  # EvaluationResult | None; loose to avoid cycle
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +134,7 @@ class ReplayReport(ContractModel):
     mode: Literal["playback", "verification"]
     status: ReplayOutcomeStatus
     divergences: tuple[DivergenceRecord, ...] = Field(default_factory=tuple)
-    final_digest: SHA256Digest  # type: ignore[valid-type]
+    final_digest: SHA256Digest
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +149,7 @@ class AssertionOutcome(ContractModel):
 
     assertion_id: NonEmptyIdentifier
     passed: bool
-    observed: dict[str, Any]
+    observed: dict[str, Any] = Field(default_factory=dict)
     reason: str | None = None
 
 
@@ -160,7 +164,7 @@ class InvokeToolStep(ContractModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["invoke_tool"] = "invoke_tool"
-    step_id: NonEmptyIdentifier  # type: ignore[valid-type]
+    step_id: NonEmptyIdentifier
     tool_name: str = Field(min_length=1)
     arguments: dict[str, Any] = Field(default_factory=dict)
 
@@ -171,7 +175,7 @@ class ProduceFinalResponseStep(ContractModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["produce_final_response"] = "produce_final_response"
-    step_id: NonEmptyIdentifier  # type: ignore[valid-type]
+    step_id: NonEmptyIdentifier
     response: str = Field(min_length=1)
 
 
@@ -181,7 +185,7 @@ class RecordCheckpointStep(ContractModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["record_checkpoint"] = "record_checkpoint"
-    step_id: NonEmptyIdentifier  # type: ignore[valid-type]
+    step_id: NonEmptyIdentifier
     label: str = Field(min_length=1)
 
 
@@ -200,15 +204,36 @@ class ScriptedTrajectory(ContractModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: int = Field(default=RECORDING_SCHEMA_VERSION, ge=1)
-    trajectory_id: NonEmptyIdentifier  # type: ignore[valid-type]
+    trajectory_id: NonEmptyIdentifier
     description: str = Field(min_length=1)
-    steps: tuple[TrajectoryStep, ...]  # type: ignore[valid-type]
+    steps: tuple[TrajectoryStep, ...]
 
     @model_validator(mode="after")
     def _non_empty_steps(self) -> ScriptedTrajectory:
         if not self.steps:
             raise ValueError("ScriptedTrajectory must have at least one step")
         return self
+
+    def digest(self) -> str:
+        """Return a deterministic SHA-256 digest of the trajectory content.
+
+        Two trajectories with identical steps produce the same digest, which
+        is used as part of the replay verification key.
+        """
+        payload = [
+            {
+                "kind": s.kind,
+                "step_id": str(s.step_id),
+                "tool_name": getattr(s, "tool_name", ""),
+                "arguments": getattr(s, "arguments", {}),
+                "label": getattr(s, "label", ""),
+                "response": getattr(s, "response", ""),
+            }
+            for s in self.steps
+        ]
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
 
 
 # Re-export key types so external callers can import a single module.

@@ -7,14 +7,12 @@ state → same evaluation result.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
-from flight_agent_evaluator.contracts.common import NonEmptyIdentifier
 from flight_agent_evaluator.contracts.evaluation import (
     Assertion,
     AssertionOutcome,
-    AssertionStatus,
     EvaluationMetric,
     EvaluationResult,
     EvaluationStatus,
@@ -70,15 +68,15 @@ class AssertionEvaluator:
             else:
                 skipped += 1
         metrics.append(
-            EvaluationMetric(name="duration_ms", value=round((ended_at - started_at).total_seconds() * 1000))
+            EvaluationMetric(
+                name="duration_ms", value=round((ended_at - started_at).total_seconds() * 1000)
+            )
         )
-        status: EvaluationStatus = (
-            "passed" if failed == 0 and passed > 0 else "failed"
-        )
+        status: EvaluationStatus = "passed" if failed == 0 and passed > 0 else "failed"
         return EvaluationResult(
-            evaluation_id=NonEmptyIdentifier(value=f"eval-{run_id}"),
-            scenario_id=NonEmptyIdentifier(value=scenario.scenario_id.id),
-            run_id=NonEmptyIdentifier(value=run_id),
+            evaluation_id=f"eval-{run_id}",
+            scenario_id=scenario.scenario_id.id,
+            run_id=run_id,
             started_at=started_at,
             ended_at=ended_at,
             status=status,
@@ -92,9 +90,7 @@ class AssertionEvaluator:
             metrics=tuple(metrics),
         )
 
-    def _eval_one(
-        self, assertion: Assertion, state: StateSnapshot
-    ) -> AssertionOutcome:
+    def _eval_one(self, assertion: Assertion, state: StateSnapshot) -> AssertionOutcome:
         """Evaluate a single assertion against a state snapshot."""
         # Assertions reference internal state by type-specific logic.
         # For now, the most common assertions don't require state lookup.

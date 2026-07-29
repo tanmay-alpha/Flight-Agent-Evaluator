@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 
 import pytest
 
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.engine.scenario_loader import (
-    LoadedScenario,
     ScenarioLoader,
     ScenarioLoaderError,
     ScenarioVersionMismatchError,
