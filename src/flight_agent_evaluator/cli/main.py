@@ -14,14 +14,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
 from flight_agent_evaluator.engine.runner import ScenarioRunner
-from flight_agent_evaluator.providers.fixture import FixtureFlightProvider
+from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
 from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.replay.engine import ReplayEngine
 from flight_agent_evaluator.runtime.clock import VirtualClock
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
-from flight_agent_evaluator.tools.base import ToolRegistry
 from flight_agent_evaluator.tools.flight import register_default_tools
 
 
@@ -64,7 +62,8 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_replay(args: argparse.Namespace) -> int:
     """Replay a recorded run in playback mode."""
-    engine = ReplayEngine()
+    output = Path(args.output) if args.output else None
+    engine = ReplayEngine(root=output)
     result = engine.playback(args.run_id)
     print(f"Replay of {args.run_id}:")
     print(f"  Digest: {result['digest']}")
@@ -74,7 +73,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
 def cmd_verify(args: argparse.Namespace) -> int:
     """Verify a recorded run."""
-    engine = ReplayEngine()
+    output = Path(args.output) if args.output else None
+    engine = ReplayEngine(root=output)
     report = engine.verify(args.run_id)
     print(f"Verification of {args.run_id}: {report.status}")
     if report.divergences:
@@ -100,10 +100,16 @@ def main(argv: list[str] | None = None) -> int:
 
     replay_p = subparsers.add_parser("replay", help="Replay a recorded run.")
     replay_p.add_argument("run_id", help="Run identifier.")
+    replay_p.add_argument(
+        "--output", "-o", help="Recording output directory.", default=".recordings"
+    )
     replay_p.set_defaults(func=cmd_replay)
 
     verify_p = subparsers.add_parser("verify", help="Verify a recorded run.")
     verify_p.add_argument("run_id", help="Run identifier.")
+    verify_p.add_argument(
+        "--output", "-o", help="Recording output directory.", default=".recordings"
+    )
     verify_p.set_defaults(func=cmd_verify)
 
     args = parser.parse_args(argv)

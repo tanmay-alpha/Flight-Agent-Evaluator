@@ -48,7 +48,9 @@ class LoadedScenario:
 class ScenarioLoader:
     """Load, validate, and digest benchmark scenarios from local JSON files."""
 
-    def __init__(self, max_bytes: int = _DEFAULT_MAX_BYTES, *, allowed_root: Path | None = None) -> None:
+    def __init__(
+        self, max_bytes: int = _DEFAULT_MAX_BYTES, *, allowed_root: Path | None = None
+    ) -> None:
         if max_bytes <= 0:
             raise ValueError(f"max_bytes must be positive, got {max_bytes}")
         self._max_bytes = max_bytes
@@ -77,9 +79,7 @@ class ScenarioLoader:
         """
         # Reject symlinks.
         if path.is_symlink():
-            raise ScenarioLoaderError(
-                f"Scenario file must not be a symlink: {path}"
-            )
+            raise ScenarioLoaderError(f"Scenario file must not be a symlink: {path}")
 
         # Path safety check.
         self._check_path_safety(path)
@@ -92,8 +92,8 @@ class ScenarioLoader:
         # Size check
         if len(raw) > self._max_bytes:
             raise ScenarioLoaderError(
-                f"Scenario file exceeds maximum size of {self._max_bytes} bytes "
-                f"({len(raw)} bytes)"
+                f"Scenario file is too large: {len(raw)} bytes "
+                f"exceeds maximum of {self._max_bytes} bytes"
             )
 
         # Parse JSON (reject NaN/Infinity via standard parser; rejects duplicate keys
@@ -121,9 +121,7 @@ class ScenarioLoader:
         try:
             scenario = BenchmarkScenario.model_validate(data)
         except ValidationError as exc:
-            raise ScenarioLoaderError(
-                f"Scenario validation failed: {exc}"
-            ) from exc
+            raise ScenarioLoaderError(f"Scenario validation failed: {exc}") from exc
 
         # Digest
         digest = hashlib.sha256(raw).hexdigest()
@@ -151,6 +149,4 @@ class ScenarioLoader:
         try:
             resolved_path.relative_to(resolved_root)
         except ValueError as exc:
-            raise ScenarioLoaderError(
-                f"Scenario file is outside the allowed root: {path}"
-            ) from exc
+            raise ScenarioLoaderError(f"Scenario file is outside the allowed root: {path}") from exc

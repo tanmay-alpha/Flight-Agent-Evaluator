@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -12,11 +10,11 @@ from flight_agent_evaluator.engine.scenario_loader import (
     ScenarioLoader,
     ScenarioLoaderError,
 )
+from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.recording.store import (
     FileRecordingStore,
     RecordingStoreError,
 )
-from flight_agent_evaluator.recording.journal import HashChainJournal
 
 
 def test_path_traversal_rejected(tmp_path: Path):
@@ -35,18 +33,26 @@ def test_symlink_rejected_for_recording(tmp_path: Path):
         pytest.skip("symlinks not supported on this platform")
     store = FileRecordingStore(real_dir)
     journal = HashChainJournal()
-    journal_path = real_dir / "test.jsonl"
-    journal._write_jsonl_string()  # ensure helper exists
+    journal.to_jsonl_string()  # ensure helper exists
     # Write through a path that is a symlink — should be rejected.
-    from flight_agent_evaluator.recording.contracts import RunRecording
+    import uuid
     from datetime import UTC, datetime
 
+    from flight_agent_evaluator.recording.contracts import RunRecording
+
+    journal.append_event(
+        entry_type="run_started",
+        run_id=str(uuid.uuid4()),
+        correlation_id="c",
+        time=datetime.now(UTC),
+        payload={},
+    )
     recording = RunRecording(
-        run_id="test",
+        run_id=uuid.uuid4(),
         scenario_id="x",
         scenario_version=1,
         seed=0,
-        entry_count=0,
+        entry_count=journal.entry_count,
         final_digest=journal.final_digest(),
         started_at=datetime.now(UTC),
         completed_at=datetime.now(UTC),
@@ -65,15 +71,24 @@ def test_symlink_rejected_for_recording(tmp_path: Path):
 def test_run_id_traversal_in_filename(tmp_path: Path):
     store = FileRecordingStore(tmp_path)
     journal = HashChainJournal()
-    from flight_agent_evaluator.recording.contracts import RunRecording
+    import uuid
     from datetime import UTC, datetime
 
+    from flight_agent_evaluator.recording.contracts import RunRecording
+
+    journal.append_event(
+        entry_type="run_started",
+        run_id=str(uuid.uuid4()),
+        correlation_id="c",
+        time=datetime.now(UTC),
+        payload={},
+    )
     recording = RunRecording(
-        run_id="..\\evil",
+        run_id=uuid.uuid4(),
         scenario_id="x",
         scenario_version=1,
         seed=0,
-        entry_count=0,
+        entry_count=journal.entry_count,
         final_digest=journal.final_digest(),
         started_at=datetime.now(UTC),
         completed_at=datetime.now(UTC),

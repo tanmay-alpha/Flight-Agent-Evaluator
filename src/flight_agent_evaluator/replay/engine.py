@@ -13,9 +13,8 @@ and yields per-step results.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from flight_agent_evaluator.recording.contracts import (
     DivergenceRecord,
@@ -56,17 +55,15 @@ class ReplayEngine:
         chain_valid = journal.verify()
         divergences: list[DivergenceRecord] = []
         if not chain_valid:
-            for idx, entry in enumerate(journal.entries, start=1):
-                divergences.append(
-                    DivergenceRecord(
-                        sequence=entry.seq,
-                        kind="missing_tool",
-                        detail="chain-verification-failed",
-                    )
+            divergences.extend(
+                DivergenceRecord(
+                    sequence=entry.seq,
+                    kind="missing_tool",
+                    detail="chain-verification-failed",
                 )
-        status: ReplayOutcomeStatus = (
-            "verified" if not divergences else "tampered"
-        )
+                for entry in journal.entries
+            )
+        status: ReplayOutcomeStatus = "verified" if not divergences else "tampered"
         return ReplayReport(
             recording_run_id=run_id,
             mode="verification",

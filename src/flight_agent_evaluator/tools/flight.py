@@ -11,16 +11,10 @@ The handlers are deterministic test doubles.
 
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
-from pydantic import BaseModel
-
 from flight_agent_evaluator.contracts.aviation import FlightSearchRequest
-from flight_agent_evaluator.contracts.common import NonEmptyIdentifier
-from flight_agent_evaluator.contracts.errors import RetryableProviderError
-from flight_agent_evaluator.tools.base import ToolDefinition, ToolHandler, ToolRegistry
-
+from flight_agent_evaluator.tools.base import ToolDefinition, ToolRegistry
 
 # ---------------------------------------------------------------------------
 # flight.get_status
@@ -66,7 +60,7 @@ class FlightGetStatusHandler:
         )
 
     async def execute(
-        self, arguments: dict[str, Any], provider: Any, context: Any
+        self, arguments: dict[str, Any], provider: Any, _context: Any = None
     ) -> dict[str, Any]:
         flight_id = arguments.get("flight_id")
         operating_day = arguments.get("operating_day")
@@ -78,9 +72,10 @@ class FlightGetStatusHandler:
 
         from flight_agent_evaluator.contracts.aviation import FlightIdentity, FlightStatusQuery
 
-        identity = FlightIdentity(flight_number=flight_id, marketing_airline_iata="AS")
+        identity = FlightIdentity(
+            flight_number=flight_id, marketing_airline_iata="AS", operating_airline_iata="AS"
+        )
         query = FlightStatusQuery(
-            query_id=NonEmptyIdentifier(value=f"q-{flight_id}"),
             flight_identity=identity,
             query_date=date_type.fromisoformat(operating_day),
         )
@@ -143,7 +138,7 @@ class FlightSearchHandler:
         )
 
     async def execute(
-        self, arguments: dict[str, Any], provider: Any, context: Any
+        self, arguments: dict[str, Any], provider: Any, _context: Any = None
     ) -> dict[str, Any]:
         origin = arguments.get("origin")
         destination = arguments.get("destination")
@@ -156,12 +151,7 @@ class FlightSearchHandler:
             raise ValueError("departure_date must be a YYYY-MM-DD string")
         from datetime import date as date_type
 
-        from flight_agent_evaluator.contracts.aviation import FlightSearchRequest
-
         request = FlightSearchRequest(
-            query_id=NonEmptyIdentifier(
-                value=f"q-{origin}-{destination}-{departure_date}"
-            ),
             origin_iata=origin,
             destination_iata=destination,
             departure_date=date_type.fromisoformat(departure_date),

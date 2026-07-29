@@ -17,6 +17,24 @@ from flight_agent_evaluator.contracts.common import (
 )
 from flight_agent_evaluator.contracts.evaluation import Assertion
 from flight_agent_evaluator.contracts.faults import FaultSpec
+from flight_agent_evaluator.recording.contracts import (
+    ProduceFinalResponseStep,
+    ScriptedTrajectory,
+)
+
+
+def _default_trajectory() -> ScriptedTrajectory:
+    """Build the default no-op trajectory for scenarios without one."""
+    return ScriptedTrajectory(
+        trajectory_id="default-trajectory",  # type: ignore[arg-type]
+        description="default-empty-trajectory",
+        steps=(
+            ProduceFinalResponseStep(
+                step_id="default-final",  # type: ignore[arg-type]
+                response="Scenario completed without any actions.",
+            ),
+        ),
+    )
 
 
 class ScenarioIdentifier(ContractModel):
@@ -67,6 +85,17 @@ class BenchmarkScenario(ContractModel):
     limits: ScenarioLimits  # type: ignore[valid-type]
     seed: int = Field(default=0)
     assertions: tuple[Assertion, ...] = Field(default_factory=tuple)  # type: ignore[valid-type]
+    trajectory: ScriptedTrajectory = Field(  # type: ignore[valid-type]
+        default_factory=_default_trajectory,
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _populate_default_trajectory(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "trajectory" not in data:
+            data = dict(data)
+            data["trajectory"] = _default_trajectory().model_dump(mode="json")
+        return data
 
     @model_validator(mode="after")
     def _non_empty_steps(self) -> BenchmarkScenario:
