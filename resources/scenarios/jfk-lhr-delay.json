@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "jfk-lhr-delay",
+    "version": 1
+  },
+  "metadata": {
+    "title": "JFK-LHR delayed departure scenario",
+    "description": "A baseline scenario where the agent checks the status of AS142 departing JFK for LHR on 2026-07-28.",
+    "objective": "Demonstrate end-to-end determinism: run → replay → verify"
+  },
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 120
+  },
+  "seed": 42,
+  "steps": [
+    {
+      "step_id": "check-flight-status",
+      "description": "Check the status of AS142 on 2026-07-28"
+    }
+  ],
+  "assertions": [],
+  "faults": []
+}
