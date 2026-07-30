@@ -2,18 +2,25 @@
 
 Defines:
 
-- ``flight.get_status``: returns a single flight status by ID.
-- ``flight.search_flights``: returns alternative flights for a route.
+- ``flight.get_status`` — returns a single flight status by ID.
+- ``flight.search_flights`` — returns alternative flights for a route.
 
-Both handlers call the ``FixtureFlightProvider`` and validate inputs.
-The handlers are deterministic test doubles.
+Both handlers call the :class:`FixtureFlightProvider` and validate
+inputs. They are deterministic test doubles.
 """
 
 from __future__ import annotations
 
+from datetime import date as date_type
 from typing import Any
 
-from flight_agent_evaluator.contracts.aviation import FlightSearchRequest
+from flight_agent_evaluator.contracts.aviation import (
+    FlightIdentity,
+    FlightSearchRequest,
+    FlightStatusQuery,
+)
+from flight_agent_evaluator.providers.base import FlightProvider
+from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.tools.base import ToolDefinition, ToolRegistry
 
 # ---------------------------------------------------------------------------
@@ -60,30 +67,34 @@ class FlightGetStatusHandler:
         )
 
     async def execute(
-        self, arguments: dict[str, Any], provider: Any, _context: Any = None
+        self,
+        arguments: dict[str, Any],
+        provider: FlightProvider,
+        context: RunContext,
     ) -> dict[str, Any]:
+        del context  # unused — deterministic handler
         flight_id = arguments.get("flight_id")
         operating_day = arguments.get("operating_day")
-        if not flight_id or not isinstance(flight_id, str):
+        if not isinstance(flight_id, str) or not flight_id:
             raise ValueError("flight_id must be a non-empty string")
-        if not operating_day or not isinstance(operating_day, str):
+        if not isinstance(operating_day, str) or not operating_day:
             raise ValueError("operating_day must be a YYYY-MM-DD string")
-        from datetime import date as date_type
-
-        from flight_agent_evaluator.contracts.aviation import FlightIdentity, FlightStatusQuery
 
         identity = FlightIdentity(
-            flight_number=flight_id, marketing_airline_iata="AS", operating_airline_iata="AS"
+            flight_number=flight_id,
+            marketing_airline_iata="AS",
+            operating_airline_iata="AS",
         )
         query = FlightStatusQuery(
             flight_identity=identity,
             query_date=date_type.fromisoformat(operating_day),
         )
         result = await provider.get_flight_status(query)
-        # Convert provider result to a JSON-compatible dict
         if hasattr(result, "model_dump"):
             return result.model_dump(mode="json")
-        return dict(result) if result else {}
+        if result is None:
+            return {}
+        return dict(result)
 
 
 # ---------------------------------------------------------------------------
@@ -138,18 +149,21 @@ class FlightSearchHandler:
         )
 
     async def execute(
-        self, arguments: dict[str, Any], provider: Any, _context: Any = None
+        self,
+        arguments: dict[str, Any],
+        provider: FlightProvider,
+        context: RunContext,
     ) -> dict[str, Any]:
+        del context  # unused — deterministic handler
         origin = arguments.get("origin")
         destination = arguments.get("destination")
         departure_date = arguments.get("departure_date")
-        if not origin or not isinstance(origin, str):
+        if not isinstance(origin, str) or len(origin) < 3:
             raise ValueError("origin must be a non-empty IATA code")
-        if not destination or not isinstance(destination, str):
+        if not isinstance(destination, str) or len(destination) < 3:
             raise ValueError("destination must be a non-empty IATA code")
-        if not departure_date or not isinstance(departure_date, str):
+        if not isinstance(departure_date, str) or not departure_date:
             raise ValueError("departure_date must be a YYYY-MM-DD string")
-        from datetime import date as date_type
 
         request = FlightSearchRequest(
             origin_iata=origin,
@@ -159,7 +173,9 @@ class FlightSearchHandler:
         result = await provider.search_flights(request)
         if hasattr(result, "model_dump"):
             return result.model_dump(mode="json")
-        return dict(result) if result else {}
+        if result is None:
+            return {}
+        return dict(result)
 
 
 # ---------------------------------------------------------------------------
@@ -168,8 +184,15 @@ class FlightSearchHandler:
 
 
 def register_default_tools() -> ToolRegistry:
-    """Construct a new ``ToolRegistry`` with the default aviation tools registered."""
+    """Construct a new :class:`ToolRegistry` with the default aviation tools."""
     registry = ToolRegistry()
     registry.register(FlightGetStatusHandler())
     registry.register(FlightSearchHandler())
     return registry
+
+
+__all__ = [
+    "FlightGetStatusHandler",
+    "FlightSearchHandler",
+    "register_default_tools",
+]
