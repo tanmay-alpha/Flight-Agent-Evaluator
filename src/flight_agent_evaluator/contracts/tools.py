@@ -90,13 +90,18 @@ class ToolResult(ContractModel):
 
     A failed call is NOT represented as a successful result containing
     error text — it is a distinct status with a typed ``ToolError``.
+
+    ``end_time`` is required because the executor advances the run's
+    deterministic virtual clock at the boundary of every call. There
+    is no ``default_factory`` — wall-clock reads would break
+    determinism guarantees.
     """
 
     call_id: uuid.UUID
     status: ToolResultStatus
     result: Any | None = Field(default=None)  # type: ignore[valid-type]
     error: ToolError | None = Field(default=None)  # type: ignore[valid-type]
-    end_time: datetime = Field(default_factory=UtcDateTime.now)
+    end_time: datetime
     duration_ms: NonNegativeInt | None = Field(default=None)  # type: ignore[valid-type]
 
     @model_validator(mode="after")

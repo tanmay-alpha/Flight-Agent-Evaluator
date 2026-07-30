@@ -130,11 +130,13 @@ class ReplayReport(ContractModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    recording_run_id: uuid.UUID
+    recording_run_id: NonEmptyIdentifier  # type: ignore[valid-type]
     mode: Literal["playback", "verification"]
     status: ReplayOutcomeStatus
     divergences: tuple[DivergenceRecord, ...] = Field(default_factory=tuple)
     final_digest: SHA256Digest
+    entry_count: NonNegativeInt = 0
+    re_executed_calls: NonNegativeInt = 0
 
 
 # ---------------------------------------------------------------------------
