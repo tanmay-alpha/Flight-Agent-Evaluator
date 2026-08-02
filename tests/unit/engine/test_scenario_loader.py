@@ -3,21 +3,20 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.engine.scenario_loader import (
-    LoadedScenario,
     ScenarioLoader,
     ScenarioLoaderError,
     ScenarioVersionMismatchError,
 )
 
 
-def _valid_scenario_dict() -> dict:
+def _valid_scenario_dict() -> dict[str, Any]:
     return {
         "schema_version": "1.0.0",
         "scenario_id": {"id": "test-scenario", "version": 1},
@@ -100,6 +99,36 @@ class TestScenarioLoader:
         loader = ScenarioLoader(allowed_root=tmp_path)
         with pytest.raises(ScenarioLoaderError):
             loader.load_from_path(link)
+
+    def test_invalid_max_bytes(self):
+        with pytest.raises(ValueError, match="max_bytes must be positive"):
+            ScenarioLoader(max_bytes=0)
+
+    def test_load_rejects_non_dict_json(self, tmp_path: Path):
+        target = tmp_path / "scenario.json"
+        target.write_text("[1, 2, 3]", encoding="utf-8")
+        loader = ScenarioLoader()
+        with pytest.raises(ScenarioLoaderError, match="must be a JSON object"):
+            loader.load_from_path(target)
+
+    def test_load_rejects_malformed_schema_version(self, tmp_path: Path):
+        loader = ScenarioLoader()
+
+        # Non-string schema_version
+        target1 = tmp_path / "s1.json"
+        d1 = _valid_scenario_dict()
+        d1["schema_version"] = 123
+        target1.write_text(json.dumps(d1), encoding="utf-8")
+        with pytest.raises(ScenarioVersionMismatchError, match="Malformed schema_version type"):
+            loader.load_from_path(target1)
+
+        # Malformed major string
+        target2 = tmp_path / "s2.json"
+        d2 = _valid_scenario_dict()
+        d2["schema_version"] = "abc.0.0"
+        target2.write_text(json.dumps(d2), encoding="utf-8")
+        with pytest.raises(ScenarioVersionMismatchError, match="Malformed schema version major"):
+            loader.load_from_path(target2)
 
     def test_load_rejects_bom(self, tmp_path: Path):
         target = tmp_path / "scenario.json"

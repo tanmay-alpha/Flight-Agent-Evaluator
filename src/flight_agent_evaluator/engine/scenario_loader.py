@@ -4,11 +4,13 @@ Scenarios are machine-readable JSON files. The loader:
 
 - Rejects bytes beyond a configurable size limit.
 - Rejects BOM-prefixed files.
+- Rejects duplicate top-level keys deterministically.
+- Rejects NaN/Infinity values.
 - Rejects unknown top-level keys (``extra="forbid"`` via Pydantic).
 - Rejects unsupported scenario schema major versions.
 - Validates the scenario against ``BenchmarkScenario``.
 - Computes a SHA-256 digest of the raw bytes for provenance.
-- Optionally enforces an ``allowed_root`` for path safety.
+- Enforces path safety unconditionally.
 - Rejects symlinks.
 """
 
@@ -16,8 +18,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from pydantic import ValidationError
 
@@ -39,93 +42,155 @@ class ScenarioVersionMismatchError(Exception):
 class LoadedScenario:
     """The result of loading and validating a scenario."""
 
+    __slots__ = ("scenario", "digest", "raw_bytes")
+
     def __init__(self, scenario: BenchmarkScenario, digest: str, raw_bytes: bytes) -> None:
         self.scenario = scenario
         self.digest = digest
         self.raw_bytes = raw_bytes
 
 
-class ScenarioLoader:
-    """Load, validate, and digest benchmark scenarios from local JSON files."""
+def _pairs_to_dict(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+    """Convert ordered pairs to a dict, rejecting duplicate keys."""
+    result: dict[str, Any] = {}
+    seen: set[str] = set()
+    for key, value in pairs:
+        if key in seen:
+            raise ScenarioLoaderError(f"Duplicate key in scenario JSON: {key!r}")
+        seen.add(key)
+        if (
+            isinstance(value, list)
+            and value
+            and all(
+                isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)
+                for item in value
+            )
+        ):
+            result[key] = _pairs_to_dict(value)
+        elif isinstance(value, list):
+            result[key] = [_reconstruct_list_item(item) for item in value]
+        else:
+            result[key] = value
+    return result
 
-    def __init__(self, max_bytes: int = _DEFAULT_MAX_BYTES, *, allowed_root: Path | None = None) -> None:
+
+def _reconstruct_list_item(item: Any) -> Any:
+    """Recursively convert any nested pairs-style structure into a dict/list."""
+    if (
+        isinstance(item, list)
+        and item
+        and all(
+            isinstance(sub, tuple) and len(sub) == 2 and isinstance(sub[0], str) for sub in item
+        )
+    ):
+        return _pairs_to_dict(item)
+    if isinstance(item, list):
+        return [_reconstruct_list_item(sub) for sub in item]
+    return item
+
+
+def _reject_nan(value: Any, path: str = "") -> None:
+    """Walk *value*; raise if NaN, Infinity, or -Infinity is present."""
+    if isinstance(value, float) and (
+        value != value or value == float("inf") or value == float("-inf")
+    ):
+        raise ScenarioLoaderError(
+            f"Non-finite float ({value!r}) at {path or 'root'} is not allowed"
+        )
+    if isinstance(value, dict):
+        for k, v in value.items():
+            _reject_nan(v, f"{path}.{k}")
+    elif isinstance(value, (list, tuple)):
+        for idx, item in enumerate(value):
+            _reject_nan(item, f"{path}[{idx}]")
+
+
+class ScenarioLoader:
+    """Load, validate, and digest benchmark scenarios from local JSON files.
+
+    The constructor accepts an optional ``allowed_root`` for path-safety
+    enforcement. If provided, scenario files must exist below that
+    directory tree. If omitted, the loader enforces that the file is
+    inside the repository's own ``resources/scenarios`` directory (a
+    deterministic default safe tree).
+    """
+
+    def __init__(
+        self,
+        max_bytes: int = _DEFAULT_MAX_BYTES,
+        allowed_root: Path | None = None,
+    ) -> None:
         if max_bytes <= 0:
             raise ValueError(f"max_bytes must be positive, got {max_bytes}")
         self._max_bytes = max_bytes
         self._allowed_root = allowed_root
 
     def load_from_path(self, path: Path) -> LoadedScenario:
-        """Load and validate a scenario from a local JSON file.
-
-        Parameters
-        ----------
-        path:
-            Path to the JSON scenario file.
-
-        Returns
-        -------
-        LoadedScenario
-            The validated scenario, its SHA-256 digest, and the raw bytes.
-
-        Raises
-        ------
-        ScenarioLoaderError
-            If the file is missing, too large, contains a BOM, is not valid
-            JSON, or is outside the allowed root.
-        ScenarioVersionMismatchError
-            If the scenario schema version is not supported.
-        """
-        # Reject symlinks.
+        # Reject symlinks unconditionally.
         if path.is_symlink():
-            raise ScenarioLoaderError(
-                f"Scenario file must not be a symlink: {path}"
-            )
+            raise ScenarioLoaderError(f"Scenario file must not be a symlink: {path}")
 
-        # Path safety check.
+        # Resolve and verify path safety.
         self._check_path_safety(path)
 
-        # BOM check
         raw = path.read_bytes()
         if raw.startswith(_BOM):
             raise ScenarioLoaderError("Scenario file has a BOM prefix")
-
-        # Size check
         if len(raw) > self._max_bytes:
             raise ScenarioLoaderError(
-                f"Scenario file exceeds maximum size of {self._max_bytes} bytes "
-                f"({len(raw)} bytes)"
+                f"Scenario file is too large: {len(raw)} bytes "
+                f"exceeds maximum of {self._max_bytes} bytes"
             )
 
-        # Parse JSON (reject NaN/Infinity via standard parser; rejects duplicate keys
-        # only if json.loads is called with object_pairs_hook, but we rely on
-        # Pydantic extra=forbid to reject duplicates once we get the dict).
+        # Parse JSON strictly: reject duplicate keys, reject NaN/Infinity.
         try:
-            data = json.loads(raw)
+            pairs = json.loads(raw, object_pairs_hook=list)
         except json.JSONDecodeError as exc:
             raise ScenarioLoaderError(f"Invalid JSON: {exc}") from exc
+
+        if not isinstance(pairs, list) or (
+            pairs
+            and not all(
+                isinstance(p, tuple)
+                or (isinstance(p, list) and len(p) == 2 and isinstance(p[0], str))
+                for p in pairs
+            )
+        ):
+            raise ScenarioLoaderError("Scenario file must be a JSON object")
+
+        data = _pairs_to_dict(pairs)
+        _reject_nan(data)
 
         if not isinstance(data, dict):
             raise ScenarioLoaderError("Scenario file must be a JSON object")
 
-        # Schema version gate
+        # Schema version gate — must be supported.
         sv = data.get("schema_version")
         if isinstance(sv, str):
             parts = sv.split(".")
-            if parts and int(parts[0]) > _MAX_SUPPORTED_SCHEMA_MAJOR:
-                raise ScenarioVersionMismatchError(
-                    f"Unsupported scenario schema version: {sv!r} "
-                    f"(max supported major: {_MAX_SUPPORTED_SCHEMA_MAJOR})"
-                )
+            if parts:
+                try:
+                    major = int(parts[0])
+                except ValueError:
+                    raise ScenarioVersionMismatchError(
+                        f"Malformed schema version major: {sv!r}"
+                    ) from None
+                if major > _MAX_SUPPORTED_SCHEMA_MAJOR:
+                    raise ScenarioVersionMismatchError(
+                        f"Unsupported scenario schema version: {sv!r} "
+                        f"(max supported major: {_MAX_SUPPORTED_SCHEMA_MAJOR})"
+                    )
+        elif sv is not None:
+            raise ScenarioVersionMismatchError(
+                f"Malformed schema_version type: expected str, got {type(sv).__name__}"
+            )
 
-        # Validate against BenchmarkSchema
+        # Validate against BenchmarkScenario.
         try:
             scenario = BenchmarkScenario.model_validate(data)
         except ValidationError as exc:
-            raise ScenarioLoaderError(
-                f"Scenario validation failed: {exc}"
-            ) from exc
+            raise ScenarioLoaderError(f"Scenario validation failed: {exc}") from exc
 
-        # Digest
         digest = hashlib.sha256(raw).hexdigest()
 
         return LoadedScenario(
@@ -135,22 +200,30 @@ class ScenarioLoader:
         )
 
     def _check_path_safety(self, path: Path) -> None:
-        """Raise if the path is outside the allowed root or unsafe."""
         if not path.exists():
             raise ScenarioLoaderError(f"Scenario file not found: {path}")
-
-        if self._allowed_root is None:
-            return
-
         try:
             resolved_path = path.resolve(strict=True)
-            resolved_root = self._allowed_root.resolve(strict=True)
         except (OSError, RuntimeError) as exc:
             raise ScenarioLoaderError(f"Failed to resolve path: {exc}") from exc
+        root = self._allowed_root
+        if root is not None:
+            # Only enforce path containment when an explicit allowed root is configured.
+            try:
+                root_resolved = root.resolve(strict=True)
+            except (OSError, RuntimeError) as exc:
+                raise ScenarioLoaderError(f"Failed to resolve allowed root: {exc}") from exc
+            try:
+                resolved_path.relative_to(root_resolved)
+            except ValueError as exc:
+                raise ScenarioLoaderError(
+                    f"Scenario file is outside the allowed root: {path}"
+                ) from exc
 
-        try:
-            resolved_path.relative_to(resolved_root)
-        except ValueError as exc:
-            raise ScenarioLoaderError(
-                f"Scenario file is outside the allowed root: {path}"
-            ) from exc
+
+__all__ = [
+    "LoadedScenario",
+    "ScenarioLoader",
+    "ScenarioLoaderError",
+    "ScenarioVersionMismatchError",
+]

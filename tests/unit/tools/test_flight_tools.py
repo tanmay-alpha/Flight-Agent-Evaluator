@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -12,11 +10,11 @@ from flight_agent_evaluator.engine.scenario_loader import (
     ScenarioLoader,
     ScenarioLoaderError,
 )
+from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.recording.store import (
     FileRecordingStore,
     RecordingStoreError,
 )
-from flight_agent_evaluator.recording.journal import HashChainJournal
 
 
 def test_path_traversal_rejected(tmp_path: Path):
@@ -35,18 +33,26 @@ def test_symlink_rejected_for_recording(tmp_path: Path):
         pytest.skip("symlinks not supported on this platform")
     store = FileRecordingStore(real_dir)
     journal = HashChainJournal()
-    journal_path = real_dir / "test.jsonl"
-    journal._write_jsonl_string()  # ensure helper exists
+    journal.to_jsonl_string()  # ensure helper exists
     # Write through a path that is a symlink — should be rejected.
-    from flight_agent_evaluator.recording.contracts import RunRecording
+    import uuid
     from datetime import UTC, datetime
 
+    from flight_agent_evaluator.recording.contracts import RunRecording
+
+    journal.append_event(
+        entry_type="run_started",
+        run_id=str(uuid.uuid4()),
+        correlation_id="c",
+        time=datetime.now(UTC),
+        payload={},
+    )
     recording = RunRecording(
-        run_id="test",
+        run_id=uuid.uuid4(),
         scenario_id="x",
         scenario_version=1,
         seed=0,
-        entry_count=0,
+        entry_count=journal.entry_count,
         final_digest=journal.final_digest(),
         started_at=datetime.now(UTC),
         completed_at=datetime.now(UTC),
@@ -65,15 +71,24 @@ def test_symlink_rejected_for_recording(tmp_path: Path):
 def test_run_id_traversal_in_filename(tmp_path: Path):
     store = FileRecordingStore(tmp_path)
     journal = HashChainJournal()
-    from flight_agent_evaluator.recording.contracts import RunRecording
+    import uuid
     from datetime import UTC, datetime
 
+    from flight_agent_evaluator.recording.contracts import RunRecording
+
+    journal.append_event(
+        entry_type="run_started",
+        run_id=str(uuid.uuid4()),
+        correlation_id="c",
+        time=datetime.now(UTC),
+        payload={},
+    )
     recording = RunRecording(
-        run_id="..\\evil",
+        run_id=uuid.uuid4(),
         scenario_id="x",
         scenario_version=1,
         seed=0,
-        entry_count=0,
+        entry_count=journal.entry_count,
         final_digest=journal.final_digest(),
         started_at=datetime.now(UTC),
         completed_at=datetime.now(UTC),
@@ -81,6 +96,85 @@ def test_run_id_traversal_in_filename(tmp_path: Path):
     # The sanitiser should reject path-traversal attempts.
     with pytest.raises(RecordingStoreError):
         store.write_recording("..\\evil", journal, recording)
+
+
+def test_flight_get_status_handler_execution():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from flight_agent_evaluator.tools.flight import FlightGetStatusHandler
+
+    handler = FlightGetStatusHandler()
+    assert handler.tool_definition.name == "flight.get_status"
+
+    provider = MagicMock()
+    provider.get_flight_status = AsyncMock(return_value={"flight_id": "AS142", "status": "ON_TIME"})
+    context = MagicMock()
+
+    res = asyncio.run(
+        handler.execute(
+            {"flight_id": "AS142", "operating_day": "2026-07-28"},
+            provider,
+            context,
+        )
+    )
+    assert res == {"flight_id": "AS142", "status": "ON_TIME"}
+
+    with pytest.raises(ValueError, match="flight_id"):
+        asyncio.run(
+            handler.execute({"flight_id": "", "operating_day": "2026-07-28"}, provider, context)
+        )
+
+    with pytest.raises(ValueError, match="operating_day"):
+        asyncio.run(handler.execute({"flight_id": "AS142", "operating_day": ""}, provider, context))
+
+
+def test_flight_search_handler_execution():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from flight_agent_evaluator.tools.flight import FlightSearchHandler
+
+    handler = FlightSearchHandler()
+    assert handler.tool_definition.name == "flight.search_flights"
+
+    provider = MagicMock()
+    provider.search_flights = AsyncMock(return_value={"offers": [], "count": 0})
+    context = MagicMock()
+
+    res = asyncio.run(
+        handler.execute(
+            {"origin": "JFK", "destination": "LHR", "departure_date": "2026-07-28"},
+            provider,
+            context,
+        )
+    )
+    assert res == {"offers": [], "count": 0}
+
+    with pytest.raises(ValueError, match="origin"):
+        asyncio.run(
+            handler.execute(
+                {"origin": "J", "destination": "LHR", "departure_date": "2026-07-28"},
+                provider,
+                context,
+            )
+        )
+
+    with pytest.raises(ValueError, match="destination"):
+        asyncio.run(
+            handler.execute(
+                {"origin": "JFK", "destination": "L", "departure_date": "2026-07-28"},
+                provider,
+                context,
+            )
+        )
+
+    with pytest.raises(ValueError, match="departure_date"):
+        asyncio.run(
+            handler.execute(
+                {"origin": "JFK", "destination": "LHR", "departure_date": ""}, provider, context
+            )
+        )
 
 
 def test_bom_in_scenario_rejected(tmp_path: Path):

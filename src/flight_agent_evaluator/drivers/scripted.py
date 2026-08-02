@@ -11,7 +11,6 @@ measurements.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,13 +34,17 @@ class ScriptedDriverResult:
 
 
 class ScriptedAgentDriver:
-    """Deterministic test double for an agent."""
+    """Deterministic test double for an agent.
 
-    def execute(
+    The driver is async because the ``ToolExecutor`` it dispatches to is
+    async. The driver itself contains no I/O.
+    """
+
+    async def execute(
         self,
         trajectory: ScriptedTrajectory,
         executor: Any,
-        provider: Any,
+        provider: Any,  # noqa: ARG002 — retained for interface compatibility
         state: StateSnapshot,
         tool_calls_remaining: int,
         context: RunContext,
@@ -52,9 +55,14 @@ class ScriptedAgentDriver:
         records a labelled checkpoint; ``produce_final_response`` returns
         the final response string.
         """
+        from flight_agent_evaluator.contracts.tools import ToolCall
+
         tool_calls_made = 0
         final_response: str | None = None
         checkpoints: list[str] = []
+        # Build tool_calls list inside state via immutable transitions.
+        current_state = state
+        tool_calls_list: list[dict[str, object]] = []
 
         for step in trajectory.steps:
             if isinstance(step, InvokeToolStep):
@@ -63,36 +71,28 @@ class ScriptedAgentDriver:
                 tool_call_id = context.id_factory.next(
                     record_type="tool_call", sequence=tool_calls_made
                 )
-                from flight_agent_evaluator.contracts.tools import ToolCall
-
                 tool_call = ToolCall(
-                    call_id=uuid.UUID(int=tool_call_id.int),
+                    call_id=tool_call_id,
+                    run_id=context.run_id,
                     tool_name=step.tool_name,
                     arguments=step.arguments,
+                    mutation_class="read_only",
+                    start_time=context.clock.now(),
                 )
-                import asyncio
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(
-                    executor.execute(
-                        tool_call=tool_call,
-                        provider=provider,
-                        context=context,
-                        journal=None,
-                    )
+                result = await executor.execute(
+                    tool_call=tool_call,
+                    context=context,
                 )
                 if result.status == "success":
                     tool_calls_made += 1
                     tool_calls_remaining -= 1
-                    state.data.setdefault("tool_calls", []).append(
+                    tool_calls_list.append(
                         {
                             "tool_name": step.tool_name,
                             "result": result.result,
                         }
                     )
+                    current_state = current_state.with_data({"tool_calls": list(tool_calls_list)})
             elif isinstance(step, RecordCheckpointStep):
                 checkpoints.append(step.label)
             elif isinstance(step, ProduceFinalResponseStep):

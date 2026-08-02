@@ -40,7 +40,7 @@ class FileRecordingStore:
         journal_path = self._target / f"{stem}.jsonl"
         meta_path = self._target / f"{stem}.meta.json"
 
-        self._write_atomic(journal_path, journal._write_jsonl_string())
+        self._write_atomic(journal_path, journal.to_jsonl_string())
         self._write_atomic(
             meta_path,
             recording.model_dump_json(indent=2) + "\n",
@@ -80,9 +80,7 @@ class FileRecordingStore:
         parent.mkdir(parents=True, exist_ok=True)
         tmp_path: str | None = None
         try:
-            fd, tmp = tempfile.mkstemp(
-                dir=str(parent), prefix=".tmp-", suffix=".partial"
-            )
+            fd, tmp = tempfile.mkstemp(dir=str(parent), prefix=".tmp-", suffix=".partial")
             tmp_path = tmp
             try:
                 with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
@@ -91,19 +89,17 @@ class FileRecordingStore:
                 tmp_path = None
             finally:
                 if tmp_path is not None:
-                    try:
+                    import contextlib
+
+                    with contextlib.suppress(OSError):
                         os.unlink(tmp_path)
-                    except OSError:
-                        pass
         except OSError as exc:
             raise RecordingStoreError(f"Failed to write {target}: {exc}") from exc
 
     def _resolve_safe(self, path: Path) -> Path:
         """Resolve *path* without following symlinks; reject if it escapes."""
         if path.is_symlink():
-            raise RecordingStoreError(
-                f"Symlink not allowed for recording path: {path}"
-            )
+            raise RecordingStoreError(f"Symlink not allowed for recording path: {path}")
         try:
             target_resolved = self._target.resolve(strict=False)
             # ``strict=False`` so a missing target doesn't raise.
@@ -113,7 +109,5 @@ class FileRecordingStore:
         try:
             path_resolved.relative_to(target_resolved)
         except ValueError as exc:
-            raise RecordingStoreError(
-                f"Recording path escapes target directory: {path}"
-            ) from exc
+            raise RecordingStoreError(f"Recording path escapes target directory: {path}") from exc
         return path_resolved
