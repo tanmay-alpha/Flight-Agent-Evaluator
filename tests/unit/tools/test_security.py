@@ -66,7 +66,7 @@ def test_unknown_tool_returns_error(tmp_path: Path):
     from flight_agent_evaluator.engine.tool_executor import ToolExecutor
     from flight_agent_evaluator.tools.base import ToolRegistry
 
-    executor = ToolExecutor(registry=ToolRegistry(), fault_engine=FaultEngine(()))
+    executor = ToolExecutor(registry=ToolRegistry(), faults=FaultEngine(()))
     import uuid
 
     from flight_agent_evaluator.contracts.tools import ToolCall
@@ -98,6 +98,6 @@ def test_unknown_tool_returns_error(tmp_path: Path):
         arguments={},
         start_time=context.clock.now(),
     )
-    result = asyncio.run(executor.execute(call, provider=None, context=context, journal=None))
+    result = asyncio.run(executor.execute(call, context=context, provider=None))
     assert result.status == "failure"
     assert result.error is not None

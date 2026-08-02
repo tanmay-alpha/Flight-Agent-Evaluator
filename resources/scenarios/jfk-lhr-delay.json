@@ -20,6 +20,56 @@
       "description": "Check the status of AS142 on 2026-07-28"
     }
   ],
-  "assertions": [],
-  "faults": []
+  "assertions": [
+    {
+      "assertion_id": "status-lookup-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    },
+    {
+      "assertion_id": "search-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.search_flights"
+    },
+    {
+      "assertion_type": "no_duplicate_side_effect",
+      "assertion_id": "no-mutation",
+      "tool_name": "flight.get_status"
+    },
+    {
+      "assertion_type": "replay_determinism",
+      "assertion_id": "replay-determinism"
+    }
+  ],
+  "faults": [],
+  "trajectory": {
+    "trajectory_id": "jfk-lhr-delay-trajectory",
+    "description": "Standard delay investigation for AS142 JFK→LHR",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-status",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "AS142",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-2-search",
+        "tool_name": "flight.search_flights",
+        "arguments": {
+          "origin": "JFK",
+          "destination": "LHR",
+          "departure_date": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-3-response",
+        "response": "AS142 is delayed. Alternative flights are available from JFK to LHR."
+      }
+    ]
+  }
 }

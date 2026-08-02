@@ -20,7 +20,6 @@ Unsupported configurations raise :class:`UnsupportedFaultConfigurationError`.
 
 from __future__ import annotations
 
-import hashlib
 import uuid
 from dataclasses import dataclass
 
@@ -94,9 +93,7 @@ class FaultEngine:
         """Reset per-run fault counters; used between verification runs."""
         self._calls_seen.clear()
         for key in list(self._remaining):
-            self._remaining[key] = int(
-                getattr(self._faults[key[0]], "occurrence_count", 0)
-            )
+            self._remaining[key] = int(getattr(self._faults[key[0]], "occurrence_count", 0))
 
     def apply(
         self,
@@ -113,7 +110,6 @@ class FaultEngine:
         del sequence  # currently unused; reserved for further activation types
 
         tool_name = tool_call.tool_name
-        provider_name = "synthetic-fixture"
         # Track per-tool call counts for after_n_calls activation.
         self._calls_seen[tool_name] = self._calls_seen.get(tool_name, 0) + 1
 
@@ -128,6 +124,7 @@ class FaultEngine:
                 arguments=tool_call.arguments,
             ):
                 continue
+            provider_name = _provider_key(fault)
             key = (index, provider_name)
             budget = self._remaining.get(key, 0)
             if budget <= 0:
@@ -153,15 +150,11 @@ def _activation_active(
         return True
     if kind == "after_n_calls":
         if activation.call_index is None:
-            raise UnsupportedFaultConfigurationError(
-                "after_n_calls activation requires call_index"
-            )
+            raise UnsupportedFaultConfigurationError("after_n_calls activation requires call_index")
         return calls_for_tool >= activation.call_index + 1
     if kind == "on_match":
         if activation.match_substring is None:
-            raise UnsupportedFaultConfigurationError(
-                "on_match activation requires match_substring"
-            )
+            raise UnsupportedFaultConfigurationError("on_match activation requires match_substring")
         canonical = canonical_json(arguments)
         return activation.match_substring in canonical
     if kind == "time_window":
@@ -175,9 +168,7 @@ def _activation_active(
             )
         now = clock.now()
         return activation.window_start <= now <= activation.window_end
-    raise UnsupportedFaultConfigurationError(
-        f"Unsupported activation kind: {kind!r}"
-    )
+    raise UnsupportedFaultConfigurationError(f"Unsupported activation kind: {kind!r}")
 
 
 def _build_fault(fault: FaultSpec) -> InjectedFault:
@@ -220,9 +211,7 @@ def _fault_to_error(fault: FaultSpec) -> tuple[ToolResultStatus, ToolError]:
             "failure",
             ToolError(
                 error_type="provider_error",
-                message=(
-                    f"Provider returned {fault.status_code} (injected fault)"
-                ),
+                message=(f"Provider returned {fault.status_code} (injected fault)"),
                 retryable=True,
                 details={"status_code": fault.status_code},
             ),
@@ -277,9 +266,7 @@ def _fault_to_error(fault: FaultSpec) -> tuple[ToolResultStatus, ToolError]:
                 details={"duplication_count": fault.duplication_count},
             ),
         )
-    raise UnsupportedFaultConfigurationError(
-        f"Unknown fault_type: {type(fault).__name__}"
-    )
+    raise UnsupportedFaultConfigurationError(f"Unknown fault_type: {type(fault).__name__}")
 
 
 __all__ = [

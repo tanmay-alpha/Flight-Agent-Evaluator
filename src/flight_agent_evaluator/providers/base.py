@@ -12,7 +12,6 @@ if TYPE_CHECKING:
         FlightStatusQuery,
     )
     from flight_agent_evaluator.contracts.providers import (
-        ProviderCapability,
         ProviderHealth,
     )
 
@@ -28,7 +27,7 @@ class FlightProvider(Protocol):
     def provider_name(self) -> str: ...
 
     @property
-    def capabilities(self) -> tuple[ProviderCapability, ...]: ...
+    def capabilities(self) -> tuple[str, ...]: ...
 
     async def health(self) -> ProviderHealth: ...
 
