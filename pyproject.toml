@@ -94,6 +94,14 @@ plugins = ["pydantic.mypy"]
 module = ["flight_agent_evaluator.contracts.*"]
 disable_error_code = ["unused-ignore"]
 
+[[tool.mypy.overrides]]
+module = ["tests.*", "tests", "unit.*", "e2e.*", "contract.*", "scripts.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = true
+disable_error_code = ["no-untyped-def", "no-untyped-call"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -125,6 +133,9 @@ ignore = [
     "S101",   # assert allowed in tests
     "ANN",    # test helpers may not need annotations
     "B017",   # blind Exception is OK for "must reject" contract tests
+    "ARG",    # unused args OK in test fixtures
+    "S603",   # subprocess is OK in e2e CLI tests
+    "F841",   # unused local vars OK in test fixtures
 ]
 
 [tool.ruff.lint.flake8-quotes]

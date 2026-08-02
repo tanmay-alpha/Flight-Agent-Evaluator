@@ -23,7 +23,7 @@ from flight_agent_evaluator.recording.contracts import JournalEntry
 EMPTY_HASH: Final[str] = "0" * 64
 
 
-def _canonicalise_payload(obj: dict) -> str:
+def _canonicalise_payload(obj: dict[str, object]) -> str:
     """Serialise *obj* as canonical JSON (sorted keys, no whitespace)."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -72,9 +72,7 @@ class HashChainJournal:
         expected_prev = self._entries[-1].hash if self._entries else ""
         expected_seq = self.entry_count + 1
         if entry.seq != expected_seq:
-            raise JournalVerificationError(
-                f"Expected sequence {expected_seq}, got {entry.seq}"
-            )
+            raise JournalVerificationError(f"Expected sequence {expected_seq}, got {entry.seq}")
         if entry.prev_hash not in (expected_prev, ""):
             raise JournalVerificationError(
                 f"prev_hash mismatch at seq={entry.seq}: "
@@ -83,6 +81,48 @@ class HashChainJournal:
         # Recompute hash.
         h = compute_canonical_entry_hash(entry)
         filled = entry.model_copy(update={"hash": h})
+        self._entries.append(filled)
+        return filled
+
+    def append_event(
+        self,
+        entry_type: str,
+        run_id: str,
+        correlation_id: str,
+        time: object,
+        payload: dict[str, object],
+        entry_id: object | None = None,
+    ) -> JournalEntry:
+        """Append a typed event with proper seq/hash chaining.
+
+        The journal assigns the seq from the current entry count,
+        computes the prev_hash from the previous entry (or ""),
+        and then re-hashes the entry.
+
+        If ``entry_id`` is not provided, a deterministic UUID is derived
+        from the entry's position in the chain. Callers that have a
+        deterministic ID factory should pass the result here so that
+        the recording is fully reproducible.
+        """
+        import uuid as _uuid
+
+        seq = self.entry_count + 1
+        prev_hash = self._entries[-1].hash if self._entries else ""
+        if entry_id is None:
+            entry_id = _uuid.UUID(hashlib.sha256(f"{seq}:{entry_type}".encode()).hexdigest()[:32])
+        draft = JournalEntry(
+            seq=seq,
+            id=entry_id,
+            type=entry_type,
+            run_id=_uuid.UUID(run_id) if isinstance(run_id, str) else run_id,
+            correlation_id=correlation_id,
+            time=time,
+            payload=payload,
+            prev_hash=prev_hash,
+            hash="0" * 64,
+        )
+        h = compute_canonical_entry_hash(draft)
+        filled = draft.model_copy(update={"hash": h})
         self._entries.append(filled)
         return filled
 
@@ -96,17 +136,13 @@ class HashChainJournal:
 
     @classmethod
     def from_entries(cls, entries: Iterable[JournalEntry]) -> HashChainJournal:
-        """Construct a journal from an iterable of pre-built entries.
-
-        Entries are added as-is (no re-validation). Call :meth:`verify` to
-        confirm chain integrity.
-        """
+        """Construct a journal from an iterable of pre-built entries."""
         j = cls()
         for e in entries:
             j.append_raw(e)
         return j
 
-    def _write_jsonl_string(self) -> str:
+    def to_jsonl_string(self) -> str:
         """Serialise the journal to a single JSON Lines string."""
         lines = []
         for entry in self._entries:
@@ -114,26 +150,14 @@ class HashChainJournal:
             lines.append(_canonicalise_payload(data))
         return "\n".join(lines) + "\n"
 
-    def verify(self) -> bool:
-        """Verify the entire chain. Raises on failure; returns True on success."""
-        prev = ""
-        for idx, entry in enumerate(self._entries, start=1):
-            if entry.seq != idx:
-                raise JournalVerificationError(
-                    f"Sequence gap: expected {idx}, got {entry.seq}"
-                )
-            if entry.prev_hash != prev:
-                raise JournalVerificationError(
-                    f"Chain break at seq={entry.seq}: prev_hash mismatch"
-                )
-            expected_hash = compute_canonical_entry_hash(entry)
-            if entry.hash != expected_hash:
-                raise JournalVerificationError(
-                    f"Hash mismatch at seq={entry.seq}: "
-                    f"expected {expected_hash}, got {entry.hash}"
-                )
-            prev = entry.hash
-        return True
+    def write_jsonl(self, path: Path) -> None:
+        """Write the journal as canonical JSON Lines."""
+        with path.open("w", encoding="utf-8", newline="\n") as f:
+            for entry in self._entries:
+                data = entry.model_dump(mode="json")
+                line = _canonicalise_payload(data)
+                f.write(line)
+                f.write("\n")
 
     def final_digest(self) -> str:
         """Compute a single 64-character hex digest identifying the entire
@@ -145,23 +169,30 @@ class HashChainJournal:
         joined = "\n".join(e.hash for e in self._entries) + "\n"
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
-    def write_jsonl(self, path: Path) -> None:
-        """Write the journal as canonical JSON Lines."""
-        with path.open("w", encoding="utf-8", newline="\n") as f:
-            for entry in self._entries:
-                data = entry.model_dump(mode="json")
-                line = _canonicalise_payload(data)
-                f.write(line)
-                f.write("\n")
+    def verify(self) -> bool:
+        """Verify the entire chain. Returns True on success.
+
+        Raises ``JournalVerificationError`` on failure.
+        """
+        prev = ""
+        for idx, entry in enumerate(self._entries, start=1):
+            if entry.seq != idx:
+                raise JournalVerificationError(f"Sequence gap: expected {idx}, got {entry.seq}")
+            if entry.prev_hash != prev:
+                raise JournalVerificationError(
+                    f"Chain break at seq={entry.seq}: prev_hash mismatch"
+                )
+            expected_hash = compute_canonical_entry_hash(entry)
+            if entry.hash != expected_hash:
+                raise JournalVerificationError(
+                    f"Hash mismatch at seq={entry.seq}: expected {expected_hash}, got {entry.hash}"
+                )
+            prev = entry.hash
+        return True
 
     @classmethod
     def read_jsonl(cls, path: Path) -> HashChainJournal:
-        """Load a journal from canonical JSON Lines.
-
-        Entries are added without re-validation. Call :meth:`verify` after
-        loading to confirm integrity; tampered entries will raise
-        :class:`JournalVerificationError`.
-        """
+        """Load a journal from canonical JSON Lines."""
         j = cls()
         with path.open("r", encoding="utf-8", newline="\n") as f:
             for line in f:
