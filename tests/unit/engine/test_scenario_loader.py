@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from typing import Any
+
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.engine.scenario_loader import (
     ScenarioLoader,
@@ -15,7 +17,7 @@ from flight_agent_evaluator.engine.scenario_loader import (
 )
 
 
-def _valid_scenario_dict() -> dict:
+def _valid_scenario_dict() -> dict[str, Any]:
     return {
         "schema_version": "1.0.0",
         "scenario_id": {"id": "test-scenario", "version": 1},

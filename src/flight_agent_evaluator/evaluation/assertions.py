@@ -94,8 +94,13 @@ class AssertionEvaluator:
         atype = assertion.assertion_type
 
         # Tool call assertions require the journal
-        if atype in ("tool_called", "tool_not_called", "tool_call_count",
-                     "no_duplicate_side_effect", "forbidden_mutation"):
+        if atype in (
+            "tool_called",
+            "tool_not_called",
+            "tool_call_count",
+            "no_duplicate_side_effect",
+            "forbidden_mutation",
+        ):
             if journal is None:
                 return AssertionOutcome(
                     assertion=assertion,
@@ -142,8 +147,9 @@ class AssertionEvaluator:
             booking_id = getattr(assertion, "booking_id", None)
             expected = getattr(assertion, "expected_state", None)
             if not booking_id:
-                return AssertionOutcome(assertion=assertion, status="skipped",
-                                        message="Missing booking_id")
+                return AssertionOutcome(
+                    assertion=assertion, status="skipped", message="Missing booking_id"
+                )
             booking = self._get_state_path(state.data, f"bookings.{booking_id}.state")
             if booking is None:
                 return AssertionOutcome(
@@ -172,8 +178,9 @@ class AssertionEvaluator:
             request_id = getattr(assertion, "request_id", None)
             expected = getattr(assertion, "expected_state", None)
             if not request_id:
-                return AssertionOutcome(assertion=assertion, status="skipped",
-                                        message="Missing request_id")
+                return AssertionOutcome(
+                    assertion=assertion, status="skipped", message="Missing request_id"
+                )
             approval = self._get_state_path(state.data, f"approvals.{request_id}.state")
             if approval is None:
                 return AssertionOutcome(
@@ -245,12 +252,18 @@ class AssertionEvaluator:
     def _eval_tool_assertion(
         self,
         assertion: Assertion,
-        tool_calls: list[dict[str, Any]],
+        tool_calls: list[dict[str, Any]] | HashChainJournal,
     ) -> AssertionOutcome:
-        """Evaluate tool-related assertions against collected calls."""
+        """Evaluate tool-related assertions against collected calls or journal."""
+        if isinstance(tool_calls, HashChainJournal):
+            tool_calls = self._collect_tool_calls(tool_calls)
         atype = assertion.assertion_type
         tool_name = getattr(assertion, "tool_name", None)
-        matching = [tc for tc in tool_calls if tc.get("tool_name") == tool_name] if tool_name else tool_calls
+        matching = (
+            [tc for tc in tool_calls if tc.get("tool_name") == tool_name]
+            if tool_name
+            else tool_calls
+        )
 
         if atype == "tool_called":
             if not tool_name:
@@ -355,8 +368,7 @@ class AssertionEvaluator:
             # A forbidden mutation is a tool call with a mutating class
             mutating_classes = {"write", "book", "create", "update", "delete", "cancel"}
             forbidden = [
-                tc for tc in matching
-                if tc.get("mutation_class", "read") in mutating_classes
+                tc for tc in matching if tc.get("mutation_class", "read") in mutating_classes
             ]
             if forbidden:
                 return AssertionOutcome(
@@ -399,12 +411,12 @@ class AssertionEvaluator:
         event_type: str | None,
     ) -> list[dict[str, Any]]:
         """Extract event records from journal entries, optionally filtered."""
-        events: list[dict[str, Any]] = []
-        for entry in journal.entries:
-            if entry.type in ("domain_event", "state_snapshot"):
-                if event_type is None or entry.payload.get("event_type") == event_type:
-                    events.append(entry.payload)
-        return events
+        return [
+            entry.payload
+            for entry in journal.entries
+            if entry.type in ("domain_event", "state_snapshot")
+            and (event_type is None or entry.payload.get("event_type") == event_type)
+        ]
 
     @staticmethod
     def _get_state_path(data: dict[str, Any], path: str) -> Any:

@@ -58,9 +58,13 @@ def _pairs_to_dict(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
         if key in seen:
             raise ScenarioLoaderError(f"Duplicate key in scenario JSON: {key!r}")
         seen.add(key)
-        if isinstance(value, list) and value and all(
-            isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)
-            for item in value
+        if (
+            isinstance(value, list)
+            and value
+            and all(
+                isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)
+                for item in value
+            )
         ):
             result[key] = _pairs_to_dict(value)
         elif isinstance(value, list):
@@ -72,9 +76,12 @@ def _pairs_to_dict(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
 
 def _reconstruct_list_item(item: Any) -> Any:
     """Recursively convert any nested pairs-style structure into a dict/list."""
-    if isinstance(item, list) and item and all(
-        isinstance(sub, tuple) and len(sub) == 2 and isinstance(sub[0], str)
-        for sub in item
+    if (
+        isinstance(item, list)
+        and item
+        and all(
+            isinstance(sub, tuple) and len(sub) == 2 and isinstance(sub[0], str) for sub in item
+        )
     ):
         return _pairs_to_dict(item)
     if isinstance(item, list):
@@ -199,7 +206,9 @@ class ScenarioLoader:
             try:
                 resolved_path.relative_to(root_resolved)
             except ValueError as exc:
-                raise ScenarioLoaderError(f"Scenario file is outside the allowed root: {path}") from exc
+                raise ScenarioLoaderError(
+                    f"Scenario file is outside the allowed root: {path}"
+                ) from exc
 
 
 __all__ = [
