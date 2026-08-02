@@ -49,7 +49,6 @@ from flight_agent_evaluator.cli.main import (  # noqa: E402 - after mock injecti
     main,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
@@ -95,7 +94,12 @@ def _capture_stderr(func, *args, **kwargs):
 
 def _make_namespace(command: str, **kwargs) -> argparse.Namespace:
     """Build an argparse.Namespace that mimics parsed CLI args."""
-    ns = argparse.Namespace(func=None, command=command)
+    func_map = {
+        "run": lambda ns: sys.modules["flight_agent_evaluator.cli.main"].cmd_run(ns),
+        "replay": lambda ns: sys.modules["flight_agent_evaluator.cli.main"].cmd_replay(ns),
+        "verify": lambda ns: sys.modules["flight_agent_evaluator.cli.main"].cmd_verify(ns),
+    }
+    ns = argparse.Namespace(func=func_map.get(command), command=command)
     for key, val in kwargs.items():
         setattr(ns, key, val)
     return ns
@@ -163,78 +167,64 @@ class TestMainDispatch:
     def test_run_dispatch_calls_cmd_run(self):
         """``main(["run", ...])`` must delegate to cmd_run."""
         ns = _make_namespace("run", scenario="dummy.json", output=None)
-        with mock.patch(
-            "flight_agent_evaluator.cli.main.cmd_run", return_value=0
-        ) as mock_run:
-            # argparse normally builds the namespace; we short-circuit by
-            # injecting our own namespace into main's flow.
-            with mock.patch(
-                "argparse.ArgumentParser.parse_args", return_value=ns
-            ):
-                result = main(["run", "dummy.json"])
+        with (
+            mock.patch("flight_agent_evaluator.cli.main.cmd_run", return_value=0) as mock_run,
+            mock.patch("argparse.ArgumentParser.parse_args", return_value=ns),
+        ):
+            result = main(["run", "dummy.json"])
         assert result == 0
         mock_run.assert_called_once_with(ns)
 
     def test_replay_dispatch_calls_cmd_replay(self):
         """``main(["replay", ...])`` must delegate to cmd_replay."""
         ns = _make_namespace("replay", run_id="rid-1", output=None)
-        with mock.patch(
-            "flight_agent_evaluator.cli.main.cmd_replay", return_value=0
-        ) as mock_replay:
-            with mock.patch(
-                "argparse.ArgumentParser.parse_args", return_value=ns
-            ):
-                result = main(["replay", "rid-1"])
+        with (
+            mock.patch("flight_agent_evaluator.cli.main.cmd_replay", return_value=0) as mock_replay,
+            mock.patch("argparse.ArgumentParser.parse_args", return_value=ns),
+        ):
+            result = main(["replay", "rid-1"])
         assert result == 0
         mock_replay.assert_called_once_with(ns)
 
     def test_verify_dispatch_calls_cmd_verify(self):
         """``main(["verify", ...])`` must delegate to cmd_verify."""
         ns = _make_namespace("verify", run_id="rid-1", output=None)
-        with mock.patch(
-            "flight_agent_evaluator.cli.main.cmd_verify", return_value=0
-        ) as mock_verify:
-            with mock.patch(
-                "argparse.ArgumentParser.parse_args", return_value=ns
-            ):
-                result = main(["verify", "rid-1"])
+        with (
+            mock.patch("flight_agent_evaluator.cli.main.cmd_verify", return_value=0) as mock_verify,
+            mock.patch("argparse.ArgumentParser.parse_args", return_value=ns),
+        ):
+            result = main(["verify", "rid-1"])
         assert result == 0
         mock_verify.assert_called_once_with(ns)
 
     def test_run_command_returns_cmd_run_exit_code(self):
         """The exit code from cmd_run must propagate through main()."""
         ns = _make_namespace("run", scenario="dummy.json", output=None)
-        with mock.patch(
-            "flight_agent_evaluator.cli.main.cmd_run", return_value=1
+        with (
+            mock.patch("flight_agent_evaluator.cli.main.cmd_run", return_value=1),
+            mock.patch("argparse.ArgumentParser.parse_args", return_value=ns),
         ):
-            with mock.patch(
-                "argparse.ArgumentParser.parse_args", return_value=ns
-            ):
-                result = main(["run", "dummy.json"])
+            result = main(["run", "dummy.json"])
         assert result == 1
 
     def test_replay_command_returns_cmd_replay_exit_code(self):
         """The exit code from cmd_replay must propagate through main()."""
         ns = _make_namespace("replay", run_id="rid", output=None)
-        with mock.patch(
-            "flight_agent_evaluator.cli.main.cmd_replay", return_value=2
+        with (
+            mock.patch("flight_agent_evaluator.cli.main.cmd_replay", return_value=2),
+            mock.patch("argparse.ArgumentParser.parse_args", return_value=ns),
         ):
-            with mock.patch(
-                "argparse.ArgumentParser.parse_args", return_value=ns
-            ):
-                result = main(["replay", "rid"])
+            result = main(["replay", "rid"])
         assert result == 2
 
     def test_verify_command_returns_cmd_verify_exit_code(self):
         """The exit code from cmd_verify must propagate through main()."""
         ns = _make_namespace("verify", run_id="rid", output=None)
-        with mock.patch(
-            "flight_agent_evaluator.cli.main.cmd_verify", return_value=3
+        with (
+            mock.patch("flight_agent_evaluator.cli.main.cmd_verify", return_value=3),
+            mock.patch("argparse.ArgumentParser.parse_args", return_value=ns),
         ):
-            with mock.patch(
-                "argparse.ArgumentParser.parse_args", return_value=ns
-            ):
-                result = main(["verify", "rid"])
+            result = main(["verify", "rid"])
         assert result == 3
 
 
@@ -326,12 +316,8 @@ class TestCmdRun:
         """When ScenarioLoader.load_from_path raises, cmd_run returns 1."""
         from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
 
-        with mock.patch.object(
-            ScenarioLoader, "load_from_path", side_effect=Exception("boom")
-        ):
-            ns = _make_namespace(
-                "run", scenario=str(tmp_path / "nonexistent.json"), output=None
-            )
+        with mock.patch.object(ScenarioLoader, "load_from_path", side_effect=Exception("boom")):
+            ns = _make_namespace("run", scenario=str(tmp_path / "nonexistent.json"), output=None)
             result, stderr = _capture_stderr(cmd_run, ns)
         assert result == 1
         assert "boom" in stderr
@@ -343,9 +329,7 @@ class TestCmdRun:
         with mock.patch.object(
             ScenarioLoader, "load_from_path", side_effect=Exception("load-error")
         ):
-            ns = _make_namespace(
-                "run", scenario=str(tmp_path / "x.json"), output=None
-            )
+            ns = _make_namespace("run", scenario=str(tmp_path / "x.json"), output=None)
             _, stderr = _capture_stderr(cmd_run, ns)
         assert "load-error" in stderr
 
@@ -360,40 +344,28 @@ class TestCmdRun:
             "flight_agent_evaluator.cli.main._build_runner",
             side_effect=ValueError("bad scenario"),
         ):
-            ns = _make_namespace(
-                "run", scenario=str(scenario_path), output=None
-            )
+            ns = _make_namespace("run", scenario=str(scenario_path), output=None)
             result, stderr = _capture_stderr(cmd_run, ns)
         assert result == 1
         assert "bad scenario" in stderr
 
     def test_runner_execution_failure_returns_one(self, tmp_path: Path):
         """When runner.run() raises, cmd_run returns 1."""
-        from flight_agent_evaluator.cli.main import _build_runner
-        from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
-        from flight_agent_evaluator.recording.contracts import RunRecording
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from datetime import UTC, datetime
 
         scenario_path = _write_scenario(tmp_path)
-        loaded = ScenarioLoader().load_from_path(scenario_path)
-        runner = _build_runner(output=None, loaded=loaded)
 
-        with mock.patch.object(
-            runner, "run", side_effect=RuntimeError("execution failed")
+        with mock.patch(
+            "flight_agent_evaluator.engine.runner.ScenarioRunner.run",
+            side_effect=RuntimeError("execution failed"),
         ):
-            ns = _make_namespace(
-                "run", scenario=str(scenario_path), output=None
-            )
+            ns = _make_namespace("run", scenario=str(scenario_path), output=None)
             result, stderr = _capture_stderr(cmd_run, ns)
         assert result == 1
         assert "execution failed" in stderr
 
     def test_scenario_not_found_returns_one(self, tmp_path: Path):
         """A missing scenario file causes exit code 1."""
-        ns = _make_namespace(
-            "run", scenario=str(tmp_path / "does-not-exist.json"), output=None
-        )
+        ns = _make_namespace("run", scenario=str(tmp_path / "does-not-exist.json"), output=None)
         result, stderr = _capture_stderr(cmd_run, ns)
         assert result == 1
 
@@ -497,7 +469,6 @@ class TestCmdRun:
 
     def test_run_with_symlink_scenario_returns_one(self, tmp_path: Path):
         """A symlinked scenario file is rejected with exit code 1."""
-        import os
 
         real = tmp_path / "real.json"
         real.write_text(json.dumps(_VALID_SCENARIO_DICT), encoding="utf-8")
@@ -513,10 +484,10 @@ class TestCmdRun:
 
     def test_run_with_oversized_scenario_returns_one(self, tmp_path: Path):
         """A scenario file exceeding the size limit returns exit code 1."""
-        from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
+        from flight_agent_evaluator.engine.scenario_loader import _DEFAULT_MAX_BYTES
 
         big = tmp_path / "big.json"
-        big.write_bytes(b"x" * (ScenarioLoader._DEFAULT_MAX_BYTES + 1))
+        big.write_bytes(b"x" * (_DEFAULT_MAX_BYTES + 1))
         ns = _make_namespace("run", scenario=str(big), output=None)
         result, stderr = _capture_stderr(cmd_run, ns)
         assert result == 1
@@ -531,9 +502,7 @@ class TestCmdRun:
         out_dir = tmp_path / "out"
         runner = _build_runner(output=out_dir, loaded=loaded)
 
-        ns = _make_namespace(
-            "run", scenario=str(scenario_path), output=str(out_dir)
-        )
+        ns = _make_namespace("run", scenario=str(scenario_path), output=str(out_dir))
         result = cmd_run(ns)
         assert result == 0
         # At least the .jsonl file should exist
@@ -551,12 +520,12 @@ class TestCmdReplay:
 
     def test_successful_playback_returns_zero(self, tmp_path: Path):
         """A valid replay returns exit code 0."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from flight_agent_evaluator.replay.engine import ReplayEngine
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -595,11 +564,12 @@ class TestCmdReplay:
 
     def test_successful_playback_prints_digest(self, tmp_path: Path, capsys):
         """Replay prints the journal digest."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -636,11 +606,12 @@ class TestCmdReplay:
 
     def test_successful_playback_prints_entries_count(self, tmp_path: Path, capsys):
         """Replay prints the number of entries."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -677,7 +648,6 @@ class TestCmdReplay:
 
     def test_replay_nonexistent_run_propagates_error(self, tmp_path: Path):
         """Replay of a missing recording propagates the underlying error."""
-        from flight_agent_evaluator.replay.engine import ReplayEngine
 
         ns = _make_namespace("replay", run_id="nonexistent-run-id", output=str(tmp_path))
         with pytest.raises(Exception):
@@ -685,11 +655,12 @@ class TestCmdReplay:
 
     def test_replay_with_no_output_uses_default(self, tmp_path: Path):
         """Replay without --output uses '.recordings' as default."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         # Write to the default .recordings directory
@@ -725,6 +696,7 @@ class TestCmdReplay:
         ns = _make_namespace("replay", run_id=run_id, output=None)
         # Change to the directory so the default ".recordings" resolves correctly
         import os
+
         old_cwd = os.getcwd()
         try:
             os.chdir(str(tmp_path))
@@ -744,11 +716,12 @@ class TestCmdVerify:
 
     def test_verify_no_divergences_returns_zero(self, tmp_path: Path):
         """Verification with a clean journal returns exit code 0."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -784,11 +757,12 @@ class TestCmdVerify:
 
     def test_verify_no_divergences_prints_all_checks_passed(self, tmp_path: Path, capsys):
         """Clean verification prints 'All checks passed.'"""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -825,15 +799,15 @@ class TestCmdVerify:
 
     def test_verify_with_divergences_returns_one(self, tmp_path: Path):
         """Verification that detects divergences returns exit code 1."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import (
-            JournalEntry, RunRecording, ReplayReport, DivergenceRecord,
-            ReplayOutcomeStatus,
-        )
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from flight_agent_evaluator.replay.engine import ReplayEngine
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import (
+            JournalEntry,
+            RunRecording,
+        )
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         # Write a valid journal
@@ -879,11 +853,12 @@ class TestCmdVerify:
 
     def test_verify_with_divergences_prints_divergence_count(self, tmp_path: Path, capsys):
         """When divergences are found, the count is printed."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -929,11 +904,12 @@ class TestCmdVerify:
 
     def test_verify_with_divergences_prints_each_divergence(self, tmp_path: Path, capsys):
         """Each divergence detail is printed when divergences are found."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -979,7 +955,6 @@ class TestCmdVerify:
 
     def test_verify_nonexistent_run_propagates_error(self, tmp_path: Path):
         """Verification of a missing recording propagates the error."""
-        from flight_agent_evaluator.replay.engine import ReplayEngine
 
         ns = _make_namespace("verify", run_id="nonexistent-run-id", output=str(tmp_path))
         with pytest.raises(Exception):
@@ -987,11 +962,12 @@ class TestCmdVerify:
 
     def test_verify_with_no_output_uses_default(self, tmp_path: Path):
         """Verify without --output uses '.recordings' as default."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         default_dir = tmp_path / ".recordings"
@@ -1025,6 +1001,7 @@ class TestCmdVerify:
 
         ns = _make_namespace("verify", run_id=run_id, output=None)
         import os
+
         old_cwd = os.getcwd()
         try:
             os.chdir(str(tmp_path))
@@ -1051,25 +1028,22 @@ class TestExitCodes:
         loaded = ScenarioLoader().load_from_path(scenario_path)
         runner = _build_runner(output=tmp_path / "out", loaded=loaded)
 
-        ns = _make_namespace(
-            "run", scenario=str(scenario_path), output=str(tmp_path / "out")
-        )
+        ns = _make_namespace("run", scenario=str(scenario_path), output=str(tmp_path / "out"))
         assert cmd_run(ns) == 0
 
     def test_run_failure_exit_code_one(self, tmp_path: Path):
         """Run failure (bad scenario) returns 1."""
-        ns = _make_namespace(
-            "run", scenario=str(tmp_path / "nope.json"), output=None
-        )
+        ns = _make_namespace("run", scenario=str(tmp_path / "nope.json"), output=None)
         assert cmd_run(ns) == 1
 
     def test_replay_success_exit_code_zero(self, tmp_path: Path):
         """Successful replay returns 0."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -1104,11 +1078,12 @@ class TestExitCodes:
 
     def test_verify_success_exit_code_zero(self, tmp_path: Path):
         """Successful verification returns 0."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -1143,11 +1118,12 @@ class TestExitCodes:
 
     def test_verify_with_divergences_exit_code_one(self, tmp_path: Path):
         """Verification with divergences returns 1."""
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-        from datetime import UTC, datetime
         import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -1217,7 +1193,6 @@ class TestErrorHandling:
 
     def test_replay_with_empty_run_id(self, tmp_path: Path):
         """Replay with an empty run_id should fail."""
-        from flight_agent_evaluator.replay.engine import ReplayEngine
 
         ns = _make_namespace("replay", run_id="", output=str(tmp_path))
         with pytest.raises(Exception):
@@ -1225,7 +1200,6 @@ class TestErrorHandling:
 
     def test_verify_with_empty_run_id(self, tmp_path: Path):
         """Verify with an empty run_id should fail."""
-        from flight_agent_evaluator.replay.engine import ReplayEngine
 
         ns = _make_namespace("verify", run_id="", output=str(tmp_path))
         with pytest.raises(Exception):
@@ -1238,9 +1212,7 @@ class TestErrorHandling:
             "flight_agent_evaluator.cli.main.ReplayEngine",
             side_effect=RuntimeError("engine boom"),
         ):
-            ns = _make_namespace(
-                "replay", run_id="some-run-id", output=str(tmp_path)
-            )
+            ns = _make_namespace("replay", run_id="some-run-id", output=str(tmp_path))
             with pytest.raises(RuntimeError, match="engine boom"):
                 cmd_replay(ns)
 
@@ -1251,9 +1223,7 @@ class TestErrorHandling:
             "flight_agent_evaluator.cli.main.ReplayEngine",
             side_effect=RuntimeError("engine boom"),
         ):
-            ns = _make_namespace(
-                "verify", run_id="some-run-id", output=str(tmp_path)
-            )
+            ns = _make_namespace("verify", run_id="some-run-id", output=str(tmp_path))
             with pytest.raises(RuntimeError, match="engine boom"):
                 cmd_verify(ns)
 
@@ -1268,9 +1238,7 @@ class TestErrorHandling:
         assert not out_dir.exists()
         runner = _build_runner(output=out_dir, loaded=loaded)
 
-        ns = _make_namespace(
-            "run", scenario=str(scenario_path), output=str(out_dir)
-        )
+        ns = _make_namespace("run", scenario=str(scenario_path), output=str(out_dir))
         result = cmd_run(ns)
         assert result == 0
         assert out_dir.exists()
@@ -1278,9 +1246,7 @@ class TestErrorHandling:
     def test_run_scenario_with_bom_fails(self, tmp_path: Path):
         """A BOM-prefixed scenario file is rejected."""
         bom = tmp_path / "bom.json"
-        bom.write_bytes(
-            b"\xef\xbb\xbf" + json.dumps(_VALID_SCENARIO_DICT).encode("utf-8")
-        )
+        bom.write_bytes(b"\xef\xbb\xbf" + json.dumps(_VALID_SCENARIO_DICT).encode("utf-8"))
         ns = _make_namespace("run", scenario=str(bom), output=None)
         result, stderr = _capture_stderr(cmd_run, ns)
         assert result == 1
@@ -1326,7 +1292,7 @@ class TestCLIIntegration:
     """
 
     @pytest.fixture(autouse=True)
-    def _skip_if_not_installed(self, monkeypatch: MonkeyPatch):
+    def _skip_if_not_installed(self, monkeypatch: pytest.MonkeyPatch):
         """Skip the entire class if the CLI entry point is not available."""
         import shutil
 
@@ -1371,9 +1337,10 @@ class TestBuildRunnerBranches:
 
     def test_reference_time_with_astimezone_method(self, tmp_path: Path):
         """A datetime reference_time is converted to UTC."""
+        from datetime import datetime, timedelta, timezone
+
         from flight_agent_evaluator.cli.main import _build_runner
         from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
-        from datetime import timezone, timedelta
 
         data = dict(_VALID_SCENARIO_DICT)
         # A datetime with a non-UTC offset

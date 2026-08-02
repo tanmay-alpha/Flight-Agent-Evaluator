@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
+import asyncio
 import json
 import subprocess
 import sys
@@ -13,11 +13,7 @@ import pytest
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.engine.runner import ScenarioRunner
 from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
-from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.replay.engine import ReplayEngine
-from flight_agent_evaluator.runtime.clock import VirtualClock
-from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
-from flight_agent_evaluator.tools.flight import register_default_tools
 
 SCENARIO_PATH = Path("resources/scenarios/jfk-lhr-delay.json")
 
@@ -31,45 +27,13 @@ def loaded_scenario() -> BenchmarkScenario:
 
 def test_full_pipeline_determinism(tmp_path: Path, loaded_scenario: BenchmarkScenario):
     """Two identical runs must produce identical recordings."""
-    registry = register_default_tools()
-    from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
+    runner1 = ScenarioRunner()
+    runner2 = ScenarioRunner()
+    loader = ScenarioLoader()
+    loaded = loader.load_from_path(SCENARIO_PATH)
 
-    driver = ScriptedAgentDriver()
-    store1 = FileRecordingStore(tmp_path / "run1")
-    store2 = FileRecordingStore(tmp_path / "run2")
-    id_factory1 = DeterministicIdFactory(
-        scenario_id=loaded_scenario.scenario_id.id,
-        scenario_version=loaded_scenario.scenario_id.version,
-        seed=loaded_scenario.seed,
-    )
-    id_factory2 = DeterministicIdFactory(
-        scenario_id=loaded_scenario.scenario_id.id,
-        scenario_version=loaded_scenario.scenario_id.version,
-        seed=loaded_scenario.seed,
-    )
-    runner1 = ScenarioRunner(
-        clock=VirtualClock(),
-        id_factory=id_factory1,
-        tool_registry=registry,
-        driver=driver,
-        store=store1,
-    )
-    runner2 = ScenarioRunner(
-        clock=VirtualClock(),
-        id_factory=id_factory2,
-        tool_registry=registry,
-        driver=driver,
-        store=store2,
-    )
-    from flight_agent_evaluator.engine.scenario_loader import LoadedScenario
-
-    loaded = LoadedScenario(
-        scenario=loaded_scenario,
-        digest=hashlib.sha256(SCENARIO_PATH.read_bytes()).hexdigest(),
-        raw_bytes=SCENARIO_PATH.read_bytes(),
-    )
-    rec1 = runner1.run(loaded)
-    rec2 = runner2.run(loaded)
+    rec1 = asyncio.run(runner1.run(loaded, output_dir=tmp_path / "run1"))
+    rec2 = asyncio.run(runner2.run(loaded, output_dir=tmp_path / "run2"))
     assert rec1.final_digest == rec2.final_digest
 
 
@@ -136,70 +100,20 @@ def test_cli_replay(tmp_path: Path):
 
 def test_cli_verify_passes():
     """The CLI verify command passes for a valid run."""
-    # We create a run via the runner and then verify it.
-    scenario = ScenarioLoader().load_from_path(SCENARIO_PATH).scenario
-    clock = VirtualClock()
-    registry = register_default_tools()
-    from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
-
-    driver = ScriptedAgentDriver()
-    store = FileRecordingStore(Path(".recordings"))
-    id_factory = DeterministicIdFactory(
-        scenario_id=scenario.scenario_id.id,
-        scenario_version=scenario.scenario_id.version,
-        seed=scenario.seed,
-    )
-    runner = ScenarioRunner(
-        clock=clock,
-        id_factory=id_factory,
-        tool_registry=registry,
-        driver=driver,
-        store=store,
-    )
-
-    from flight_agent_evaluator.engine.scenario_loader import LoadedScenario
-
-    loaded = LoadedScenario(
-        scenario=scenario,
-        digest=hashlib.sha256(SCENARIO_PATH.read_bytes()).hexdigest(),
-        raw_bytes=SCENARIO_PATH.read_bytes(),
-    )
-    recording = runner.run(loaded)
+    runner = ScenarioRunner()
+    loaded = ScenarioLoader().load_from_path(SCENARIO_PATH)
+    recording = asyncio.run(runner.run(loaded, output_dir=Path(".recordings")))
     engine = ReplayEngine(root=Path(".recordings"))
-    report = engine.verify(recording.run_id)
+    report = engine.verify(str(recording.run_id))
     assert report.status == "verified"
     assert len(report.divergences) == 0
 
 
 def test_replay_tampered_detected():
     """Verification mode must detect tampering."""
-    # Run to create a recording.
-    scenario = ScenarioLoader().load_from_path(SCENARIO_PATH).scenario
-    registry = register_default_tools()
-    from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
-
-    driver = ScriptedAgentDriver()
-    store = FileRecordingStore(Path(".recordings"))
-    id_factory = DeterministicIdFactory(
-        scenario_id=scenario.scenario_id.id,
-        scenario_version=scenario.scenario_id.version,
-        seed=scenario.seed,
-    )
-    runner = ScenarioRunner(
-        clock=VirtualClock(),
-        id_factory=id_factory,
-        tool_registry=registry,
-        driver=driver,
-        store=store,
-    )
-    from flight_agent_evaluator.engine.scenario_loader import LoadedScenario
-
-    loaded = LoadedScenario(
-        scenario=scenario,
-        digest=hashlib.sha256(SCENARIO_PATH.read_bytes()).hexdigest(),
-        raw_bytes=SCENARIO_PATH.read_bytes(),
-    )
-    recording = runner.run(loaded)
+    runner = ScenarioRunner()
+    loaded = ScenarioLoader().load_from_path(SCENARIO_PATH)
+    recording = asyncio.run(runner.run(loaded, output_dir=Path(".recordings")))
     journal_path = Path(".recordings") / f"{recording.run_id}.jsonl"
     lines = journal_path.read_text(encoding="utf-8").splitlines()
     # Tamper with the first entry.
@@ -211,7 +125,7 @@ def test_replay_tampered_detected():
     from flight_agent_evaluator.recording.journal import JournalVerificationError
 
     try:
-        report = engine.verify(recording.run_id)
+        report = engine.verify(str(recording.run_id))
     except JournalVerificationError:
         report = None
     assert report is None or report.status == "tampered"
