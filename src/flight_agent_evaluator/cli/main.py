@@ -21,7 +21,7 @@ from flight_agent_evaluator.engine.scenario_loader import LoadedScenario, Scenar
 from flight_agent_evaluator.replay.engine import ReplayEngine
 
 
-def _build_runner(output: Path | None, loaded: LoadedScenario) -> ScenarioRunner:
+def _build_runner(output: Path | None, loaded: LoadedScenario) -> ScenarioRunner:  # noqa: ARG001
     """Build a ScenarioRunner from a loaded scenario."""
     scenario = loaded.scenario
     ref = getattr(scenario, "reference_time", None)
@@ -88,9 +88,7 @@ def main(argv: list[str] | None = None) -> int:
 
     run_p = subparsers.add_parser("run", help="Execute a scenario.")
     run_p.add_argument("scenario", help="Path to a scenario JSON file.")
-    run_p.add_argument(
-        "--output", "-o", help="Recording output directory.", default=".recordings"
-    )
+    run_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
     run_p.set_defaults(func=cmd_run)
 
     replay_p = subparsers.add_parser("replay", help="Replay a recorded run.")

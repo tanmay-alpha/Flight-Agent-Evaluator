@@ -54,9 +54,11 @@ class ScenarioRunner:
         if ref_time is not None:
             reference_time = datetime.datetime.fromisoformat(ref_time)
             if reference_time.tzinfo is None:
-                raise ValueError(f"Scenario reference_time must be timezone-aware, got {ref_time!r}")
+                raise ValueError(
+                    f"Scenario reference_time must be timezone-aware, got {ref_time!r}"
+                )
         else:
-            reference_time = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+            reference_time = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
         clock = DeterministicVirtualClock(reference_time)
 
         # Build context

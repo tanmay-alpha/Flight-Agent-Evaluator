@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
-
-from typing import Any
 
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.engine.scenario_loader import (
