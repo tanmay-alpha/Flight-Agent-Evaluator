@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from flight_agent_evaluator.contracts.tools import ToolCall
 from flight_agent_evaluator.engine.fault_engine import FaultEngine
@@ -21,7 +22,7 @@ class _EchoProvider:
     async def get_flight_status(self, query):
         return {"flight_id": query.flight_identity.flight_number}
 
-    async def search_flights(self, request):
+    async def search_flights(self, _request):
         return {"offers": []}
 
 
@@ -42,9 +43,7 @@ class _EchoHandler:
 
 def _make_context(seed: int = 42) -> RunContext:
     clock = VirtualClock()
-    id_factory = DeterministicIdFactory(
-        scenario_id="test", scenario_version=1, seed=seed
-    )
+    id_factory = DeterministicIdFactory(scenario_id="test", scenario_version=1, seed=seed)
     return RunContext(
         run_id=uuid.uuid4(),
         scenario_id="test",
@@ -63,26 +62,27 @@ def _make_context(seed: int = 42) -> RunContext:
 def test_executor_invokes_handler():
     registry = ToolRegistry()
     registry.register(_EchoHandler())
-    executor = ToolExecutor(registry, FaultEngine(()))
-    provider = _EchoProvider()
+    provider: Any = _EchoProvider()
+    executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
     context = _make_context()
     from flight_agent_evaluator.contracts.aviation import FlightIdentity, FlightStatusQuery
-    from flight_agent_evaluator.contracts.common import NonEmptyIdentifier
-    from datetime import date
 
     query = FlightStatusQuery(
-        query_id=NonEmptyIdentifier(value="q-1"),
-        flight_identity=FlightIdentity(flight_number="AS142", marketing_airline_iata="AS"),
-        query_date=date(2026, 7, 28),
+        flight_identity=FlightIdentity(
+            flight_number="AS142",
+            marketing_airline_iata="AS",
+            operating_airline_iata="AS",
+        ),
+        query_date=datetime(2026, 7, 28, tzinfo=UTC),
     )
     call = ToolCall(
         call_id=uuid.uuid4(),
+        run_id=context.run_id,
         tool_name="echo",
         arguments={"query": query},
+        start_time=context.clock.now(),
     )
-    result = asyncio.get_event_loop().run_until_complete(
-        executor.execute(call, provider=provider, context=context, journal=None)
-    )
+    result = asyncio.run(executor.execute(call, context=context))
     assert result.status == "success"
     assert result.result == {"flight_id": "AS142"}
 
@@ -93,13 +93,14 @@ def test_executor_returns_failure_for_unknown_tool():
     context = _make_context()
     call = ToolCall(
         call_id=uuid.uuid4(),
+        run_id=context.run_id,
         tool_name="not.registered",
         arguments={},
+        start_time=context.clock.now(),
     )
-    result = asyncio.get_event_loop().run_until_complete(
-        executor.execute(call, provider=None, context=context, journal=None)
-    )
+    result = asyncio.run(executor.execute(call, provider=None, context=context))
     assert result.status == "failure"
+    assert result.error is not None
     assert result.error.error_type == "invalid_arguments"
 
 
@@ -108,25 +109,130 @@ def test_executor_handles_handler_exception():
         tool_name = "broken"
 
         def __init__(self):
-            self.tool_definition = ToolDefinition(
-                name=self.tool_name, description="broken"
-            )
+            self.tool_definition = ToolDefinition(name=self.tool_name, description="broken")
 
         async def execute(self, arguments, provider, context):
             raise RuntimeError("boom")
 
     registry = ToolRegistry()
     registry.register(_BrokenHandler())
-    executor = ToolExecutor(registry, FaultEngine(()))
+    provider: Any = _EchoProvider()
+    executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
     context = _make_context()
     call = ToolCall(
         call_id=uuid.uuid4(),
+        run_id=context.run_id,
         tool_name="broken",
         arguments={},
+        start_time=context.clock.now(),
     )
-    result = asyncio.get_event_loop().run_until_complete(
-        executor.execute(call, provider=None, context=context, journal=None)
-    )
+    result = asyncio.run(executor.execute(call, context=context))
     assert result.status == "failure"
+    assert result.error is not None
     assert result.error.error_type == "internal_error"
-    assert "boom" in result.error.message
+    # Secure implementation: raw exception text is NOT leaked.
+    assert "boom" not in result.error.message
+    assert "unexpected" in result.error.message.lower()
+
+
+def test_executor_enforces_tool_call_limit():
+    from flight_agent_evaluator.contracts.aviation import FlightIdentity, FlightStatusQuery
+
+    query = FlightStatusQuery(
+        flight_identity=FlightIdentity(
+            flight_number="AS142",
+            marketing_airline_iata="AS",
+            operating_airline_iata="AS",
+        ),
+        query_date=datetime(2026, 7, 28, tzinfo=UTC),
+    )
+    registry = ToolRegistry()
+    registry.register(_EchoHandler())
+    provider: Any = _EchoProvider()
+    executor = ToolExecutor(registry, FaultEngine(()), provider=provider, tool_call_limit=1)
+    context = _make_context()
+    call = ToolCall(
+        call_id=uuid.uuid4(),
+        run_id=context.run_id,
+        tool_name="echo",
+        arguments={"query": query},
+        start_time=context.clock.now(),
+    )
+    # First call succeeds
+    res1 = asyncio.run(executor.execute(call, context=context))
+    assert res1.status == "success"
+
+    # Second call fails due to tool call limit
+    res2 = asyncio.run(executor.execute(call, context=context))
+    assert res2.status == "failure"
+    assert res2.error is not None
+    assert res2.error.error_type == "invalid_arguments"
+
+
+def test_identity_projector():
+    from flight_agent_evaluator.engine.tool_executor import _IdentityProjector
+    from flight_agent_evaluator.runtime.state import StateSnapshot
+
+    projector = _IdentityProjector()
+    initial_state = StateSnapshot(data={"existing": "val"})
+    record = {"tool_name": "echo", "result": {"flight_id": "AS142"}}
+    new_state = projector.apply(initial_state, record)
+    assert isinstance(new_state, StateSnapshot)
+    assert new_state.data["existing"] == "val"
+    assert new_state.data["tool_call_summaries"] == [record]
+
+    # Non-StateSnapshot input returned unchanged
+    assert projector.apply({"raw": "dict"}, record) == {"raw": "dict"}
+
+
+def test_scripted_agent_driver_execution():
+    from flight_agent_evaluator.contracts.aviation import FlightIdentity, FlightStatusQuery
+    from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
+    from flight_agent_evaluator.recording.contracts import (
+        InvokeToolStep,
+        ProduceFinalResponseStep,
+        RecordCheckpointStep,
+        ScriptedTrajectory,
+    )
+    from flight_agent_evaluator.runtime.state import StateSnapshot
+
+    query = FlightStatusQuery(
+        flight_identity=FlightIdentity(
+            flight_number="AS142",
+            marketing_airline_iata="AS",
+            operating_airline_iata="AS",
+        ),
+        query_date=datetime(2026, 7, 28, tzinfo=UTC),
+    )
+    trajectory = ScriptedTrajectory(
+        trajectory_id="traj-1",
+        description="test trajectory",
+        steps=(
+            InvokeToolStep(step_id="s1", tool_name="echo", arguments={"query": query}),
+            RecordCheckpointStep(step_id="s2", label="check1"),
+            ProduceFinalResponseStep(step_id="s3", response="done"),
+            InvokeToolStep(step_id="s4", tool_name="echo", arguments={"query": query}),
+        ),
+    )
+
+    registry = ToolRegistry()
+    registry.register(_EchoHandler())
+    provider: Any = _EchoProvider()
+    executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
+    context = _make_context()
+    driver = ScriptedAgentDriver()
+
+    # With tool_calls_remaining = 1, first call succeeds, second skipped
+    res = asyncio.run(
+        driver.execute(
+            trajectory=trajectory,
+            executor=executor,
+            provider=provider,
+            state=StateSnapshot(),
+            tool_calls_remaining=1,
+            context=context,
+        )
+    )
+    assert res.tool_calls_made == 1
+    assert res.final_response == "done"
+    assert res.checkpoints == ("check1",)

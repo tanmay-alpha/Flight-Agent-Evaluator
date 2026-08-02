@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "jfk-lhr-timeout-recovery",
+    "version": 1
+  },
+  "metadata": {
+    "title": "JFK-LHR timeout and recovery scenario",
+    "description": "The first AS142 status call times out and the agent recovers by retrying then searching for alternatives.",
+    "objective": "Demonstrate deterministic fault recovery: timeout → retry → search"
+  },
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 180
+  },
+  "seed": 99,
+  "steps": [
+    {
+      "step_id": "check-flight-status-with-timeout",
+      "description": "First status call times out, retry succeeds, alternatives searched"
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_id": "status-called-twice",
+      "assertion_type": "tool_call_count",
+      "tool_name": "flight.get_status",
+      "min_count": 1,
+      "max_count": 3
+    },
+    {
+      "assertion_id": "search-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.search_flights"
+    },
+    {
+      "assertion_id": "no-mutation",
+      "assertion_type": "no_mutation"
+    },
+    {
+      "assertion_id": "replay-determinism",
+      "assertion_type": "replay_deterministic"
+    }
+  ],
+  "faults": [
+    {
+      "fault_type": "timeout",
+      "fault_id": "as142-first-timeout",
+      "target_provider": "synthetic-fixture",
+      "target_tool": "flight.get_status",
+      "activation": {
+        "kind": "after_n_calls",
+        "call_index": 0
+      },
+      "occurrence_count": 1
+    }
+  ],
+  "trajectory": {
+    "trajectory_id": "jfk-lhr-timeout-recovery-trajectory",
+    "description": "Status lookup times out once then succeeds, alternative flights searched",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-status-first",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "AS142",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-2-status-retry",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "AS142",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-3-search",
+        "tool_name": "flight.search_flights",
+        "arguments": {
+          "origin": "JFK",
+          "destination": "LHR",
+          "departure_date": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-4-response",
+        "response": "AS142 had a transient lookup failure but recovered. Alternative flights are available from JFK to LHR."
+      }
+    ]
+  }
+}

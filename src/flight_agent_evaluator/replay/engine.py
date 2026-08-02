@@ -13,9 +13,8 @@ and yields per-step results.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from flight_agent_evaluator.recording.contracts import (
     DivergenceRecord,
@@ -41,38 +40,31 @@ class ReplayEngine:
         self._root = root or Path(".recordings")
 
     def verify(self, run_id: str) -> ReplayReport:
-        """Replay a recording and verify it matches exactly.
+        """Replay a recording and verify it matches exactly."""
+        from flight_agent_evaluator.recording.journal import JournalVerificationError
 
-        Returns a ``ReplayReport``. In practice, tool calls must be
-        replayed against the same provider; any discrepancy is logged as
-        a divergence.
-
-        This Phase 2 implementation validates the hash chain and returns
-        the recorded entries. A future Phase 3 version will re-invoke
-        each tool call.
-        """
         path = self._root / f"{run_id}.jsonl"
-        journal = HashChainJournal.read_jsonl(path)
-        chain_valid = journal.verify()
         divergences: list[DivergenceRecord] = []
-        if not chain_valid:
-            for idx, entry in enumerate(journal.entries, start=1):
-                divergences.append(
-                    DivergenceRecord(
-                        sequence=entry.seq,
-                        kind="missing_tool",
-                        detail="chain-verification-failed",
-                    )
+        final_digest = "0" * 64
+        try:
+            journal = HashChainJournal.read_jsonl(path)
+            final_digest = journal.final_digest()
+            journal.verify()
+        except JournalVerificationError as exc:
+            divergences.append(
+                DivergenceRecord(
+                    sequence=1,
+                    kind="missing_tool",
+                    detail=f"chain-verification-failed: {exc}",
                 )
-        status: ReplayOutcomeStatus = (
-            "verified" if not divergences else "tampered"
-        )
+            )
+        status: ReplayOutcomeStatus = "verified" if not divergences else "tampered"
         return ReplayReport(
-            recording_run_id=run_id,
+            recording_run_id=str(run_id),
             mode="verification",
             status=status,
             divergences=tuple(divergences),
-            final_digest=journal.final_digest(),
+            final_digest=final_digest,
         )
 
     def playback(self, run_id: str) -> dict[str, Any]:
