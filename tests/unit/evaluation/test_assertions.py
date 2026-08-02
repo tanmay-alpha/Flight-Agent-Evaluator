@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
 from flight_agent_evaluator.contracts.evaluation import (
     ApprovalStateAssertion,
@@ -26,7 +25,8 @@ from flight_agent_evaluator.contracts.scenarios import (
     ScenarioStep,
 )
 from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
-from flight_agent_evaluator.recording.journal import HashChainJournal, JournalEntry
+from flight_agent_evaluator.recording.contracts import JournalEntry
+from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.runtime.state import StateSnapshot
 
 
@@ -83,6 +83,7 @@ def test_evaluate_skipped_assertions():
 # ---------------------------------------------------------------------------
 # Tool call assertions
 # ---------------------------------------------------------------------------
+
 
 def _make_journal_with_tool_calls(run_id: str, tool_names: list[str]) -> HashChainJournal:
     journal = HashChainJournal()
@@ -146,7 +147,10 @@ class TestToolCallCountAssertions:
     def test_count_within_range(self):
         evaluator = AssertionEvaluator()
         assertion = ToolCallCountAssertion(
-            assertion_id="a1", tool_name="search", min_count=1, max_count=5,
+            assertion_id="a1",
+            tool_name="search",
+            min_count=1,
+            max_count=5,
         )
         journal = _make_journal_with_tool_calls(str(uuid.uuid4()), ["search", "search"])
         outcome = evaluator._eval_tool_assertion(assertion, journal)
@@ -155,7 +159,10 @@ class TestToolCallCountAssertions:
     def test_count_below_min(self):
         evaluator = AssertionEvaluator()
         assertion = ToolCallCountAssertion(
-            assertion_id="a2", tool_name="search", min_count=3, max_count=10,
+            assertion_id="a2",
+            tool_name="search",
+            min_count=3,
+            max_count=10,
         )
         journal = _make_journal_with_tool_calls(str(uuid.uuid4()), ["search"])
         outcome = evaluator._eval_tool_assertion(assertion, journal)
@@ -164,10 +171,14 @@ class TestToolCallCountAssertions:
     def test_count_above_max(self):
         evaluator = AssertionEvaluator()
         assertion = ToolCallCountAssertion(
-            assertion_id="a3", tool_name="search", min_count=0, max_count=2,
+            assertion_id="a3",
+            tool_name="search",
+            min_count=0,
+            max_count=2,
         )
         journal = _make_journal_with_tool_calls(
-            str(uuid.uuid4()), ["search", "search", "search"],
+            str(uuid.uuid4()),
+            ["search", "search", "search"],
         )
         outcome = evaluator._eval_tool_assertion(assertion, journal)
         assert outcome.status == "failed"
@@ -177,7 +188,8 @@ class TestNoDuplicateSideEffectAssertion:
     def test_passes_no_duplicates(self):
         evaluator = AssertionEvaluator()
         assertion = NoDuplicateSideEffectAssertion(
-            assertion_id="a1", tool_name="book",
+            assertion_id="a1",
+            tool_name="book",
         )
         journal = _make_journal_with_tool_calls(
             str(uuid.uuid4()),
@@ -189,12 +201,16 @@ class TestNoDuplicateSideEffectAssertion:
     def test_fails_on_duplicate_key(self):
         evaluator = AssertionEvaluator()
         assertion = NoDuplicateSideEffectAssertion(
-            assertion_id="a2", tool_name="book",
+            assertion_id="a2",
+            tool_name="book",
         )
         journal = HashChainJournal()
         for i in range(2):
             entry = JournalEntry(
-                v=1, seq=i + 1, id=uuid.uuid4(), type="tool_call",
+                v=1,
+                seq=i + 1,
+                id=uuid.uuid4(),
+                type="tool_call",
                 run_id=uuid.UUID(str(uuid.uuid4())),
                 correlation_id=str(uuid.uuid4()),
                 time=datetime.now(UTC).isoformat(),
@@ -215,7 +231,8 @@ class TestForbiddenMutationAssertion:
     def test_passes_when_read_only(self):
         evaluator = AssertionEvaluator()
         assertion = ForbiddenMutationAssertion(
-            assertion_id="a1", tool_name="search",
+            assertion_id="a1",
+            tool_name="search",
         )
         journal = _make_journal_with_tool_calls(
             str(uuid.uuid4()),
@@ -227,7 +244,8 @@ class TestForbiddenMutationAssertion:
     def test_fails_when_mutation_detected(self):
         evaluator = AssertionEvaluator()
         assertion = ForbiddenMutationAssertion(
-            assertion_id="a2", tool_name="book",
+            assertion_id="a2",
+            tool_name="book",
         )
         journal = _make_journal_with_tool_calls(
             str(uuid.uuid4()),
@@ -240,12 +258,16 @@ class TestForbiddenMutationAssertion:
 class TestEventCountAssertion:
     def test_count_within_range(self):
         evaluator = AssertionEvaluator()
-        assertion = EventCountAssertion(assertion_id="a1", event_type="domain_event",
-                                        min_count=1, max_count=5)
+        assertion = EventCountAssertion(
+            assertion_id="a1", event_type="domain_event", min_count=1, max_count=5
+        )
         journal = HashChainJournal()
         for i in range(3):
             entry = JournalEntry(
-                v=1, seq=i + 1, id=uuid.uuid4(), type="domain_event",
+                v=1,
+                seq=i + 1,
+                id=uuid.uuid4(),
+                type="domain_event",
                 run_id=uuid.UUID(str(uuid.uuid4())),
                 correlation_id=str(uuid.uuid4()),
                 time=datetime.now(UTC).isoformat(),
@@ -259,8 +281,9 @@ class TestEventCountAssertion:
 
     def test_count_below_min(self):
         evaluator = AssertionEvaluator()
-        assertion = EventCountAssertion(assertion_id="a2", event_type="domain_event",
-                                        min_count=5, max_count=10)
+        assertion = EventCountAssertion(
+            assertion_id="a2", event_type="domain_event", min_count=5, max_count=10
+        )
         journal = HashChainJournal()
         outcome = evaluator._eval_one(assertion, StateSnapshot(), journal, None)
         assert outcome.status == "failed"
@@ -270,7 +293,9 @@ class TestBookingStateAssertion:
     def test_booking_found_matches(self):
         evaluator = AssertionEvaluator()
         assertion = BookingStateAssertion(
-            assertion_id="a1", booking_id="BK1", expected_state="confirmed",
+            assertion_id="a1",
+            booking_id="BK1",
+            expected_state="confirmed",
         )
         state = StateSnapshot(data={"bookings": {"BK1": {"state": "confirmed"}}})
         outcome = evaluator._eval_one(assertion, state, None, None)
@@ -279,7 +304,9 @@ class TestBookingStateAssertion:
     def test_booking_found_mismatch(self):
         evaluator = AssertionEvaluator()
         assertion = BookingStateAssertion(
-            assertion_id="a2", booking_id="BK1", expected_state="confirmed",
+            assertion_id="a2",
+            booking_id="BK1",
+            expected_state="confirmed",
         )
         state = StateSnapshot(data={"bookings": {"BK1": {"state": "cancelled"}}})
         outcome = evaluator._eval_one(assertion, state, None, None)
@@ -288,7 +315,9 @@ class TestBookingStateAssertion:
     def test_booking_missing_inconclusive(self):
         evaluator = AssertionEvaluator()
         assertion = BookingStateAssertion(
-            assertion_id="a3", booking_id="BK1", expected_state="confirmed",
+            assertion_id="a3",
+            booking_id="BK1",
+            expected_state="confirmed",
         )
         state = StateSnapshot(data={"bookings": {}})
         outcome = evaluator._eval_one(assertion, state, None, None)
@@ -299,7 +328,9 @@ class TestApprovalStateAssertion:
     def test_approval_found_matches(self):
         evaluator = AssertionEvaluator()
         assertion = ApprovalStateAssertion(
-            assertion_id="a1", request_id="APR1", expected_state="granted",
+            assertion_id="a1",
+            request_id="APR1",
+            expected_state="granted",
         )
         state = StateSnapshot(data={"approvals": {"APR1": {"state": "granted"}}})
         outcome = evaluator._eval_one(assertion, state, None, None)
@@ -308,7 +339,9 @@ class TestApprovalStateAssertion:
     def test_approval_missing_inconclusive(self):
         evaluator = AssertionEvaluator()
         assertion = ApprovalStateAssertion(
-            assertion_id="a2", request_id="APR1", expected_state="granted",
+            assertion_id="a2",
+            request_id="APR1",
+            expected_state="granted",
         )
         state = StateSnapshot(data={"approvals": {}})
         outcome = evaluator._eval_one(assertion, state, None, None)
@@ -341,23 +374,27 @@ class TestMaximumLatencyAssertion:
     def test_latency_within_limit(self):
         evaluator = AssertionEvaluator()
         assertion = MaximumLatencyAssertion(assertion_id="a1", max_seconds=30)
-        state = StateSnapshot(data={
-            "_timeline": {
-                "started_at": "2024-01-01T00:00:00+00:00",
-                "completed_at": "2024-01-01T00:00:05+00:00",
+        state = StateSnapshot(
+            data={
+                "_timeline": {
+                    "started_at": "2024-01-01T00:00:00+00:00",
+                    "completed_at": "2024-01-01T00:00:05+00:00",
+                }
             }
-        })
+        )
         outcome = evaluator._eval_one(assertion, state, None, None)
         assert outcome.status == "passed"
 
     def test_latency_exceeds_limit(self):
         evaluator = AssertionEvaluator()
         assertion = MaximumLatencyAssertion(assertion_id="a2", max_seconds=5)
-        state = StateSnapshot(data={
-            "_timeline": {
-                "started_at": "2024-01-01T00:00:00+00:00",
-                "completed_at": "2024-01-01T00:00:30+00:00",
+        state = StateSnapshot(
+            data={
+                "_timeline": {
+                    "started_at": "2024-01-01T00:00:00+00:00",
+                    "completed_at": "2024-01-01T00:00:30+00:00",
+                }
             }
-        })
+        )
         outcome = evaluator._eval_one(assertion, state, None, None)
         assert outcome.status == "failed"

@@ -184,8 +184,9 @@ class ToolExecutor:
 
         # 7. Invoke handler.
         self._call_count += 1
+        effective_provider = provider or self._provider
         try:
-            if self._provider is None:
+            if effective_provider is None:
                 return self._handler_error(
                     tool_call,
                     error_type="internal_error",
@@ -195,7 +196,7 @@ class ToolExecutor:
                 )
             raw_result = await handler.execute(
                 arguments=tool_call.arguments,
-                provider=self._provider,
+                provider=effective_provider,
                 context=context,
             )
         except UnsupportedFaultConfigurationError:

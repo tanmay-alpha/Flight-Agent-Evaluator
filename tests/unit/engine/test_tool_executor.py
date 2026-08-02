@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from flight_agent_evaluator.contracts.tools import ToolCall
 from flight_agent_evaluator.engine.fault_engine import FaultEngine
@@ -44,7 +45,7 @@ def _make_context(seed: int = 42) -> RunContext:
     clock = VirtualClock()
     id_factory = DeterministicIdFactory(scenario_id="test", scenario_version=1, seed=seed)
     return RunContext(
-        run_id=str(uuid.uuid4()),
+        run_id=uuid.uuid4(),
         scenario_id="test",
         scenario_version=1,
         seed=seed,
@@ -61,7 +62,7 @@ def _make_context(seed: int = 42) -> RunContext:
 def test_executor_invokes_handler():
     registry = ToolRegistry()
     registry.register(_EchoHandler())
-    provider = _EchoProvider()
+    provider: Any = _EchoProvider()
     executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
     context = _make_context()
     from flight_agent_evaluator.contracts.aviation import FlightIdentity, FlightStatusQuery
@@ -99,6 +100,7 @@ def test_executor_returns_failure_for_unknown_tool():
     )
     result = asyncio.run(executor.execute(call, provider=None, context=context))
     assert result.status == "failure"
+    assert result.error is not None
     assert result.error.error_type == "invalid_arguments"
 
 
@@ -114,7 +116,8 @@ def test_executor_handles_handler_exception():
 
     registry = ToolRegistry()
     registry.register(_BrokenHandler())
-    executor = ToolExecutor(registry, FaultEngine(()), provider=_EchoProvider())
+    provider: Any = _EchoProvider()
+    executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
     context = _make_context()
     call = ToolCall(
         call_id=uuid.uuid4(),
@@ -125,6 +128,7 @@ def test_executor_handles_handler_exception():
     )
     result = asyncio.run(executor.execute(call, context=context))
     assert result.status == "failure"
+    assert result.error is not None
     assert result.error.error_type == "internal_error"
     # Secure implementation: raw exception text is NOT leaked.
     assert "boom" not in result.error.message

@@ -135,10 +135,18 @@ class ToolRegistry:
         return name in self._handlers
 
 
+def build_default_registry() -> ToolRegistry:
+    """Build default registry containing default flight tools."""
+    from flight_agent_evaluator.tools.flight import register_default_tools
+
+    return register_default_tools()
+
+
 __all__ = [
     "DuplicateToolRegistrationError",
     "ToolDefinition",
     "ToolHandler",
     "ToolRegistry",
     "UnknownToolError",
+    "build_default_registry",
 ]
