@@ -69,6 +69,8 @@ id_ed25519
 
 # Coverage artifacts
 coverage.xml
+coverage.json
 
 # Run recordings (output of evaluator; regenerated each run)
 .recordings/
+.test_recordings/
