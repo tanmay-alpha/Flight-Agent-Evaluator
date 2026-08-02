@@ -14,7 +14,6 @@ from flight_agent_evaluator.contracts.common import (
     NonNegativeInt,
     SHA256Digest,
     ToolName,
-    UtcDateTime,
 )
 
 # ---------------------------------------------------------------------------

@@ -13,11 +13,8 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import ConfigDict, Field
 
 from flight_agent_evaluator.contracts.base import ContractModel
-from flight_agent_evaluator.contracts.common import ToolName
-from flight_agent_evaluator.contracts.tools import ToolMutationClass
 from flight_agent_evaluator.providers.base import FlightProvider
 from flight_agent_evaluator.runtime.context import RunContext
-
 
 # ---------------------------------------------------------------------------
 # Handler protocol
@@ -66,11 +63,11 @@ class ToolDefinition(ContractModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: ToolName  # type: ignore[valid-type]
+    name: str = Field(min_length=1)
     description: str = Field(min_length=1)
-    mutation_class: ToolMutationClass = "read_only"
-    input_schema: dict[str, Any] = Field(default_factory=dict)  # type: ignore[valid-type]
-    output_schema: dict[str, Any] = Field(default_factory=dict)  # type: ignore[valid-type]
+    mutation_class: str = "read_only"
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    output_schema: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -106,9 +103,7 @@ class ToolRegistry:
         """
         name = handler.tool_name
         if name in self._handlers:
-            raise DuplicateToolRegistrationError(
-                f"Tool handler for {name!r} already registered"
-            )
+            raise DuplicateToolRegistrationError(f"Tool handler for {name!r} already registered")
         self._handlers[name] = handler
         self._definitions[name] = handler.tool_definition
 

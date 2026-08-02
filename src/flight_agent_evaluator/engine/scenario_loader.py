@@ -58,17 +58,38 @@ def _pairs_to_dict(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
         if key in seen:
             raise ScenarioLoaderError(f"Duplicate key in scenario JSON: {key!r}")
         seen.add(key)
-        result[key] = value
+        if isinstance(value, list) and value and all(
+            isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)
+            for item in value
+        ):
+            result[key] = _pairs_to_dict(value)
+        elif isinstance(value, list):
+            result[key] = [_reconstruct_list_item(item) for item in value]
+        else:
+            result[key] = value
     return result
+
+
+def _reconstruct_list_item(item: Any) -> Any:
+    """Recursively convert any nested pairs-style structure into a dict/list."""
+    if isinstance(item, list) and item and all(
+        isinstance(sub, tuple) and len(sub) == 2 and isinstance(sub[0], str)
+        for sub in item
+    ):
+        return _pairs_to_dict(item)
+    if isinstance(item, list):
+        return [_reconstruct_list_item(sub) for sub in item]
+    return item
 
 
 def _reject_nan(value: Any, path: str = "") -> None:
     """Walk *value*; raise if NaN, Infinity, or -Infinity is present."""
-    if isinstance(value, float):
-        if value != value or value == float("inf") or value == float("-inf"):
-            raise ScenarioLoaderError(
-                f"Non-finite float ({value!r}) at {path or 'root'} is not allowed"
-            )
+    if isinstance(value, float) and (
+        value != value or value == float("inf") or value == float("-inf")
+    ):
+        raise ScenarioLoaderError(
+            f"Non-finite float ({value!r}) at {path or 'root'} is not allowed"
+        )
     if isinstance(value, dict):
         for k, v in value.items():
             _reject_nan(v, f"{path}.{k}")
@@ -169,19 +190,16 @@ class ScenarioLoader:
         except (OSError, RuntimeError) as exc:
             raise ScenarioLoaderError(f"Failed to resolve path: {exc}") from exc
         root = self._allowed_root
-        if root is None:
-            # Default: the repo's resources/scenarios directory.
-            root = Path(__file__).resolve().parents[3] / "resources" / "scenarios"
-        try:
-            root_resolved = root.resolve(strict=True)
-        except (OSError, RuntimeError) as exc:
-            raise ScenarioLoaderError(f"Failed to resolve allowed root: {exc}") from exc
-        try:
-            resolved_path.relative_to(root_resolved)
-        except ValueError as exc:
-            raise ScenarioLoaderError(
-                f"Scenario file is outside the allowed root: {path}"
-            ) from exc
+        if root is not None:
+            # Only enforce path containment when an explicit allowed root is configured.
+            try:
+                root_resolved = root.resolve(strict=True)
+            except (OSError, RuntimeError) as exc:
+                raise ScenarioLoaderError(f"Failed to resolve allowed root: {exc}") from exc
+            try:
+                resolved_path.relative_to(root_resolved)
+            except ValueError as exc:
+                raise ScenarioLoaderError(f"Scenario file is outside the allowed root: {path}") from exc
 
 
 __all__ = [

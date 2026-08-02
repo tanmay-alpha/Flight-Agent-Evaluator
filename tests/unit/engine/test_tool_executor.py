@@ -61,8 +61,8 @@ def _make_context(seed: int = 42) -> RunContext:
 def test_executor_invokes_handler():
     registry = ToolRegistry()
     registry.register(_EchoHandler())
-    executor = ToolExecutor(registry, FaultEngine(()))
     provider = _EchoProvider()
+    executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
     context = _make_context()
     from flight_agent_evaluator.contracts.aviation import FlightIdentity, FlightStatusQuery
 
@@ -81,7 +81,7 @@ def test_executor_invokes_handler():
         arguments={"query": query},
         start_time=context.clock.now(),
     )
-    result = asyncio.run(executor.execute(call, provider=provider, context=context, journal=None))
+    result = asyncio.run(executor.execute(call, context=context))
     assert result.status == "success"
     assert result.result == {"flight_id": "AS142"}
 
@@ -97,7 +97,7 @@ def test_executor_returns_failure_for_unknown_tool():
         arguments={},
         start_time=context.clock.now(),
     )
-    result = asyncio.run(executor.execute(call, provider=None, context=context, journal=None))
+    result = asyncio.run(executor.execute(call, provider=None, context=context))
     assert result.status == "failure"
     assert result.error.error_type == "invalid_arguments"
 
@@ -114,7 +114,7 @@ def test_executor_handles_handler_exception():
 
     registry = ToolRegistry()
     registry.register(_BrokenHandler())
-    executor = ToolExecutor(registry, FaultEngine(()))
+    executor = ToolExecutor(registry, FaultEngine(()), provider=_EchoProvider())
     context = _make_context()
     call = ToolCall(
         call_id=uuid.uuid4(),
@@ -123,7 +123,9 @@ def test_executor_handles_handler_exception():
         arguments={},
         start_time=context.clock.now(),
     )
-    result = asyncio.run(executor.execute(call, provider=None, context=context, journal=None))
+    result = asyncio.run(executor.execute(call, context=context))
     assert result.status == "failure"
     assert result.error.error_type == "internal_error"
-    assert "boom" in result.error.message
+    # Secure implementation: raw exception text is NOT leaked.
+    assert "boom" not in result.error.message
+    assert "unexpected" in result.error.message.lower()
