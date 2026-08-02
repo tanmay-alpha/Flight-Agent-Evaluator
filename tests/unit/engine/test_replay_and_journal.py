@@ -173,6 +173,25 @@ class TestReplayEngine:
             assert exc is not None
 
 
+def test_fault_engine_reset_and_faults_property():
+    from flight_agent_evaluator.contracts.faults import ActivationRule, TimeoutFault
+    from flight_agent_evaluator.engine.fault_engine import FaultEngine
+
+    spec = TimeoutFault(
+        target_tool="echo",
+        target_provider="test",
+        activation=ActivationRule(kind="always"),
+        occurrence_count=2,
+        timeout_seconds=5,
+    )
+    engine = FaultEngine((spec,))
+    assert engine.faults == (spec,)
+    assert len(engine.faults) == 1
+
+    engine.reset()
+    assert engine.faults == (spec,)
+
+
 # ---------------------------------------------------------------------------
 # Journal tampering
 # ---------------------------------------------------------------------------

@@ -98,6 +98,21 @@ def test_unknown_tool_returns_error(tmp_path: Path):
         arguments={},
         start_time=context.clock.now(),
     )
-    result = asyncio.run(executor.execute(call, context=context, provider=None))
+    result = asyncio.run(executor.execute(call, provider=None, context=context))
     assert result.status == "failure"
     assert result.error is not None
+
+
+def test_file_recording_store_sanitisation_and_missing_file(tmp_path: Path):
+    store = FileRecordingStore(tmp_path)
+    with pytest.raises(RecordingStoreError, match="not found"):
+        store.read_recording("missing-run-id")
+
+    with pytest.raises(RecordingStoreError, match="must not be empty"):
+        store._sanitise_run_id("")
+
+    with pytest.raises(RecordingStoreError, match="Invalid run_id"):
+        store._sanitise_run_id(".")
+
+    with pytest.raises(RecordingStoreError, match="Invalid run_id"):
+        store._sanitise_run_id("..")
