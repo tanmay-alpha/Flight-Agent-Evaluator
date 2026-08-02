@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -121,7 +122,7 @@ class TestDeterministicIdFactory:
 
     def test_cross_process_stability(self):
         """Same inputs produce identical UUIDs (simulated by re-instantiation)."""
-        params = {"scenario_id": "SCN-001", "scenario_version": 1, "seed": 42}
+        params: dict[str, Any] = {"scenario_id": "SCN-001", "scenario_version": 1, "seed": 42}
         factory_a = DeterministicIdFactory(**params)
         factory_b = DeterministicIdFactory(**params)
         for seq in range(20):
@@ -151,7 +152,7 @@ class TestRunContext:
             trajectory_digest="b" * 64,
         )
         with pytest.raises((AttributeError, TypeError)):
-            ctx.run_id = uuid.uuid4()
+            ctx.run_id = uuid.uuid4()  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
