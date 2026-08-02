@@ -23,7 +23,7 @@ from flight_agent_evaluator.recording.contracts import JournalEntry
 EMPTY_HASH: Final[str] = "0" * 64
 
 
-def _canonicalise_payload(obj: dict) -> str:
+def _canonicalise_payload(obj: dict[str, object]) -> str:
     """Serialise *obj* as canonical JSON (sorted keys, no whitespace)."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -112,11 +112,11 @@ class HashChainJournal:
             entry_id = _uuid.UUID(hashlib.sha256(f"{seq}:{entry_type}".encode()).hexdigest()[:32])
         draft = JournalEntry(
             seq=seq,
-            id=entry_id,  # type: ignore[arg-type]
-            type=entry_type,  # type: ignore[arg-type]
-            run_id=_uuid.UUID(run_id) if isinstance(run_id, str) else run_id,  # type: ignore[arg-type]
+            id=entry_id,
+            type=entry_type,
+            run_id=_uuid.UUID(run_id) if isinstance(run_id, str) else run_id,
             correlation_id=correlation_id,
-            time=time,  # type: ignore[arg-type]
+            time=time,
             payload=payload,
             prev_hash=prev_hash,
             hash="0" * 64,

@@ -1,141 +1,219 @@
-"""Scenario runner for the Phase 2 runtime.
-
-The ``ScenarioRunner`` is the central orchestration component. Given a
-loaded scenario, a tool registry, and a scripted driver, it executes the
-scenario end-to-end and produces a run recording.
-"""
+"""Scenario runner that orchestrates execution, recording, and replay."""
 
 from __future__ import annotations
 
-import asyncio
-import uuid
+from pathlib import Path
+from typing import Any
 
-from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
-from flight_agent_evaluator.engine.fault_engine import FaultEngine
-from flight_agent_evaluator.engine.scenario_loader import LoadedScenario
-from flight_agent_evaluator.engine.tool_executor import ToolExecutor
-from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
-from flight_agent_evaluator.providers.fixture import FixtureFlightProvider
-from flight_agent_evaluator.recording.contracts import RunRecording
+from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.recording.journal import HashChainJournal
-from flight_agent_evaluator.recording.store import FileRecordingStore
-from flight_agent_evaluator.runtime.clock import VirtualClock
+from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 from flight_agent_evaluator.runtime.state import StateSnapshot
-from flight_agent_evaluator.tools.base import ToolRegistry
 
 
 class ScenarioRunner:
-    """Run a loaded scenario through the full evaluation pipeline."""
+    """Run a scenario and produce a recording."""
 
-    def __init__(
+    async def run(
         self,
-        clock: VirtualClock,
-        id_factory: DeterministicIdFactory,
-        tool_registry: ToolRegistry,
-        driver: ScriptedAgentDriver,
-        store: FileRecordingStore | None = None,
-    ) -> None:
-        self._clock = clock
-        self._id_factory = id_factory
-        self._tool_registry = tool_registry
-        self._driver = driver
-        self._store = store
-        self._evaluator = AssertionEvaluator()
+        scenario: BenchmarkScenario,
+        provider: Any,
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        """Execute a scenario and return a summary."""
+        from flight_agent_evaluator.recording.contracts import RunRecording
+        from flight_agent_evaluator.recording.store import FileRecordingStore
+        from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
+        from flight_agent_evaluator.engine.fault_engine import FaultEngine
+        from flight_agent_evaluator.engine.scenario_loader import LoadedScenario
+        from datetime import datetime, UTC
 
-    async def run_async(self, loaded: LoadedScenario) -> RunRecording:
-        """Execute the loaded scenario and return a RunRecording.
+        # Build deterministic IDs from scenario
+        id_factory = DeterministicIdFactory(
+            scenario_id=scenario.scenario_id.id,
+            scenario_version=scenario.scenario_id.version,
+            seed=scenario.scenario_id.seed,
+        )
+        run_id = id_factory.next(record_type="run", sequence=0)
 
-        The run produces a journal, a final state snapshot, and an
-        evaluation result. If a recording store is configured, the
-        journal and metadata are persisted atomically.
+        # Build deterministic clock from scenario reference time
+        ref_time = scenario.scenario_id.reference_time
+        reference_time = (
+            datetime.fromisoformat(ref_time)
+            if isinstance(ref_time, str)
+            else ref_time
+        )
+        clock = DeterministicVirtualClock(reference_time)
 
-        The runner is async to allow the underlying ``ToolExecutor`` and
-        scripted driver to dispatch real (awaitable) tool handlers.
-        """
-        start = self._clock.now()
+        # Build context
+        context = RunContext(
+            run_id=str(run_id),
+            clock=clock,
+            id_factory=id_factory,
+            seed=scenario.scenario_id.seed,
+            max_tool_calls=10,
+        )
+
+        # Build journal and initial state
         journal = HashChainJournal()
-        state = StateSnapshot()
+        tool_calls_made = 0
+        final_response: str | None = None
+        checkpoints: list[str] = []
 
-        scenario = loaded.scenario
-        # Use a deterministic run_id derived from the scenario so that the
-        # same scenario + seed always produces the same run_id, ensuring
-        # replay determinism.
-        run_id = str(self._id_factory.next(record_type="run", sequence=0))
-        tool_calls_remaining = scenario.limits.tool_call_limit
-
-        # Write a run_started entry so the journal always has at least
-        # one entry (entry_count must be positive).
+        # Started
+        started_at = clock.now()
         journal.append_event(
-            entry_type="run_started",
-            run_id=uuid.UUID(run_id),
-            correlation_id=run_id,
-            time=start,
+            "run_started",
+            run_id=str(run_id),
+            correlation_id=str(id_factory.next("correlation", 0)),
+            time=started_at.isoformat(),
+            payload={"scenario_id": scenario.scenario_id.id},
+        )
+
+        # Loaded
+        journal.append_event(
+            "scenario_loaded",
+            run_id=str(run_id),
+            correlation_id=str(id_factory.next("correlation", 1)),
+            time=clock.now().isoformat(),
+            payload={"trajectory_id": scenario.trajectory_id},
+        )
+
+        # Driver started
+        journal.append_event(
+            "driver_started",
+            run_id=str(run_id),
+            correlation_id=str(id_factory.next("correlation", 2)),
+            time=clock.now().isoformat(),
+            payload={"trajectory_id": scenario.trajectory_id},
+        )
+
+        # Execute the trajectory using the driver
+        from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
+        from flight_agent_evaluator.contracts.recording import ScriptedTrajectory
+
+        driver = ScriptedAgentDriver()
+        fault_engine = FaultEngine(
+            tuple(getattr(scenario, "faults", ()) or ()),
+            clock=clock,
+        )
+        state = StateSnapshot.empty()
+
+        try:
+            # Import the trajectory from the scenario
+            from flight_agent_evaluator.engine.scenario_loader import (
+                ScenarioLoader,
+                LoadedScenario,
+            )
+            loader = ScenarioLoader()
+            loaded: LoadedScenario = loader.load(scenario)
+            trajectory = loaded.trajectory
+
+            # Execute trajectory through the driver
+            driver_result = await driver.execute(
+                trajectory=trajectory,
+                executor=provider,  # provider is the tool executor
+                provider=provider,
+                state=state,
+                tool_calls_remaining=context.max_tool_calls,
+                context=context,
+            )
+            tool_calls_made = driver_result.tool_calls_made
+            final_response = driver_result.final_response
+            checkpoints = list(driver_result.checkpoints)
+        except Exception as exc:
+            # Log error safely; don't expose raw traceback
+            journal.append_event(
+                "domain_event",
+                run_id=str(run_id),
+                correlation_id=str(id_factory.next("correlation", 3)),
+                time=clock.now().isoformat(),
+                payload={"error_type": type(exc).__name__, "message": "Error occurred during execution"},
+            )
+
+        # Driver completed
+        completed_at = clock.now()
+        journal.append_event(
+            "driver_completed",
+            run_id=str(run_id),
+            correlation_id=str(id_factory.next("correlation", 4)),
+            time=completed_at.isoformat(),
             payload={
-                "scenario_id": scenario.scenario_id.id,
-                "scenario_version": scenario.scenario_id.version,
-                "seed": scenario.seed,
+                "tool_calls_made": tool_calls_made,
+                "final_response": final_response,
+                "checkpoints": checkpoints,
             },
         )
 
-        provider = FixtureFlightProvider()
-        fault_engine = FaultEngine(tuple(scenario.faults))
-        executor = ToolExecutor(
-            registry=self._tool_registry,
-            fault_engine=fault_engine,
-        )
-
-        run_context = RunContext(
-            scenario_id=scenario.scenario_id.id,
-            scenario_version=scenario.scenario_id.version,
-            seed=scenario.seed,
-            clock=self._clock,
-            id_factory=self._id_factory,
-            tool_call_limit=scenario.limits.tool_call_limit,
-            time_limit_seconds=scenario.limits.time_limit_seconds,
-            correlation_id=run_id,
-            scenario_digest=loaded.digest,
-            trajectory_digest=scenario.trajectory.digest(),
-            run_id=run_id,
-        )
-
-        result = await self._driver.execute(
-            trajectory=scenario.trajectory,
-            executor=executor,
-            provider=provider,
-            state=state,
-            tool_calls_remaining=tool_calls_remaining,
-            context=run_context,
-        )
-
-        end = self._clock.now()
-        evaluation = self._evaluator.evaluate(
+        # Evaluate assertions
+        from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
+        evaluator = AssertionEvaluator()
+        evaluation = evaluator.evaluate(
             scenario=scenario,
             state=state,
-            run_id=run_id,
-            started_at=start,
-            ended_at=end,
+            journal=journal,
+            replay_report=None,
+            run_id=str(run_id),
+            started_at=started_at,
+            ended_at=completed_at,
+        )
+            scenario=scenario,
+            state=state,
+            run_id=str(run_id),
+            started_at=started_at,
+            ended_at=completed_at,
         )
 
+        # Evaluation result
+        if evaluation is not None:
+            journal.append_event(
+                "evaluation_result",
+                run_id=str(run_id),
+                correlation_id=str(id_factory.next("correlation", 5)),
+                time=clock.now().isoformat(),
+                payload={
+                    "status": evaluation.status,
+                    "passed": evaluation.summary.passed if evaluation.summary else 0,
+                    "failed": evaluation.summary.failed if evaluation.summary else 0,
+                },
+            )
+
+        # Run completed
+        journal.append_event(
+            "run_completed",
+            run_id=str(run_id),
+            correlation_id=str(id_factory.next("correlation", 6)),
+            time=clock.now().isoformat(),
+            payload={"tool_calls_made": tool_calls_made},
+        )
+
+        # Write recording
         recording = RunRecording(
             run_id=run_id,
             scenario_id=scenario.scenario_id.id,
             scenario_version=scenario.scenario_id.version,
-            seed=scenario.seed,
-            entry_count=journal.entry_count,
+            seed=scenario.scenario_id.seed,
+            entry_count=len(journal.entries),
             final_digest=journal.final_digest(),
-            started_at=start,
-            completed_at=end,
-            tool_calls_made=result.tool_calls_made,
-            final_response=result.final_response,
-            checkpoints=result.checkpoints,
-            evaluation=evaluation,
+            started_at=started_at,
+            completed_at=completed_at,
+            tool_calls_made=tool_calls_made,
+            final_response=final_response,
+            checkpoints=tuple(checkpoints),
+            evaluation=evaluation.model_dump() if evaluation else None,
         )
-        if self._store is not None:
-            await asyncio.to_thread(self._store.write_recording, run_id, journal, recording)
-        return recording
 
-    def run(self, loaded: LoadedScenario) -> RunRecording:
-        """Synchronous wrapper around ``run_async`` for synchronous contexts."""
-        return asyncio.run(self.run_async(loaded))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        store = FileRecordingStore(output_dir)
+        store.write_recording(str(run_id), journal, recording)
+
+        return {
+            "run_id": str(run_id),
+            "scenario_id": scenario.scenario_id.id,
+            "recording_path": str(output_dir / f"{run_id}.jsonl"),
+            "tool_calls_made": tool_calls_made,
+            "final_response": final_response,
+            "evaluation": evaluation,
+        }
