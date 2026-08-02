@@ -42,7 +42,6 @@ from flight_agent_evaluator.engine.fault_engine import (
 )
 from flight_agent_evaluator.recording.contracts import (
     JournalEntry,
-    ReplayOutcomeStatus,
     RunRecording,
 )
 from flight_agent_evaluator.recording.journal import HashChainJournal
