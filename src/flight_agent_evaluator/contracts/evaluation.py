@@ -27,56 +27,66 @@ from flight_agent_evaluator.contracts.common import (
 
 class ToolCalledAssertion(ContractModel):
     assertion_type: Literal["tool_called"] = "tool_called"
+    assertion_id: str | None = None
     tool_name: ToolName  # type: ignore[valid-type]
 
 
 class ToolNotCalledAssertion(ContractModel):
     assertion_type: Literal["tool_not_called"] = "tool_not_called"
+    assertion_id: str | None = None
     tool_name: ToolName  # type: ignore[valid-type]
 
 
 class ToolCallCountAssertion(ContractModel):
     assertion_type: Literal["tool_call_count"] = "tool_call_count"
+    assertion_id: str | None = None
     tool_name: ToolName  # type: ignore[valid-type]
-    minimum: NonNegativeInt | None = Field(default=None)  # type: ignore[valid-type]
-    maximum: NonNegativeInt | None = Field(default=None)  # type: ignore[valid-type]
+    min_count: NonNegativeInt | None = Field(default=None, alias="min_count")  # type: ignore[valid-type]
+    max_count: NonNegativeInt | None = Field(default=None, alias="max_count")  # type: ignore[valid-type]
 
 
 class EventCountAssertion(ContractModel):
     assertion_type: Literal["event_count"] = "event_count"
+    assertion_id: str | None = None
     event_type: str = Field(min_length=1)
-    minimum: NonNegativeInt | None = Field(default=None)  # type: ignore[valid-type]
-    maximum: NonNegativeInt | None = Field(default=None)  # type: ignore[valid-type]
+    min_count: NonNegativeInt | None = Field(default=None, alias="min_count")  # type: ignore[valid-type]
+    max_count: NonNegativeInt | None = Field(default=None, alias="max_count")  # type: ignore[valid-type]
 
 
 class BookingStateAssertion(ContractModel):
     assertion_type: Literal["booking_state"] = "booking_state"
+    assertion_id: str | None = None
     booking_id: NonEmptyIdentifier  # type: ignore[valid-type]
     expected_state: BookingState
 
 
 class ApprovalStateAssertion(ContractModel):
     assertion_type: Literal["approval_state"] = "approval_state"
+    assertion_id: str | None = None
     request_id: NonEmptyIdentifier  # type: ignore[valid-type]
     expected_state: Literal["pending", "granted", "denied", "expired"]
 
 
 class NoDuplicateSideEffectAssertion(ContractModel):
     assertion_type: Literal["no_duplicate_side_effect"] = "no_duplicate_side_effect"
+    assertion_id: str | None = None
     tool_name: ToolName  # type: ignore[valid-type]
 
 
 class ReplayDeterminismAssertion(ContractModel):
     assertion_type: Literal["replay_determinism"] = "replay_determinism"
+    assertion_id: str | None = None
 
 
 class MaximumLatencyAssertion(ContractModel):
     assertion_type: Literal["maximum_latency"] = "maximum_latency"
+    assertion_id: str | None = None
     max_seconds: PositiveInt  # type: ignore[valid-type]
 
 
 class ForbiddenMutationAssertion(ContractModel):
     assertion_type: Literal["forbidden_mutation"] = "forbidden_mutation"
+    assertion_id: str | None = None
     tool_name: ToolName  # type: ignore[valid-type]
 
 

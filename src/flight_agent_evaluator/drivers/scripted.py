@@ -44,7 +44,7 @@ class ScriptedAgentDriver:
         self,
         trajectory: ScriptedTrajectory,
         executor: Any,
-        provider: Any,
+        provider: Any,  # noqa: ARG002 — retained for interface compatibility
         state: StateSnapshot,
         tool_calls_remaining: int,
         context: RunContext,
@@ -76,13 +76,12 @@ class ScriptedAgentDriver:
                     run_id=context.run_id,
                     tool_name=step.tool_name,
                     arguments=step.arguments,
+                    mutation_class="read_only",
                     start_time=context.clock.now(),
                 )
                 result = await executor.execute(
                     tool_call=tool_call,
-                    provider=provider,
                     context=context,
-                    journal=None,
                 )
                 if result.status == "success":
                     tool_calls_made += 1

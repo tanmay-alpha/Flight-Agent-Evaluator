@@ -1,6 +1,6 @@
 """CLI for the flight-agent-evaluator tool.
 
-Provides three commands:
+Provides commands:
 
 - ``run``: execute a scenario end-to-end.
 - ``replay``: replay a recorded run in playback mode.
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from flight_agent_evaluator.engine.runner import ScenarioRunner
-from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
+from flight_agent_evaluator.engine.scenario_loader import LoadedScenario, ScenarioLoader
 from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.replay.engine import ReplayEngine
 from flight_agent_evaluator.runtime.clock import VirtualClock
@@ -23,17 +23,37 @@ from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 from flight_agent_evaluator.tools.flight import register_default_tools
 
 
-def _build_runner(output: Path | None) -> ScenarioRunner:
-    clock = VirtualClock()
-    registry = register_default_tools()
+def _build_runner(output: Path | None, loaded: LoadedScenario) -> ScenarioRunner:
+    """Build a ScenarioRunner from a loaded scenario.
+
+    The clock and id_factory are derived from the scenario's reference
+    time, scenario id, version, and seed so that every run with the same
+    scenario produces identical recordings.
+    """
+    from datetime import UTC, datetime
+
     from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
 
+    scenario = loaded.scenario
+    # Derive the deterministic clock start time from the scenario's
+    # reference time (or a stable default if none is provided).
+    ref = getattr(scenario, "reference_time", None)
+    if ref is None:
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+    else:
+        start = (
+            ref.astimezone(UTC) if hasattr(ref, "astimezone") else datetime(2026, 1, 1, tzinfo=UTC)
+        )
+    if start.tzinfo is None or start.utcoffset() is None:
+        raise ValueError(f"Scenario reference_time must be timezone-aware, got {start!r}")
+    clock = VirtualClock(start=start)
+    registry = register_default_tools()
     driver = ScriptedAgentDriver()
     store = FileRecordingStore(output or Path(".recordings"))
     id_factory = DeterministicIdFactory(
-        scenario_id="init",
-        scenario_version=1,
-        seed=0,
+        scenario_id=scenario.scenario_id.id,
+        scenario_version=scenario.scenario_id.version,
+        seed=scenario.seed,
     )
     return ScenarioRunner(
         clock=clock,
@@ -52,8 +72,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-    runner = _build_runner(Path(args.output) if args.output else None)
-    recording = runner.run(loaded)
+    try:
+        runner = _build_runner(Path(args.output) if args.output else None, loaded)
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    try:
+        recording = runner.run(loaded)
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     print(f"Run complete: {recording.run_id}")
     print(f"  Entries:  {recording.entry_count}")
     print(f"  Digest:   {recording.final_digest}")
@@ -113,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     verify_p.set_defaults(func=cmd_verify)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    return int(args.func(args))
 
 
 if __name__ == "__main__":
