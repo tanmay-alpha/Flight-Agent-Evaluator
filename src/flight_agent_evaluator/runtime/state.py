@@ -58,12 +58,14 @@ class StateSnapshot(ContractModel):
         _validate_json_compatible(value)
         return dict(value)
 
-    def with_data(self, data: dict[str, Any]) -> StateSnapshot:
-        """Return a new ``StateSnapshot`` with *data* replaced.
+    def with_data(self, update_data: dict[str, Any]) -> StateSnapshot:
+        """Return a new ``StateSnapshot`` with *update_data* merged into state.
 
         The original snapshot is not modified.
         """
-        return StateSnapshot(data=data)
+        new_data = deepcopy(dict(self.data))
+        new_data.update(update_data)
+        return StateSnapshot(data=new_data)
 
     def with_path(self, path: str, value: Any) -> StateSnapshot:
         """Return a new ``StateSnapshot`` with *path* set to *value*.
