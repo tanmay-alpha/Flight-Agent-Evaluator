@@ -148,6 +148,16 @@ class ScenarioLoader:
         except json.JSONDecodeError as exc:
             raise ScenarioLoaderError(f"Invalid JSON: {exc}") from exc
 
+        if not isinstance(pairs, list) or (
+            pairs
+            and not all(
+                isinstance(p, tuple)
+                or (isinstance(p, list) and len(p) == 2 and isinstance(p[0], str))
+                for p in pairs
+            )
+        ):
+            raise ScenarioLoaderError("Scenario file must be a JSON object")
+
         data = _pairs_to_dict(pairs)
         _reject_nan(data)
 

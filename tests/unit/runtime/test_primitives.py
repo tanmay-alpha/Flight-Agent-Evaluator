@@ -172,3 +172,18 @@ class TestStateSnapshot:
     def test_nested_dict_validated(self):
         snap = StateSnapshot.model_validate({"data": {"nested": {"count": 1, "items": [1, 2, 3]}}})
         assert snap.data["nested"]["count"] == 1
+
+    def test_with_path(self):
+        snap = StateSnapshot(data={"bookings": {"b1": {"status": "confirmed"}}})
+        snap2 = snap.with_path("bookings.b1.status", "cancelled")
+        assert snap2.data["bookings"]["b1"]["status"] == "cancelled"
+        assert snap.data["bookings"]["b1"]["status"] == "confirmed"
+
+        snap3 = snap.with_path("users.u1.role", "admin")
+        assert snap3.data["users"]["u1"]["role"] == "admin"
+
+        with pytest.raises(ValueError, match="path must not be empty"):
+            snap.with_path("", "val")
+
+        with pytest.raises(ValueError, match="not a dict"):
+            snap.with_path("bookings.b1.status.invalid", "val")
