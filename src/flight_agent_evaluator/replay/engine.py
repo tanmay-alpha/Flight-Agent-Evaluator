@@ -65,7 +65,7 @@ class ReplayEngine:
             )
         status: ReplayOutcomeStatus = "verified" if not divergences else "tampered"
         return ReplayReport(
-            recording_run_id=run_id,
+            recording_run_id=str(run_id),
             mode="verification",
             status=status,
             divergences=tuple(divergences),
