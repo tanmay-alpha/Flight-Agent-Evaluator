@@ -84,6 +84,7 @@ class BenchmarkScenario(ContractModel):
     steps: tuple[ScenarioStep, ...] = Field(default_factory=tuple)  # type: ignore[valid-type]
     limits: ScenarioLimits  # type: ignore[valid-type]
     seed: int = Field(default=0)
+    reference_time: str | None = Field(default=None)
     assertions: tuple[Assertion, ...] = Field(default_factory=tuple)  # type: ignore[valid-type]
     trajectory: ScriptedTrajectory = Field(  # type: ignore[valid-type]
         default_factory=_default_trajectory,
