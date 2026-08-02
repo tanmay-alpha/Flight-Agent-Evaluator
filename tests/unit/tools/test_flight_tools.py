@@ -98,6 +98,85 @@ def test_run_id_traversal_in_filename(tmp_path: Path):
         store.write_recording("..\\evil", journal, recording)
 
 
+def test_flight_get_status_handler_execution():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from flight_agent_evaluator.tools.flight import FlightGetStatusHandler
+
+    handler = FlightGetStatusHandler()
+    assert handler.tool_definition.name == "flight.get_status"
+
+    provider = MagicMock()
+    provider.get_flight_status = AsyncMock(return_value={"flight_id": "AS142", "status": "ON_TIME"})
+    context = MagicMock()
+
+    res = asyncio.run(
+        handler.execute(
+            {"flight_id": "AS142", "operating_day": "2026-07-28"},
+            provider,
+            context,
+        )
+    )
+    assert res == {"flight_id": "AS142", "status": "ON_TIME"}
+
+    with pytest.raises(ValueError, match="flight_id"):
+        asyncio.run(
+            handler.execute({"flight_id": "", "operating_day": "2026-07-28"}, provider, context)
+        )
+
+    with pytest.raises(ValueError, match="operating_day"):
+        asyncio.run(handler.execute({"flight_id": "AS142", "operating_day": ""}, provider, context))
+
+
+def test_flight_search_handler_execution():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    from flight_agent_evaluator.tools.flight import FlightSearchHandler
+
+    handler = FlightSearchHandler()
+    assert handler.tool_definition.name == "flight.search_flights"
+
+    provider = MagicMock()
+    provider.search_flights = AsyncMock(return_value={"offers": [], "count": 0})
+    context = MagicMock()
+
+    res = asyncio.run(
+        handler.execute(
+            {"origin": "JFK", "destination": "LHR", "departure_date": "2026-07-28"},
+            provider,
+            context,
+        )
+    )
+    assert res == {"offers": [], "count": 0}
+
+    with pytest.raises(ValueError, match="origin"):
+        asyncio.run(
+            handler.execute(
+                {"origin": "J", "destination": "LHR", "departure_date": "2026-07-28"},
+                provider,
+                context,
+            )
+        )
+
+    with pytest.raises(ValueError, match="destination"):
+        asyncio.run(
+            handler.execute(
+                {"origin": "JFK", "destination": "L", "departure_date": "2026-07-28"},
+                provider,
+                context,
+            )
+        )
+
+    with pytest.raises(ValueError, match="departure_date"):
+        asyncio.run(
+            handler.execute(
+                {"origin": "JFK", "destination": "LHR", "departure_date": ""}, provider, context
+            )
+        )
+
+
 def test_bom_in_scenario_rejected(tmp_path: Path):
     target = tmp_path / "scenario.json"
     target.write_bytes(b"\xef\xbb\xbf{}")
