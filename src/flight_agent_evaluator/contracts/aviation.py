@@ -333,7 +333,9 @@ class FlightOffer(ContractModel):
 class FlightSearchResult(ContractModel):
     """Result of a flight search, preserving provider provenance."""
 
-    schema_version: SchemaVersion  # type: ignore[valid-type]
+    schema_version: SchemaVersion = Field(
+        default_factory=lambda: SchemaVersion(major=1, minor=0, patch=0)
+    )  # type: ignore[valid-type]
     query: FlightSearchRequest  # type: ignore[valid-type]
     offers: tuple[FlightOffer, ...]  # type: ignore[valid-type]
     source_metadata: SourceMetadata  # type: ignore[valid-type]
