@@ -64,12 +64,13 @@ Deliverables: this document, `README.md`, `LICENSE`, `CONTRIBUTING.md`,
 - Tool-call and event trace recording.
 - End-to-end replay verification and CLI commands.
 
-### Phase 3 — Secure read-only provider adapters and provider-response replay
+### Phase 3 — Secure read-only provider adapters and provider-response replay *(complete)*
 
-- Amadeus, AviationWeather.gov, Open-Meteo, OpenSky, OurAirports adapters.
-- Secure asynchronous HTTP transport with HTTPS, secret redaction, bounded response sizes.
-- Provider request fingerprinting, sanitised exchange recording, offline replay.
-- Health, quota, capability reporting, explicit routing, CLI diagnostics.
+- AviationStack and OpenSky Network read-only provider adapters.
+- Secure asynchronous HTTP transport (`SecureHTTPClient`) enforcing domain whitelist, HTTPS/TLS, GET-only read-only semantics, and strict credential redaction.
+- Credential scrubbers (`sanitize_credentials`, `sanitize_url`) redacting Bearer tokens, API keys, basic auth secrets from exception messages, log traces, and journal recordings.
+- `RecordedFlightProvider` recording & replay middleware providing offline playback with zero live network calls.
+- Full health, capability reporting, and typed exception mapping (`ProviderAuthenticationError`, `ProviderRateLimitError`, `ProviderDataNotFoundError`, `ProviderUnavailableError`, `ProviderTimeoutError`).
 
 ### Phase 4 — MCP gateway, simulated airline services and approval enforcement
 

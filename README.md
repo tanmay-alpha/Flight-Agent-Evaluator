@@ -2,7 +2,7 @@
 
 An evaluation, replay, and fault-injection platform for aviation AI agents.
 
-> **Current status: Phase 2 — deterministic scenario execution, recording, replay, fault injection and objective evaluation complete.**
+> **Current status: Phase 3 — secure read-only provider adapters, HTTP security layer, and provider-response replay complete.**
 
 ## Why this project exists
 
@@ -26,7 +26,7 @@ integration. It is a platform.
 | 0     | Project definition and architecture | Complete |
 | 1     | Contracts and deterministic fixture provider | Complete |
 | 2     | Scenario execution, recording, replay and objective evaluation | Complete |
-| 3     | Secure read-only provider adapters and provider-response replay | Planned |
+| 3     | Secure read-only provider adapters and provider-response replay | Complete |
 | 4     | MCP gateway, simulated airline services and approval enforcement | Planned |
 | 5     | Agent harness integrations, provider-conflict and security evaluation | Planned |
 | 6     | Trajectory dataset generation and verifier fine-tuning | Planned |
