@@ -67,6 +67,17 @@ _VALID_SCENARIO_DICT: dict[str, Any] = {
     "steps": [
         {"step_id": "step-1", "description": "Do something"},
     ],
+    "trajectory": {
+        "trajectory_id": "test-traj",
+        "description": "test trajectory",
+        "steps": [
+            {
+                "kind": "produce_final_response",
+                "step_id": "s-final",
+                "response": "Scenario completed.",
+            }
+        ],
+    },
 }
 
 
@@ -647,11 +658,11 @@ class TestCmdReplay:
         assert "Entries:" in out
 
     def test_replay_nonexistent_run_propagates_error(self, tmp_path: Path):
-        """Replay of a missing recording propagates the underlying error."""
+        """Replay of a missing recording returns exit code 1 and writes to stderr."""
 
         ns = _make_namespace("replay", run_id="nonexistent-run-id", output=str(tmp_path))
-        with pytest.raises(Exception):
-            cmd_replay(ns)
+        ret = cmd_replay(ns)
+        assert ret == 1
 
     def test_replay_with_no_output_uses_default(self, tmp_path: Path):
         """Replay without --output uses '.recordings' as default."""
@@ -954,11 +965,11 @@ class TestCmdVerify:
         assert "chain-verification-failed" in out
 
     def test_verify_nonexistent_run_propagates_error(self, tmp_path: Path):
-        """Verification of a missing recording propagates the error."""
+        """Verification of a missing recording returns exit code 1."""
 
         ns = _make_namespace("verify", run_id="nonexistent-run-id", output=str(tmp_path))
-        with pytest.raises(Exception):
-            cmd_verify(ns)
+        ret = cmd_verify(ns)
+        assert ret == 1
 
     def test_verify_with_no_output_uses_default(self, tmp_path: Path):
         """Verify without --output uses '.recordings' as default."""
@@ -1192,18 +1203,18 @@ class TestErrorHandling:
         assert result == 1
 
     def test_replay_with_empty_run_id(self, tmp_path: Path):
-        """Replay with an empty run_id should fail."""
+        """Replay with an empty run_id should fail and return 1."""
 
         ns = _make_namespace("replay", run_id="", output=str(tmp_path))
-        with pytest.raises(Exception):
-            cmd_replay(ns)
+        ret = cmd_replay(ns)
+        assert ret == 1
 
     def test_verify_with_empty_run_id(self, tmp_path: Path):
-        """Verify with an empty run_id should fail."""
+        """Verify with an empty run_id should fail and return 1."""
 
         ns = _make_namespace("verify", run_id="", output=str(tmp_path))
-        with pytest.raises(Exception):
-            cmd_verify(ns)
+        ret = cmd_verify(ns)
+        assert ret == 1
 
     def test_replay_engine_exception_propagates(self, tmp_path: Path):
         """An unexpected exception in ReplayEngine propagates out of
@@ -1378,3 +1389,126 @@ class TestBuildRunnerBranches:
         loaded = ScenarioLoader().load_from_path(scenario_path)
         runner = _build_runner(output=None, loaded=loaded)
         assert runner is not None
+
+
+class TestScenarioValidateAndEvaluateCLI:
+    def test_cmd_scenario_validate_valid(self, tmp_path: Path):
+        from flight_agent_evaluator.cli.main import main
+
+        scenario_path = tmp_path / "valid.json"
+        scenario_path.write_text(json.dumps(_VALID_SCENARIO_DICT), encoding="utf-8")
+        ret = main(["scenario", "validate", str(scenario_path)])
+        assert ret == 0
+
+    def test_cmd_scenario_validate_invalid(self, tmp_path: Path, capsys):
+        from flight_agent_evaluator.cli.main import main
+
+        invalid_path = tmp_path / "invalid.json"
+        invalid_path.write_text("invalid json content", encoding="utf-8")
+        ret = main(["scenario", "validate", str(invalid_path)])
+        assert ret == 1
+        captured = capsys.readouterr()
+        assert "Validation failed" in captured.err
+
+    def test_cmd_scenario_validate_json(self, tmp_path: Path, capsys):
+        from flight_agent_evaluator.cli.main import main
+
+        scenario_path = tmp_path / "valid.json"
+        scenario_path.write_text(json.dumps(_VALID_SCENARIO_DICT), encoding="utf-8")
+        ret = main(["--json", "scenario", "validate", str(scenario_path)])
+        assert ret == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["status"] == "valid"
+
+    def test_cmd_evaluate_valid(self, tmp_path: Path, capsys):
+        import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.cli.main import main
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
+
+        run_id = str(uuid.uuid4())
+        store = FileRecordingStore(tmp_path)
+        journal = HashChainJournal()
+        journal.append(
+            JournalEntry(
+                v=1,
+                seq=1,
+                id=uuid.uuid4(),
+                type="run_started",
+                run_id=uuid.UUID(run_id),
+                correlation_id="test",
+                time=datetime.now(UTC),
+                payload={},
+                prev_hash="",
+                hash="",
+            )
+        )
+        rec = RunRecording(
+            run_id=uuid.UUID(run_id),
+            scenario_id="s1",
+            scenario_version=1,
+            seed=0,
+            entry_count=1,
+            final_digest=journal.final_digest(),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+        )
+        store.write_recording(run_id, journal, rec)
+
+        ret = main(["evaluate", run_id, "--output", str(tmp_path)])
+        assert ret == 0
+        assert "Evaluation of" in capsys.readouterr().out
+
+    def test_cmd_evaluate_json(self, tmp_path: Path, capsys):
+        import uuid
+        from datetime import UTC, datetime
+
+        from flight_agent_evaluator.cli.main import main
+        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
+        from flight_agent_evaluator.recording.journal import HashChainJournal
+        from flight_agent_evaluator.recording.store import FileRecordingStore
+
+        run_id = str(uuid.uuid4())
+        store = FileRecordingStore(tmp_path)
+        j = HashChainJournal()
+        j.append(
+            JournalEntry(
+                v=1,
+                seq=1,
+                id=uuid.uuid4(),
+                type="run_started",
+                run_id=uuid.UUID(run_id),
+                correlation_id="test",
+                time=datetime.now(UTC),
+                payload={},
+                prev_hash="",
+                hash="",
+            )
+        )
+        rec = RunRecording(
+            run_id=uuid.UUID(run_id),
+            scenario_id="s1",
+            scenario_version=1,
+            seed=0,
+            entry_count=1,
+            final_digest=j.final_digest(),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+        )
+        store.write_recording(run_id, j, rec)
+
+        ret = main(["--json", "evaluate", run_id, "--output", str(tmp_path)])
+        assert ret == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["status"] == "passed"
+
+    def test_cmd_evaluate_error(self, tmp_path: Path, capsys):
+        from flight_agent_evaluator.cli.main import main
+
+        ret = main(["evaluate", "nonexistent-id", "--output", str(tmp_path)])
+        assert ret == 1
+        assert "Evaluation error" in capsys.readouterr().err
