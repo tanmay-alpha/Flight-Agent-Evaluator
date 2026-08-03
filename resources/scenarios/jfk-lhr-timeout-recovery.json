@@ -35,24 +35,25 @@
     },
     {
       "assertion_id": "no-mutation",
-      "assertion_type": "no_mutation"
+      "assertion_type": "forbidden_mutation",
+      "tool_name": "flight.get_status"
     },
     {
       "assertion_id": "replay-determinism",
-      "assertion_type": "replay_deterministic"
+      "assertion_type": "replay_determinism"
     }
   ],
   "faults": [
     {
       "fault_type": "timeout",
-      "fault_id": "as142-first-timeout",
       "target_provider": "synthetic-fixture",
       "target_tool": "flight.get_status",
       "activation": {
         "kind": "after_n_calls",
         "call_index": 0
       },
-      "occurrence_count": 1
+      "occurrence_count": 1,
+      "timeout_seconds": 30
     }
   ],
   "trajectory": {

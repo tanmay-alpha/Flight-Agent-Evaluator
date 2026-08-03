@@ -335,25 +335,40 @@ def gate_readme() -> bool:
 
 
 def gate_smoke() -> bool:
+    """Complete Phase 2 smoke gate using temporary directories."""
+    code = (
+        "import asyncio, tempfile, pathlib; "
+        "from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader; "
+        "from flight_agent_evaluator.engine.runner import ScenarioRunner; "
+        "from flight_agent_evaluator.replay.engine import ReplayEngine; "
+        "from flight_agent_evaluator.recording.store import FileRecordingStore; "
+        "loader = ScenarioLoader(); "
+        "sc1 = loader.load_from_path(pathlib.Path('resources/scenarios/jfk-lhr-delay.json')); "
+        "sc2 = loader.load_from_path(pathlib.Path('resources/scenarios/jfk-lhr-timeout-recovery.json')); "
+        "assert sc1.scenario.scenario_id.id == 'jfk-lhr-delay'; "
+        "assert sc2.scenario.scenario_id.id == 'jfk-lhr-timeout-recovery'; "
+        "tmp = tempfile.TemporaryDirectory(); "
+        "td = pathlib.Path(tmp.name); "
+        "runner = ScenarioRunner(); "
+        "rec1 = asyncio.run(runner.run(sc1, output_dir=td)); "
+        "engine = ReplayEngine(td); "
+        "rep1 = engine.verify(str(rec1.run_id)); "
+        "assert rep1.status == 'verified'; "
+        "pb1 = engine.playback(str(rec1.run_id)); "
+        "assert len(pb1['entries']) > 0; "
+        "store = FileRecordingStore(td); "
+        "j1 = store.read_recording(str(rec1.run_id)); "
+        "rec1_again = asyncio.run(runner.run(sc1, output_dir=td)); "
+        "j1_again = store.read_recording(str(rec1_again.run_id)); "
+        "assert j1.final_digest() == j1_again.final_digest(); "
+        "rec2 = asyncio.run(runner.run(sc2, output_dir=td)); "
+        "rep2 = engine.verify(str(rec2.run_id)); "
+        "assert rep2.status == 'verified'; "
+        "tmp.cleanup(); "
+        "print('Phase 2 smoke gate: OK')"
+    )
     return _run(
-        "deterministic fixture smoke test",
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            (
-                "import asyncio, hashlib; "
-                "from flight_agent_evaluator.providers.fixture import FixtureFlightProvider; "
-                "from flight_agent_evaluator.contracts.aviation import FlightStatusQuery; "
-                "p = FixtureFlightProvider(); "
-                "q = FlightStatusQuery(flight_number='AS142'); "
-                "r1 = asyncio.run(p.get_flight_status(q)); "
-                "r2 = asyncio.run(p.get_flight_status(q)); "
-                "assert r1 == r2, 'Non-deterministic fixture output'; "
-                "print('deterministic: OK')"
-            ),
-        ],
+        "deterministic fixture and scenario replay smoke gate", ["uv", "run", "python", "-c", code]
     )
 
 

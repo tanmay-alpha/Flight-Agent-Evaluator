@@ -31,6 +31,11 @@ from flight_agent_evaluator.runtime.state import StateSnapshot
 
 
 def _make_scenario(assertions):
+    from flight_agent_evaluator.recording.contracts import (
+        ProduceFinalResponseStep,
+        ScriptedTrajectory,
+    )
+
     return BenchmarkScenario(
         schema_version={"major": 1, "minor": 0, "patch": 0},
         scenario_id=ScenarioIdentifier(id="test-scenario"),
@@ -42,6 +47,11 @@ def _make_scenario(assertions):
         limits=ScenarioLimits(tool_call_limit=10, time_limit_seconds=60),
         steps=(ScenarioStep(step_id="step-1", description="Step 1"),),
         assertions=tuple(assertions),
+        trajectory=ScriptedTrajectory(
+            trajectory_id="test-trajectory",
+            description="test trajectory",
+            steps=(ProduceFinalResponseStep(step_id="step-final", response="done"),),
+        ),
     )
 
 

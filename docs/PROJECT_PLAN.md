@@ -55,45 +55,39 @@ Deliverables: this document, `README.md`, `LICENSE`, `CONTRIBUTING.md`,
 - `canonical.py` — deterministic JSON canonicalisation and SHA-256 hashing.
 - `ApprovalRequest.payload_hash` — computed from payload via `canonical_json()`.
 
-### Phase 2 — Scenario runner, replay engine, assertion evaluator
+### Phase 2 — Scenario execution, recording, replay and objective evaluation *(complete)*
 
 - Scenario loader (versioned, strict).
-- Deterministic replay with seeded RNG.
+- Deterministic execution and replay with seeded RNG.
 - Chaos engine consuming fault specifications.
 - Assertion evaluator with typed failure categories.
 - Tool-call and event trace recording.
+- End-to-end replay verification and CLI commands.
 
-### Phase 3 — Provider adapters
+### Phase 3 — Secure read-only provider adapters and provider-response replay
 
-- Amadeus, OpenSky, aviationstack, weather.
-- Each adapter conforms to `FlightProvider` with its own typed errors and
-  health/quota reporting.
+- Amadeus, AviationWeather.gov, Open-Meteo, OpenSky, OurAirports adapters.
+- Secure asynchronous HTTP transport with HTTPS, secret redaction, bounded response sizes.
+- Provider request fingerprinting, sanitised exchange recording, offline replay.
+- Health, quota, capability reporting, explicit routing, CLI diagnostics.
 
-### Phase 4 — Agent harness integrations
+### Phase 4 — MCP gateway, simulated airline services and approval enforcement
 
-- LangChain, LangGraph, CrewAI, custom agents.
-- Instrumented tools and approval flows.
+- MCP server gateway, simulated airline services, approval workflows.
 
-### Phase 5 — Fault injection, provider-conflict and security evaluation
+### Phase 5 — Agent harness integrations, provider-conflict and security evaluation
 
-- Chaos engine consuming fault specifications.
-- Provider-conflict detection and typed resolution contracts.
-- Security test suite (PII leakage, secret handling, injection resistance).
-- Cross-provider validation harness.
+- Agent harness integrations (LangChain, LangGraph, CrewAI, custom agents).
+- Provider-conflict detection and security evaluation.
 
 ### Phase 6 — Trajectory dataset generation and verifier fine-tuning
 
-- Scenario runner producing reproducible trajectories.
-- Dataset schema and serialisation.
-- Verifier fine-tuning harness (model-agnostic interface).
-- Benchmark metric definitions.
+- Trajectory dataset generation and verifier fine-tuning.
 
-### Phase 7 — Distributed evaluation and public aviation benchmark
+### Phase 7 — Distributed evaluation and public benchmark
 
 - Multi-host execution with deterministic seeding.
 - Public benchmark suite with canonical reference results.
-- Community contribution workflow.
-- Documentation and release automation.
 
 ## Architectural decision records
 
