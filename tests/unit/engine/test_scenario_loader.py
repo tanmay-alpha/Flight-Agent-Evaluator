@@ -30,6 +30,17 @@ def _valid_scenario_dict() -> dict[str, Any]:
         "steps": [
             {"step_id": "step-1", "description": "Do something"},
         ],
+        "trajectory": {
+            "trajectory_id": "test-traj",
+            "description": "test trajectory",
+            "steps": [
+                {
+                    "kind": "produce_final_response",
+                    "step_id": "s-final",
+                    "response": "Scenario completed.",
+                }
+            ],
+        },
     }
 
 
@@ -136,6 +147,42 @@ class TestScenarioLoader:
         loader = ScenarioLoader()
         with pytest.raises(ScenarioLoaderError):
             loader.load_from_path(target)
+
+
+class TestTrajectoryRejectionCriteria:
+    def test_scenario_without_trajectory_rejected(self, tmp_path: Path):
+        data = _valid_scenario_dict()
+        del data["trajectory"]
+        target = tmp_path / "no_traj.json"
+        target.write_text(json.dumps(data), encoding="utf-8")
+        loader = ScenarioLoader()
+        with pytest.raises(ScenarioLoaderError, match="validation failed"):
+            loader.load_from_path(target)
+
+    def test_empty_trajectory_steps_rejected(self, tmp_path: Path):
+        data = _valid_scenario_dict()
+        data["trajectory"]["steps"] = []
+        target = tmp_path / "empty_steps.json"
+        target.write_text(json.dumps(data), encoding="utf-8")
+        loader = ScenarioLoader()
+        with pytest.raises(ScenarioLoaderError, match="validation failed"):
+            loader.load_from_path(target)
+
+    def test_unsupported_trajectory_step_rejected(self, tmp_path: Path):
+        data = _valid_scenario_dict()
+        data["trajectory"]["steps"] = [{"kind": "unsupported_kind", "step_id": "s1"}]
+        target = tmp_path / "unsupported_step.json"
+        target.write_text(json.dumps(data), encoding="utf-8")
+        loader = ScenarioLoader()
+        with pytest.raises(ScenarioLoaderError, match="validation failed"):
+            loader.load_from_path(target)
+
+    def test_existing_packaged_scenarios_load_successfully(self):
+        loader = ScenarioLoader()
+        loaded1 = loader.load_from_path(Path("resources/scenarios/jfk-lhr-delay.json"))
+        assert loaded1.scenario.scenario_id.id == "jfk-lhr-delay"
+        loaded2 = loader.load_from_path(Path("resources/scenarios/jfk-lhr-timeout-recovery.json"))
+        assert loaded2.scenario.scenario_id.id == "jfk-lhr-timeout-recovery"
 
 
 class TestLoadedScenarioContract:
