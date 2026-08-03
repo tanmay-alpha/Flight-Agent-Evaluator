@@ -575,3 +575,139 @@ class TestFaultEngine:
         assert engine.apply(call, sequence=1) is None
         # 3rd call triggers
         assert engine.apply(call, sequence=2) is not None
+
+
+class TestReplayDivergenceCategories:
+    def test_divergence_detection_tampered_entry(self, tmp_path: Path):
+        run_id = _make_run_id()
+        journal = HashChainJournal()
+        entry = JournalEntry(
+            v=1,
+            seq=1,
+            id=_uuid.uuid4(),
+            type="run_started",
+            run_id=_uuid.UUID(run_id),
+            correlation_id="test",
+            time=datetime.now(UTC),
+            payload={"seed": 42},
+            prev_hash="",
+            hash="",
+        )
+        journal.append(entry)
+        # Tamper payload without recomputing hash
+        journal.entries[0].payload["seed"] = 99
+        path = tmp_path / f"{run_id}.jsonl"
+        journal.write_jsonl(path)
+        engine = ReplayEngine(tmp_path)
+        report = engine.verify(run_id)
+        assert report.status == "tampered"
+        assert len(report.divergences) > 0
+
+    def test_divergence_detection_missing_entry(self, tmp_path: Path):
+        run_id = _make_run_id()
+        journal = HashChainJournal()
+        journal.append(
+            JournalEntry(
+                v=1,
+                seq=1,
+                id=_uuid.uuid4(),
+                type="run_started",
+                run_id=_uuid.UUID(run_id),
+                correlation_id="test",
+                time=datetime.now(UTC),
+                payload={},
+                prev_hash="",
+                hash="",
+            )
+        )
+        journal.append(
+            JournalEntry(
+                v=1,
+                seq=2,
+                id=_uuid.uuid4(),
+                type="tool_call",
+                run_id=_uuid.UUID(run_id),
+                correlation_id="test",
+                time=datetime.now(UTC),
+                payload={"tool_name": "flight.get_status"},
+                prev_hash=journal.entries[0].hash,
+                hash="",
+            )
+        )
+        # Remove first entry to create missing entry gap
+        journal._entries.pop(0)
+        path = tmp_path / f"{run_id}.jsonl"
+        journal.write_jsonl(path)
+        engine = ReplayEngine(tmp_path)
+        report = engine.verify(run_id)
+        assert report.status == "tampered"
+
+    def test_divergence_detection_reordered_entry(self, tmp_path: Path):
+        run_id = _make_run_id()
+        j = HashChainJournal()
+        e1 = JournalEntry(
+            v=1,
+            seq=1,
+            id=_uuid.uuid4(),
+            type="run_started",
+            run_id=_uuid.UUID(run_id),
+            correlation_id="test",
+            time=datetime.now(UTC),
+            payload={"step": 1},
+            prev_hash="",
+            hash="",
+        )
+        j.append(e1)
+        e2 = JournalEntry(
+            v=1,
+            seq=2,
+            id=_uuid.uuid4(),
+            type="tool_call",
+            run_id=_uuid.UUID(run_id),
+            correlation_id="test",
+            time=datetime.now(UTC),
+            payload={"step": 2},
+            prev_hash=e1.hash,
+            hash="",
+        )
+        j.append(e2)
+        # Reorder entries
+        j._entries[0], j._entries[1] = j._entries[1], j._entries[0]
+        path = tmp_path / f"{run_id}.jsonl"
+        j.write_jsonl(path)
+        engine = ReplayEngine(tmp_path)
+        report = engine.verify(run_id)
+        assert report.status == "tampered"
+
+    def test_divergence_detection_changed_scenario_trajectory_seed(self, tmp_path: Path):
+        run_id = _make_run_id()
+        j = HashChainJournal()
+        j.append(
+            JournalEntry(
+                v=1,
+                seq=1,
+                id=_uuid.uuid4(),
+                type="scenario_loaded",
+                run_id=_uuid.UUID(run_id),
+                correlation_id="test",
+                time=datetime.now(UTC),
+                payload={
+                    "scenario_id": "original",
+                    "trajectory_id": "traj-1",
+                    "seed": 42,
+                    "fixture": "AS142",
+                    "tool_result": {"status": "delayed"},
+                    "event": "flight_delayed",
+                    "timestamp": "2026-07-28T12:00:00Z",
+                    "final_response": "Flight delayed",
+                },
+                prev_hash="",
+                hash="",
+            )
+        )
+        path = tmp_path / f"{run_id}.jsonl"
+        j.write_jsonl(path)
+        # Verify valid reading works
+        engine = ReplayEngine(tmp_path)
+        report = engine.verify(run_id)
+        assert report.status == "verified"
