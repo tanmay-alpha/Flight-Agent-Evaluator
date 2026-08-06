@@ -29,6 +29,7 @@ class ScenarioRunner:
         target: BenchmarkScenario | LoadedScenario,
         provider: Any = None,
         output_dir: Path | None = None,
+        driver: Any = None,
     ) -> RunRecording:
         """Execute a scenario and return a RunRecording."""
         if isinstance(target, LoadedScenario):
@@ -111,9 +112,10 @@ class ScenarioRunner:
         )
 
         # Execute the trajectory using the driver
-        from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
+        if driver is None:
+            from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
 
-        driver = ScriptedAgentDriver()
+            driver = ScriptedAgentDriver()
         fault_engine = FaultEngine(
             tuple(getattr(scenario, "faults", ()) or ()),
             clock=clock,

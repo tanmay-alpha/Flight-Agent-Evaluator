@@ -54,7 +54,10 @@ def gate_no_secrets() -> bool:
             return False
     for root_str, _dirs, files in os.walk(REPO_ROOT):
         root = Path(root_str)
-        if ".git" in root.parts or "__pycache__" in root.parts:
+        if any(
+            ignored in root.parts
+            for ignored in (".git", "__pycache__", ".venv", "dist", ".mypy_cache", ".pytest_cache")
+        ):
             continue
         for f in files:
             p = root / f
