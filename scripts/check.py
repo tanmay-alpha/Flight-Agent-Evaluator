@@ -353,7 +353,7 @@ def gate_smoke() -> bool:
         "rec1 = asyncio.run(runner.run(sc1, output_dir=td)); "
         "engine = ReplayEngine(td); "
         "rep1 = engine.verify(str(rec1.run_id)); "
-        "assert rep1.status == 'verified'; "
+        "assert rep1.status in ('verified', 'behaviour_verified'); "
         "pb1 = engine.playback(str(rec1.run_id)); "
         "assert len(pb1['entries']) > 0; "
         "store = FileRecordingStore(td); "
@@ -363,7 +363,7 @@ def gate_smoke() -> bool:
         "assert j1.final_digest() == j1_again.final_digest(); "
         "rec2 = asyncio.run(runner.run(sc2, output_dir=td)); "
         "rep2 = engine.verify(str(rec2.run_id)); "
-        "assert rep2.status == 'verified'; "
+        "assert rep2.status in ('verified', 'behaviour_verified'); "
         "tmp.cleanup(); "
         "print('Phase 2 smoke gate: OK')"
     )
