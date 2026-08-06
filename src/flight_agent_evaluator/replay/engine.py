@@ -36,6 +36,7 @@ class ReplayEngine:
         run_id: str,
         scenario_path: Path | None = None,
         provider: Any = None,
+        driver: Any = None,
     ) -> ReplayReport:
         """Re-execute and verify a recorded run matching exact behaviour."""
         store = FileRecordingStore(self._root)
@@ -63,7 +64,7 @@ class ReplayEngine:
             try:
                 journal = HashChainJournal.read_jsonl(path)
                 recording = None
-            except Exception:
+            except Exception as exc:
                 return ReplayReport(
                     recording_run_id=str(run_id),
                     mode="verification",
@@ -72,7 +73,7 @@ class ReplayEngine:
                         DivergenceRecord(
                             sequence=1,
                             kind="missing_tool",
-                            detail="Journal unreadable",
+                            detail=f"Journal file unreadable: {exc}",
                         ),
                     ),
                     final_digest="0" * 64,
@@ -104,8 +105,14 @@ class ReplayEngine:
                 entry_count=len(journal.entries),
             )
 
-        # Resolve scenario for full behavioural re-execution
+        # Attempt to resolve originating scenario definition
         scenario_id = recording.scenario_id if recording else None
+        if not scenario_id:
+            for entry in journal.entries:
+                if entry.type == "run_started" and "scenario_id" in entry.payload:
+                    scenario_id = str(entry.payload["scenario_id"])
+                    break
+
         from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
 
         loader = ScenarioLoader()
@@ -114,8 +121,8 @@ class ReplayEngine:
         if scenario_path and scenario_path.exists():
             try:
                 loaded = loader.load_from_path(scenario_path)
-            except Exception:
-                loaded = None
+            except Exception as exc:
+                logger.debug("Provided scenario_path %s failed to load: %s", scenario_path, exc)
 
         if loaded is None and scenario_id:
             candidates = [
@@ -153,7 +160,7 @@ class ReplayEngine:
             runner = ScenarioRunner()
             try:
                 re_executed_rec = asyncio.run(
-                    runner.run(loaded, provider=provider, output_dir=tmp_path)
+                    runner.run(loaded, provider=provider, output_dir=tmp_path, driver=driver)
                 )
                 tmp_store = FileRecordingStore(tmp_path)
                 re_journal = tmp_store.read_recording(str(re_executed_rec.run_id))

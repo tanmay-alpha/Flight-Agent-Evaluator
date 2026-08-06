@@ -95,6 +95,11 @@ class ToolRegistry:
         self._handlers: dict[str, ToolHandler] = {}
         self._definitions: dict[str, ToolDefinition] = {}
 
+    @property
+    def handlers(self) -> dict[str, ToolHandler]:
+        """Return dict of registered tool handlers."""
+        return dict(self._handlers)
+
     def register(self, handler: ToolHandler) -> None:
         """Register a tool handler.
 
