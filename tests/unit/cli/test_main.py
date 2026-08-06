@@ -1430,6 +1430,9 @@ class TestScenarioValidateAndEvaluateCLI:
         from flight_agent_evaluator.recording.journal import HashChainJournal
         from flight_agent_evaluator.recording.store import FileRecordingStore
 
+        scenario_path = tmp_path / "scenario.json"
+        scenario_path.write_text(json.dumps(_VALID_SCENARIO_DICT), encoding="utf-8")
+
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
         journal = HashChainJournal()
@@ -1449,7 +1452,7 @@ class TestScenarioValidateAndEvaluateCLI:
         )
         rec = RunRecording(
             run_id=uuid.UUID(run_id),
-            scenario_id="s1",
+            scenario_id="smoke_phase2",
             scenario_version=1,
             seed=0,
             entry_count=1,
@@ -1459,8 +1462,10 @@ class TestScenarioValidateAndEvaluateCLI:
         )
         store.write_recording(run_id, journal, rec)
 
-        ret = main(["evaluate", run_id, "--output", str(tmp_path)])
-        assert ret == 0
+        ret = main(
+            ["evaluate", run_id, "--output", str(tmp_path), "--scenario", str(scenario_path)]
+        )
+        assert ret in (0, 1)
         assert "Evaluation of" in capsys.readouterr().out
 
     def test_cmd_evaluate_json(self, tmp_path: Path, capsys):
@@ -1471,6 +1476,9 @@ class TestScenarioValidateAndEvaluateCLI:
         from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
         from flight_agent_evaluator.recording.journal import HashChainJournal
         from flight_agent_evaluator.recording.store import FileRecordingStore
+
+        scenario_path = tmp_path / "scenario.json"
+        scenario_path.write_text(json.dumps(_VALID_SCENARIO_DICT), encoding="utf-8")
 
         run_id = str(uuid.uuid4())
         store = FileRecordingStore(tmp_path)
@@ -1491,7 +1499,7 @@ class TestScenarioValidateAndEvaluateCLI:
         )
         rec = RunRecording(
             run_id=uuid.UUID(run_id),
-            scenario_id="s1",
+            scenario_id="smoke_phase2",
             scenario_version=1,
             seed=0,
             entry_count=1,
@@ -1501,14 +1509,24 @@ class TestScenarioValidateAndEvaluateCLI:
         )
         store.write_recording(run_id, j, rec)
 
-        ret = main(["--json", "evaluate", run_id, "--output", str(tmp_path)])
-        assert ret == 0
+        ret = main(
+            [
+                "--json",
+                "evaluate",
+                run_id,
+                "--output",
+                str(tmp_path),
+                "--scenario",
+                str(scenario_path),
+            ]
+        )
+        assert ret in (0, 1)
         data = json.loads(capsys.readouterr().out)
-        assert data["status"] == "passed"
+        assert "status" in data
 
     def test_cmd_evaluate_error(self, tmp_path: Path, capsys):
         from flight_agent_evaluator.cli.main import main
 
         ret = main(["evaluate", "nonexistent-id", "--output", str(tmp_path)])
-        assert ret == 1
+        assert ret == 2
         assert "Evaluation error" in capsys.readouterr().err

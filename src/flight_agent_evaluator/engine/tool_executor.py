@@ -173,8 +173,38 @@ class ToolExecutor:
         # 5. Fault injection.
         fault = self._fault_engine.apply(tool_call, sequence=self._call_count)
         if fault is not None:
-            self._call_count += 1
-            return self._fault_result(tool_call, fault, now_dt, context)
+            if fault.fault_type == "delayed_response":
+                self._journal_event(
+                    entry_type="fault_injected",
+                    run_id=context.run_id,
+                    correlation_id=context.correlation_id,
+                    time=now_dt,
+                    payload={
+                        "call_id": tool_call.call_id.hex,
+                        "fault_type": fault.fault_type,
+                        "fault_id": fault.fault_id.hex,
+                        "delay_seconds": fault.delay_seconds,
+                    },
+                )
+                if self._clock and fault.delay_seconds > 0:
+                    self._clock.advance(fault.delay_seconds)
+                    now_dt = self._clock.now()
+            elif fault.fault_type == "duplicate_event":
+                self._journal_event(
+                    entry_type="fault_injected",
+                    run_id=context.run_id,
+                    correlation_id=context.correlation_id,
+                    time=now_dt,
+                    payload={
+                        "call_id": tool_call.call_id.hex,
+                        "fault_type": fault.fault_type,
+                        "fault_id": fault.fault_id.hex,
+                        "duplication_count": fault.duplication_count,
+                    },
+                )
+            else:
+                self._call_count += 1
+                return self._fault_result(tool_call, fault, now_dt, context)
 
         # 6. Validate arguments against the handler's input schema.
         input_schema = handler.tool_definition.input_schema
@@ -245,6 +275,21 @@ class ToolExecutor:
                 "result": payload,
             },
         )
+        if fault is not None and fault.fault_type == "duplicate_event":
+            for _ in range(fault.duplication_count):
+                self._journal_event(
+                    entry_type="domain_event",
+                    run_id=context.run_id,
+                    correlation_id=context.correlation_id,
+                    time=now_dt,
+                    payload={
+                        "call_id": tool_call.call_id.hex,
+                        "event_type": "duplicated_event",
+                        "tool_name": tool_call.tool_name,
+                        "result": payload,
+                    },
+                )
+
         self._project_state({"call_id": tool_call.call_id.hex, "status": "success"})
         return result
 
@@ -397,7 +442,7 @@ class ToolExecutor:
             payload={
                 "call_id": call.call_id.hex,
                 "status": result.status,
-                "error": fault.error.model_dump(mode="json"),
+                "error": fault.error.model_dump(mode="json") if fault.error else None,
                 "injected_fault_type": fault.fault_type,
             },
         )

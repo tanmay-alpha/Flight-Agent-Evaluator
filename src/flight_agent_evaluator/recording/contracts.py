@@ -24,6 +24,10 @@ from flight_agent_evaluator.contracts.common import (
     PositiveInt,
     SHA256Digest,
 )
+from flight_agent_evaluator.contracts.evaluation import (
+    AssertionOutcome,
+    EvaluationResult,
+)
 
 # ---------------------------------------------------------------------------
 # Recording schema version
@@ -98,7 +102,7 @@ class RunRecording(ContractModel):
     tool_calls_made: NonNegativeInt = 0
     final_response: str | None = None
     checkpoints: tuple[str, ...] = Field(default_factory=tuple)
-    evaluation: Any | None = None  # EvaluationResult | None; loose to avoid cycle
+    evaluation: EvaluationResult | dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +110,16 @@ class RunRecording(ContractModel):
 # ---------------------------------------------------------------------------
 
 
-ReplayOutcomeStatus = Literal["verified", "tampered", "diverged"]
+ReplayOutcomeStatus = Literal[
+    "integrity_valid",
+    "behaviour_verified",
+    "behaviour_diverged",
+    "recording_tampered",
+    "replay_unavailable",
+    "verified",
+    "tampered",
+    "diverged",
+]
 
 
 class DivergenceRecord(ContractModel):
@@ -137,22 +150,6 @@ class ReplayReport(ContractModel):
     final_digest: SHA256Digest
     entry_count: NonNegativeInt = 0
     re_executed_calls: NonNegativeInt = 0
-
-
-# ---------------------------------------------------------------------------
-# Assertion outcome
-# ---------------------------------------------------------------------------
-
-
-class AssertionOutcome(ContractModel):
-    """The outcome of evaluating a single assertion."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    assertion_id: NonEmptyIdentifier
-    passed: bool
-    observed: dict[str, Any] = Field(default_factory=dict)
-    reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
