@@ -55,6 +55,14 @@ class FileRecordingStore:
             raise RecordingStoreError(f"Recording not found: {run_id!r}")
         return HashChainJournal.read_jsonl(path)
 
+    def read_recording_summary(self, run_id: str) -> RunRecording:
+        """Read RunRecording summary metadata from the target directory."""
+        stem = self._sanitise_run_id(run_id)
+        path = self._target / f"{stem}.meta.json"
+        if not path.is_file():
+            raise RecordingStoreError(f"Recording summary not found: {run_id!r}")
+        return RunRecording.model_validate_json(path.read_text(encoding="utf-8"))
+
     def _sanitise_run_id(self, run_id: str) -> str:
         """Return a safe filename stem for the run ID.
 

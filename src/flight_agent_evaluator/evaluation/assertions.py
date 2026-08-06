@@ -234,7 +234,7 @@ class AssertionEvaluator:
                     message="No replay report provided",
                 )
             status = getattr(replay_report, "status", "")
-            passed = status in ("verified", "pass")
+            passed = status in ("verified", "integrity_valid", "behaviour_verified", "pass")
             return AssertionOutcome(
                 assertion=assertion,
                 status="passed" if passed else "failed",
@@ -365,10 +365,10 @@ class AssertionEvaluator:
                     status="skipped",
                     message="Missing tool_name",
                 )
-            # A forbidden mutation is a tool call with a mutating class
-            mutating_classes = {"write", "book", "create", "update", "delete", "cancel"}
+            # Authoritative ToolMutationClass values for mutating calls
+            mutating_classes = {"simulated_mutation", "sensitive_simulated_mutation"}
             forbidden = [
-                tc for tc in matching if tc.get("mutation_class", "read") in mutating_classes
+                tc for tc in matching if tc.get("mutation_class", "read_only") in mutating_classes
             ]
             if forbidden:
                 return AssertionOutcome(

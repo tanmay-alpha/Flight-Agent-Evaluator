@@ -170,6 +170,12 @@ class ScenarioRunner:
             },
         )
 
+        # Project functional state snapshot from trusted journal
+        from flight_agent_evaluator.engine.state import StateProjector
+
+        projector = StateProjector()
+        state = projector.project_journal(journal, initial_state=state)
+
         # Evaluate assertions
         evaluator = AssertionEvaluator()
         evaluation = evaluator.evaluate(

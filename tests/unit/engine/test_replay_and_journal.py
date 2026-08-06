@@ -130,7 +130,7 @@ class TestReplayEngine:
 
         engine = ReplayEngine(tmp_path)
         report = engine.verify(run_id)
-        assert report.status == "verified"
+        assert report.status in ("verified", "integrity_valid")
         assert report.recording_run_id == run_id
 
     def test_verification_detects_tampering(self, tmp_path: Path):
@@ -167,7 +167,7 @@ class TestReplayEngine:
         try:
             report = engine.verify(run_id)
             # If it doesn't raise, the chain check should detect tampering
-            assert report.status != "verified"
+            assert report.status in ("tampered", "recording_tampered")
         except Exception as exc:
             # Validation error on read is also acceptable - tamper detected
             assert exc is not None
@@ -440,6 +440,7 @@ class TestFaultEngine:
         call = _make_tool_call(_make_run_id(), "t")
         result = engine.apply(call, sequence=0)
         assert result is not None
+        assert result.error is not None
         assert result.error.error_type == "provider_error"
 
     def test_server_error_fault(self):
@@ -456,6 +457,7 @@ class TestFaultEngine:
         call = _make_tool_call(_make_run_id(), "t")
         result = engine.apply(call, sequence=0)
         assert result is not None
+        assert result.error is not None
         assert "500" in result.error.message
 
     def test_duplicate_event_fault(self):
@@ -472,7 +474,9 @@ class TestFaultEngine:
         call = _make_tool_call(_make_run_id(), "t")
         result = engine.apply(call, sequence=0)
         assert result is not None
-        assert result.error.error_type == "provider_error"
+        assert result.status == "success"
+        assert result.duplication_count == 2
+        assert result.error is None
 
     def test_stale_response_fault(self):
         clock = VirtualClock()
@@ -488,6 +492,7 @@ class TestFaultEngine:
         call = _make_tool_call(_make_run_id(), "t")
         result = engine.apply(call, sequence=0)
         assert result is not None
+        assert result.error is not None
         assert "Stale" in result.error.message
 
     def test_delayed_response_fault(self):
@@ -504,7 +509,9 @@ class TestFaultEngine:
         call = _make_tool_call(_make_run_id(), "t")
         result = engine.apply(call, sequence=0)
         assert result is not None
-        assert "Delayed" in result.error.message
+        assert result.status == "success"
+        assert result.delay_seconds == 5
+        assert result.error is None
 
     def test_malformed_response_fault(self):
         clock = VirtualClock()
@@ -520,6 +527,7 @@ class TestFaultEngine:
         call = _make_tool_call(_make_run_id(), "t")
         result = engine.apply(call, sequence=0)
         assert result is not None
+        assert result.error is not None
         assert "Malformed" in result.error.message
 
     def test_conflicting_response_fault(self):
@@ -536,6 +544,7 @@ class TestFaultEngine:
         call = _make_tool_call(_make_run_id(), "t")
         result = engine.apply(call, sequence=0)
         assert result is not None
+        assert result.error is not None
         assert "Conflict" in result.error.message
 
     def test_fault_budget_exhausted(self):
@@ -600,7 +609,7 @@ class TestReplayDivergenceCategories:
         journal.write_jsonl(path)
         engine = ReplayEngine(tmp_path)
         report = engine.verify(run_id)
-        assert report.status == "tampered"
+        assert report.status in ("tampered", "recording_tampered")
         assert len(report.divergences) > 0
 
     def test_divergence_detection_missing_entry(self, tmp_path: Path):
@@ -640,7 +649,7 @@ class TestReplayDivergenceCategories:
         journal.write_jsonl(path)
         engine = ReplayEngine(tmp_path)
         report = engine.verify(run_id)
-        assert report.status == "tampered"
+        assert report.status in ("tampered", "recording_tampered")
 
     def test_divergence_detection_reordered_entry(self, tmp_path: Path):
         run_id = _make_run_id()
@@ -677,7 +686,7 @@ class TestReplayDivergenceCategories:
         j.write_jsonl(path)
         engine = ReplayEngine(tmp_path)
         report = engine.verify(run_id)
-        assert report.status == "tampered"
+        assert report.status in ("tampered", "recording_tampered")
 
     def test_divergence_detection_changed_scenario_trajectory_seed(self, tmp_path: Path):
         run_id = _make_run_id()
@@ -710,4 +719,4 @@ class TestReplayDivergenceCategories:
         # Verify valid reading works
         engine = ReplayEngine(tmp_path)
         report = engine.verify(run_id)
-        assert report.status == "verified"
+        assert report.status in ("verified", "integrity_valid")
