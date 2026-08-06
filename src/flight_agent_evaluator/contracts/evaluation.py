@@ -109,7 +109,7 @@ Assertion = Annotated[
 # Outcome and status
 # ---------------------------------------------------------------------------
 
-AssertionStatus = Literal["passed", "failed", "skipped", "inconclusive"]
+AssertionStatus = Literal["passed", "failed", "inconclusive", "skipped", "evaluator_error"]
 
 
 class AssertionOutcome(ContractModel):
@@ -117,6 +117,11 @@ class AssertionOutcome(ContractModel):
     status: AssertionStatus
     observed: Any | None = None  # type: ignore[valid-type]
     message: str | None = None
+    assertion_id: str | None = None
+
+    @property
+    def passed(self) -> bool:
+        return self.status == "passed"
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +154,7 @@ class FailureClassification(ContractModel):
 # Evaluation
 # ---------------------------------------------------------------------------
 
-EvaluationStatus = Literal["passed", "failed", "inconclusive"]
+EvaluationStatus = Literal["passed", "failed", "inconclusive", "evaluator_error"]
 
 
 class EvaluationMetric(ContractModel):
@@ -161,7 +166,9 @@ class EvaluationSummary(ContractModel):
     total: NonNegativeInt  # type: ignore[valid-type]
     passed: NonNegativeInt  # type: ignore[valid-type]
     failed: NonNegativeInt  # type: ignore[valid-type]
-    skipped: NonNegativeInt  # type: ignore[valid-type]
+    skipped: NonNegativeInt = 0  # type: ignore[valid-type]
+    inconclusive: NonNegativeInt = 0  # type: ignore[valid-type]
+    evaluator_error: NonNegativeInt = 0  # type: ignore[valid-type]
 
 
 class EvaluationResult(ContractModel):

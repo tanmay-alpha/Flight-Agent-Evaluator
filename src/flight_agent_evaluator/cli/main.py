@@ -13,15 +13,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from flight_agent_evaluator.engine.runner import ScenarioRunner
 from flight_agent_evaluator.engine.scenario_loader import LoadedScenario, ScenarioLoader
-from flight_agent_evaluator.recording.contracts import AssertionOutcome
+from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
 from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.replay.engine import ReplayEngine
+
+logger = logging.getLogger(__name__)
 
 
 def _sanitise_error(exc: Exception) -> str:
@@ -123,7 +126,9 @@ def cmd_replay(args: argparse.Namespace) -> int:
                         print(f"    seq={d.sequence}: {d.kind} — {d.detail}")
                     return 1
                 print("  All checks passed.")
-            return 0 if report.status == "verified" else 1
+            return (
+                0 if report.status in ("verified", "integrity_valid", "behaviour_verified") else 1
+            )
         else:
             result = engine.playback(args.run_id)
             if getattr(args, "json", False):
@@ -147,31 +152,85 @@ def cmd_verify(args: argparse.Namespace) -> int:
 def cmd_evaluate(args: argparse.Namespace) -> int:
     """Evaluate assertions for a recorded run."""
     output = Path(args.output) if getattr(args, "output", None) else Path(".recordings")
+    scenario_arg = getattr(args, "scenario", None)
+
     try:
         store = FileRecordingStore(output)
+        recording = store.read_recording_summary(args.run_id)
         journal = store.read_recording(args.run_id)
-        # Evaluate recording journal entries
-        outcomes = [
-            AssertionOutcome(
-                assertion_id="journal_verification",
-                passed=True,
-                observed={"entries": len(journal.entries)},
-            )
-        ]
-        result_payload = {
-            "run_id": args.run_id,
-            "status": "passed" if all(o.passed for o in outcomes) else "failed",
-            "outcomes": [o.model_dump(mode="json") for o in outcomes],
-        }
-        if getattr(args, "json", False):
-            print(json.dumps(result_payload))
+
+        # 1. Verify journal integrity
+        journal.verify()
+
+        # 2. Load originating scenario
+        loader = ScenarioLoader()
+        loaded = None
+        if scenario_arg:
+            loaded = loader.load_from_path(Path(scenario_arg))
         else:
-            print(f"Evaluation of {args.run_id}: {result_payload['status']}")
-            print(f"  Evaluated {len(outcomes)} assertions.")
-        return 0
+            candidates = [
+                Path(f"resources/scenarios/{recording.scenario_id}.json"),
+                Path(f"tests/fixtures/scenarios/{recording.scenario_id}.json"),
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    try:
+                        loaded = loader.load_from_path(candidate)
+                        break
+                    except Exception as exc:
+                        logger.debug("Scenario candidate %s failed to load: %s", candidate, exc)
+                        continue
+
+        if loaded is None:
+            raise ValueError(f"Originating scenario '{recording.scenario_id}' could not be found.")
+
+        # 3. Reconstruct functional projected state
+        from flight_agent_evaluator.engine.state import StateProjector
+
+        projector = StateProjector()
+        state = projector.project_journal(journal)
+
+        # 4. Recover replay report
+        replay_engine = ReplayEngine(root=output)
+        replay_report = replay_engine.verify(args.run_id)
+
+        # 5. Execute real scenario assertions
+        evaluator = AssertionEvaluator()
+        result = evaluator.evaluate(
+            scenario=loaded.scenario,
+            state=state,
+            journal=journal,
+            replay_report=replay_report,
+            run_id=args.run_id,
+            started_at=recording.started_at,
+            ended_at=recording.completed_at,
+        )
+
+        if getattr(args, "json", False):
+            print(json.dumps(result.model_dump(mode="json")))
+        else:
+            print(f"Evaluation of {args.run_id}: {result.status}")
+            print(
+                f"  Summary: total={result.summary.total}, passed={result.summary.passed}, failed={result.summary.failed}"
+            )
+            for o in result.outcomes:
+                status_icon = "✓" if o.passed else "✗"
+                print(
+                    f"  {status_icon} {o.assertion_id or 'assertion'}: status={o.status} message={o.message}"
+                )
+
+        if result.status == "passed":
+            return 0
+        if result.status == "failed":
+            return 1
+        return 2
     except Exception as exc:
-        print(f"Evaluation error: {_sanitise_error(exc)}", file=sys.stderr)
-        return 1
+        err_msg = _sanitise_error(exc)
+        if getattr(args, "json", False):
+            print(json.dumps({"status": "evaluator_error", "error": err_msg}), file=sys.stderr)
+        else:
+            print(f"Evaluation error: {err_msg}", file=sys.stderr)
+        return 2
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -221,6 +280,7 @@ def main(argv: list[str] | None = None) -> int:
     eval_p = subparsers.add_parser("evaluate", help="Evaluate a recorded run.")
     eval_p.add_argument("run_id", help="Run identifier.")
     eval_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
+    eval_p.add_argument("--scenario", "-s", help="Path to scenario JSON file (optional).")
     eval_p.set_defaults(func=cmd_evaluate)
 
     args = parser.parse_args(argv)

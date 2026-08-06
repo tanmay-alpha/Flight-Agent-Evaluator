@@ -257,10 +257,23 @@ class TestForbiddenMutationAssertion:
             assertion_id="a2",
             tool_name="book",
         )
-        journal = _make_journal_with_tool_calls(
-            str(uuid.uuid4()),
-            ["book"],
+        journal = HashChainJournal()
+        entry = JournalEntry(
+            v=1,
+            seq=1,
+            id=uuid.uuid4(),
+            type="tool_call",
+            run_id=uuid.UUID(str(uuid.uuid4())),
+            correlation_id=str(uuid.uuid4()),
+            time=datetime.now(UTC),
+            payload={
+                "tool_name": "book",
+                "mutation_class": "simulated_mutation",
+            },
+            prev_hash="",
+            hash="0" * 64,
         )
+        journal.append_raw(entry)
         outcome = evaluator._eval_tool_assertion(assertion, journal)
         assert outcome.status == "failed"
 
