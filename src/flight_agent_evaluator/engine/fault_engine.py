@@ -56,7 +56,10 @@ class InjectedFault:
     fault_id: uuid.UUID
     fault_type: str
     status: ToolResultStatus
-    error: ToolError
+    error: ToolError | None = None
+    delay_seconds: int = 0
+    duplication_count: int = 0
+    spec: FaultSpec | None = None
 
 
 class FaultEngine:
@@ -175,12 +178,31 @@ def _build_fault(fault: FaultSpec) -> InjectedFault:
     """Construct an :class:`InjectedFault` from a :class:`FaultSpec`."""
     digest_input = canonical_json(fault.model_dump(mode="json"))
     fault_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"fault|{digest_input}")
+    if isinstance(fault, DelayedResponseFault):
+        return InjectedFault(
+            fault_id=fault_id,
+            fault_type=fault.fault_type,
+            status="success",
+            error=None,
+            delay_seconds=fault.delay_seconds,
+            spec=fault,
+        )
+    if isinstance(fault, DuplicateEventFault):
+        return InjectedFault(
+            fault_id=fault_id,
+            fault_type=fault.fault_type,
+            status="success",
+            error=None,
+            duplication_count=fault.duplication_count,
+            spec=fault,
+        )
     status, error = _fault_to_error(fault)
     return InjectedFault(
         fault_id=fault_id,
         fault_type=fault.fault_type,
         status=status,
         error=error,
+        spec=fault,
     )
 
 
@@ -244,26 +266,6 @@ def _fault_to_error(fault: FaultSpec) -> tuple[ToolResultStatus, ToolError]:
                 message="Conflicting response from provider (injected fault)",
                 retryable=False,
                 details={"field_path": fault.field_path},
-            ),
-        )
-    if isinstance(fault, DelayedResponseFault):
-        return (
-            "failure",
-            ToolError(
-                error_type="provider_error",
-                message="Delayed response from provider (injected fault)",
-                retryable=True,
-                details={"delay_seconds": fault.delay_seconds},
-            ),
-        )
-    if isinstance(fault, DuplicateEventFault):
-        return (
-            "failure",
-            ToolError(
-                error_type="provider_error",
-                message="Duplicate event emitted by provider (injected fault)",
-                retryable=False,
-                details={"duplication_count": fault.duplication_count},
             ),
         )
     raise UnsupportedFaultConfigurationError(f"Unknown fault_type: {type(fault).__name__}")

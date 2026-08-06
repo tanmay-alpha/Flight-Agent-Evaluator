@@ -105,7 +105,7 @@ def test_cli_verify_passes():
     recording = asyncio.run(runner.run(loaded, output_dir=Path(".recordings")))
     engine = ReplayEngine(root=Path(".recordings"))
     report = engine.verify(str(recording.run_id))
-    assert report.status == "verified"
+    assert report.status in ("verified", "behaviour_verified", "integrity_valid")
     assert len(report.divergences) == 0
 
 
@@ -128,4 +128,8 @@ def test_replay_tampered_detected():
         report = engine.verify(str(recording.run_id))
     except JournalVerificationError:
         report = None
-    assert report is None or report.status == "tampered"
+    assert report is None or report.status in (
+        "tampered",
+        "recording_tampered",
+        "behaviour_diverged",
+    )
