@@ -110,6 +110,11 @@ class ToolExecutor:
         self._event_emitter: Callable[[dict[str, Any]], None] | None = None
 
     @property
+    def registry(self) -> ToolRegistry:
+        """Return the tool registry configured for this executor."""
+        return self._registry
+
+    @property
     def call_count(self) -> int:
         """Number of tool calls attempted (including failed/limit-exceeded)."""
         return self._call_count
