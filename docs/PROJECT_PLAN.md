@@ -64,39 +64,44 @@ Deliverables: this document, `README.md`, `LICENSE`, `CONTRIBUTING.md`,
 - Tool-call and event trace recording.
 - End-to-end replay verification and CLI commands.
 
-### Phase 3 — Secure read-only provider adapters and provider-response replay
+### Stage 2 — Trajectory Constraint Scoring Framework *(complete)*
 
-- Amadeus, AviationWeather.gov, Open-Meteo, OpenSky, OurAirports adapters.
-- Secure asynchronous HTTP transport with HTTPS, secret redaction, bounded response sizes.
-- Provider request fingerprinting, sanitised exchange recording, offline replay.
-- Health, quota, capability reporting, explicit routing, CLI diagnostics.
+- Pure data Pydantic contracts for trajectory expectation graphs, multiple valid solution paths, argument predicates, precedence, dependency, recovery, and safety rules.
+- Deterministic bounded branch-and-bound matcher for optimal injective mapping under complexity bounds.
+- Multi-dimensional scorecard output with node-by-node evidence attribution.
+- Disruption read-only tools: `policy.get_rebooking_rules` and `itinerary.get_current_booking`.
+- Benchmark expansion to 12 scenarios (scenarios 7-12) with public input/hidden expectation separation.
+- CLI subcommands for trajectory validation, scoring, explanation, and benchmark suite validation.
 
-### Phase 4 — MCP gateway, simulated airline services and approval enforcement
+### Stage 3 — Failure-mode classification and evidence attribution
 
-- MCP server gateway, simulated airline services, approval workflows.
+- Failure-mode taxonomy and evidence attribution engine.
 
-### Phase 5 — Agent harness integrations, provider-conflict and security evaluation
+### Stage 4 — Calibrated LLM judge and human-labelled validation
 
-- Agent harness integrations (LangChain, LangGraph, CrewAI, custom agents).
-- Provider-conflict detection and security evaluation.
+- LLM judge calibration and human validation benchmarks.
 
-### Phase 6 — Trajectory dataset generation and verifier fine-tuning
+### Stage 5 — Simulated approval, booking and idempotent mutation environment
 
-- Trajectory dataset generation and verifier fine-tuning.
+- Simulated airline environment and idempotent state mutation support.
 
-### Phase 7 — Distributed evaluation and public benchmark
+### Stage 6 — Multi-model benchmark and evaluator-validity experiments
 
-- Multi-host execution with deterministic seeding.
+- Cross-model benchmark evaluation and verifier fine-tuning.
+
+### Stage 7 — Public held-out benchmark and reproducible results
+
 - Public benchmark suite with canonical reference results.
 
 ## Architectural decision records
 
 - `docs/adr/0001-python-project-foundation.md` — Python project foundation.
 - `docs/adr/0002-contract-versioning.md` — Strict Pydantic contract versioning.
-- `docs/adr/0003-deterministic-fixture-provider.md` — Deterministic fixture
-  provider design.
+- `docs/adr/0003-deterministic-fixture-provider.md` — Deterministic fixture provider design.
 - `docs/adr/0004-canonical-json.md` — Canonical JSON and approval hashing.
 - `docs/adr/0005-event-envelope-versioning.md` — Event envelope versioning.
+- `docs/adr/0006-explicit-trajectories.md` — Explicit trajectories vs hidden expectations.
+- `docs/adr/0007-contract-consolidation-and-evaluation-schema.md` — Contract consolidation & evaluation schema.
 
 ## Open questions resolved during phases
 
