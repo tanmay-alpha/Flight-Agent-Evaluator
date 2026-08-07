@@ -1,0 +1,92 @@
+{
+  "scenario_id": "ord-sea-dual-order",
+  "expectation_version": "1.0.0",
+  "valid_paths": [
+    {
+      "path_id": "path_status_first",
+      "name": "Status First then Itinerary",
+      "description": "Checks flight status first, then checks passenger itinerary.",
+      "expected_actions": [
+        {
+          "node_id": "node_flight_status",
+          "label": "Flight Status",
+          "selector": {
+            "tool_name": "flight.get_status",
+            "argument_constraints": [
+              {
+                "field_pointer": "/flight_id",
+                "operator": "equals",
+                "value": "DL456"
+              }
+            ]
+          },
+          "required": true
+        },
+        {
+          "node_id": "node_booking_itinerary",
+          "label": "Booking Itinerary",
+          "selector": {
+            "tool_name": "itinerary.get_current_booking",
+            "argument_constraints": [
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "PNR456"
+              }
+            ]
+          },
+          "required": true
+        }
+      ],
+      "precedence_constraints": [
+        {
+          "before_node_id": "node_flight_status",
+          "after_node_id": "node_booking_itinerary"
+        }
+      ]
+    },
+    {
+      "path_id": "path_itinerary_first",
+      "name": "Itinerary First then Status",
+      "description": "Checks passenger itinerary first, then checks flight status.",
+      "expected_actions": [
+        {
+          "node_id": "node_booking_itinerary",
+          "label": "Booking Itinerary",
+          "selector": {
+            "tool_name": "itinerary.get_current_booking",
+            "argument_constraints": [
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "PNR456"
+              }
+            ]
+          },
+          "required": true
+        },
+        {
+          "node_id": "node_flight_status",
+          "label": "Flight Status",
+          "selector": {
+            "tool_name": "flight.get_status",
+            "argument_constraints": [
+              {
+                "field_pointer": "/flight_id",
+                "operator": "equals",
+                "value": "DL456"
+              }
+            ]
+          },
+          "required": true
+        }
+      ],
+      "precedence_constraints": [
+        {
+          "before_node_id": "node_booking_itinerary",
+          "after_node_id": "node_flight_status"
+        }
+      ]
+    }
+  ]
+}

@@ -184,10 +184,15 @@ class FlightSearchHandler:
 
 
 def register_default_tools() -> ToolRegistry:
-    """Construct a new :class:`ToolRegistry` with the default aviation tools."""
+    """Construct a new :class:`ToolRegistry` with default tools."""
+    from flight_agent_evaluator.tools.itinerary import ItineraryGetCurrentBookingHandler
+    from flight_agent_evaluator.tools.policy import PolicyGetRebookingRulesHandler
+
     registry = ToolRegistry()
     registry.register(FlightGetStatusHandler())
     registry.register(FlightSearchHandler())
+    registry.register(PolicyGetRebookingRulesHandler())
+    registry.register(ItineraryGetCurrentBookingHandler())
     return registry
 
 
