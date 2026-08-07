@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "atl-mia-wrong-arguments",
+    "version": 1
+  },
+  "metadata": {
+    "title": "ATL to MIA Disruption — Argument Predicate Mismatch Test",
+    "description": "Flight DL123 is delayed. Evaluates agent calling flight.get_status with incorrect flight ID.",
+    "objective": "Verify argument predicate evaluation.",
+    "tags": ["disruption", "wrong_arguments", "atl_mia"]
+  },
+  "steps": [
+    {
+      "step_id": "step1",
+      "description": "Check status of DL123.",
+      "initial_message": "Flight DL123 ATL to MIA is delayed. Please check the flight status."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 5,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "assertions": [
+    {
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    }
+  ],
+  "trajectory": {
+    "trajectory_id": "traj_atl_mia",
+    "description": "Oracle trace for ATL-MIA scenario",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "s1",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "DL123",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "s2",
+        "response": "Flight DL123 status checked."
+      }
+    ]
+  }
+}
