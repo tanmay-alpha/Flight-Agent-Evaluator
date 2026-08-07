@@ -1,147 +1,218 @@
-"""Model-driven agent loop executing turns through OpenAI ModelClient and ToolExecutor."""
+"""Model-driven agent policy executing turns through ModelClient and ToolExecutor."""
 
 from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 from typing import Any
 
-from flight_agent_evaluator.agent.model_client import ModelClient, ModelExchange
+from flight_agent_evaluator.agent.prompt import get_default_prompt_policy
+from flight_agent_evaluator.agent.protocol import AgentPolicy, ModelClient
 from flight_agent_evaluator.agent.security import redact_secrets
+from flight_agent_evaluator.contracts.model import (
+    AgentRunResult,
+    AgentStopReason,
+    AgentTask,
+    ModelConfiguration,
+    ModelRequest,
+    ModelToolCall,
+    ModelUsage,
+    PromptPolicy,
+)
 from flight_agent_evaluator.contracts.tools import ToolCall
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.state import StateSnapshot
-from flight_agent_evaluator.tools.base import build_default_registry
+from flight_agent_evaluator.tools.base import ToolRegistry, build_default_registry
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are an AI aviation customer support agent for Alaska Airlines (AS). "
-    "Help passengers look up flight status, rebook flights, manage bookings, and request human agent approvals when necessary. "
-    "Always use the available tools to verify flight information and booking states before answering. "
-    "Remain polite, accurate, and concise."
-)
 
-
-@dataclass
-class ModelAgentResult:
-    """Outcome of executing a model-driven agent loop."""
-
-    tool_calls_made: int
-    final_response: str | None
-    checkpoints: tuple[str, ...]
-    model_exchanges: tuple[ModelExchange, ...]
-
-
-class ModelAgentDriver:
-    """Agent driver running an LLM loop via OpenAI SDK and ToolExecutor."""
+class ModelToolCallingAgent(AgentPolicy):
+    """Provider-neutral model-driven agent executing turns via ModelClient and ToolExecutor."""
 
     def __init__(
         self,
-        model_client: ModelClient | None = None,
-        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
-        max_turns: int = 10,
+        model_client: ModelClient,
+        prompt_policy: PromptPolicy | None = None,
+        model_configuration: ModelConfiguration | None = None,
     ) -> None:
-        self.model_client = model_client or ModelClient()
-        self.system_prompt = system_prompt
-        self.max_turns = max_turns
+        self.model_client = model_client
+        self.prompt_policy = prompt_policy or get_default_prompt_policy()
+        self.model_configuration = model_configuration or ModelConfiguration()
+
+    @property
+    def agent_id(self) -> str:
+        return f"model_tool_calling_{self.model_client.provider}"
+
+    @property
+    def agent_version(self) -> str:
+        return "1.0.0"
 
     async def execute(
         self,
-        trajectory: Any,  # ScriptedTrajectory or initial user query holder
+        task: AgentTask,
         executor: ToolExecutor,
-        provider: Any,  # noqa: ARG002 — interface compatibility
-        state: StateSnapshot,
-        tool_calls_remaining: int,
+        state: StateSnapshot,  # noqa: ARG002
         context: RunContext,
-    ) -> ModelAgentResult:
-        """Run the model loop against the OpenAI API or replay exchange player."""
+    ) -> AgentRunResult:
+        """Execute the agent task using only public_request, prompt policy, and tool results."""
         self.model_client.reset()
-        user_query = getattr(trajectory, "initial_query", None) or getattr(
-            trajectory, "description", "Assist passenger with flight request"
-        )
-        if hasattr(trajectory, "steps"):
-            # Check if trajectory contains ProduceFinalResponseStep or initial query info
-            for step in trajectory.steps:
-                if hasattr(step, "response") and step.response:
-                    user_query = step.response
-                    break
-
         registry = executor.registry or build_default_registry()
-        openai_tools = self.model_client.convert_registry_to_openai_tools(registry)
+        openai_tools = self._convert_registry_to_openai_tools(registry, task.allowed_tools)
 
+        # Base conversation: ONLY public_request, system prompt policy, and tool responses
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": user_query},
+            {"role": "system", "content": self.prompt_policy.content},
+            {"role": "user", "content": task.public_request},
         ]
 
         tool_calls_made = 0
+        invalid_tool_calls = 0
+        model_calls = 0
+        turns = 0
         final_response: str | None = None
-        checkpoints: list[str] = []
-        current_state = state
-        tool_calls_list: list[dict[str, object]] = []
+        stop_reason = AgentStopReason.COMPLETED
+        warnings: list[str] = []
+        accumulated_usage = ModelUsage()
 
-        for _turn in range(self.max_turns):
+        tool_calls_remaining = task.tool_call_limit
+        max_turns = task.max_turns
+
+        for turn in range(max_turns):
             if tool_calls_remaining <= 0:
-                logger.warning("Agent reached tool call limit (%d)", context.tool_call_limit)
+                stop_reason = AgentStopReason.TOOL_LIMIT_EXCEEDED
+                warnings.append(f"Agent reached tool call limit ({task.tool_call_limit}).")
                 break
 
-            response = await self.model_client.create_chat_completion(
+            request = ModelRequest(
+                provider=self.model_client.provider,
+                model_id=self.model_client.model_id,
+                prompt_policy_id=self.prompt_policy.policy_id,
+                prompt_policy_version=self.prompt_policy.version,
+                prompt_digest=self.prompt_policy.canonical_digest(),
+                turn_index=turn,
                 messages=messages,
-                tools=openai_tools if openai_tools else None,
+                tools=openai_tools,
+                model_configuration=self.model_configuration,
             )
 
+            try:
+                response = await self.model_client.create_completion(request)
+            except Exception as exc:
+                stop_reason = AgentStopReason.ERROR
+                warnings.append(f"Model client error at turn {turn}: {exc}")
+                break
+
+            model_calls += 1
+            turns += 1
+
+            # Accumulate token usage
+            accumulated_usage = ModelUsage(
+                prompt_tokens=accumulated_usage.prompt_tokens + response.usage.prompt_tokens,
+                completion_tokens=accumulated_usage.completion_tokens
+                + response.usage.completion_tokens,
+                total_tokens=accumulated_usage.total_tokens + response.usage.total_tokens,
+            )
+
+            # Record assistant turn in messages
             assistant_msg: dict[str, Any] = {
                 "role": "assistant",
-                "content": response.get("content"),
+                "content": response.content,
             }
-            if response.get("tool_calls"):
-                assistant_msg["tool_calls"] = response["tool_calls"]
+            if response.tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.tool_name,
+                            "arguments": json.dumps(tc.arguments),
+                        },
+                    }
+                    for tc in response.tool_calls
+                ]
 
             messages.append(assistant_msg)
 
-            tool_calls = response.get("tool_calls")
-            if not tool_calls:
-                # Agent produced final text response
-                final_response = response.get("content")
+            if not response.tool_calls:
+                final_response = response.content
+                stop_reason = AgentStopReason.COMPLETED
                 break
 
-            # Execute model's tool calls sequentially through evaluator ToolExecutor
-            for tc_spec in tool_calls:
+            # Execute tool calls
+            for tc in response.tool_calls:
                 if tool_calls_remaining <= 0:
+                    stop_reason = AgentStopReason.TOOL_LIMIT_EXCEEDED
                     break
 
-                fn = tc_spec.get("function", {})
-                tool_name = fn.get("name", "")
-                raw_args = fn.get("arguments", "{}")
+                # Validate tool name exists
+                if tc.tool_name not in registry.handlers:
+                    invalid_tool_calls += 1
+                    warnings.append(f"Invalid tool name requested: '{tc.tool_name}'")
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.call_id,
+                            "content": json.dumps({"error": f"Unknown tool: '{tc.tool_name}'"}),
+                        }
+                    )
+                    continue
 
-                if isinstance(raw_args, str):
-                    try:
-                        args_dict = json.loads(raw_args)
-                    except json.JSONDecodeError:
-                        args_dict = {}
-                else:
-                    args_dict = raw_args or {}
+                tool_handler = registry.handlers[tc.tool_name]
+                mutation_class = tool_handler.tool_definition.mutation_class
 
+                # Gate 8: Authoritative mutation class check
+                if mutation_class != "read_only":
+                    stop_reason = AgentStopReason.SAFETY_VIOLATION
+                    warnings.append(
+                        f"Safety Violation: Agent attempted mutation tool '{tc.tool_name}' with mutation_class='{mutation_class}'"
+                    )
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.call_id,
+                            "content": json.dumps(
+                                {
+                                    "error": f"Mutation tool '{tc.tool_name}' is forbidden in read-only mode"
+                                }
+                            ),
+                        }
+                    )
+                    break
+
+                # Validate arguments strictly
+                is_valid, validation_err = self._validate_arguments(tc, tool_handler)
+                if not is_valid:
+                    invalid_tool_calls += 1
+                    warnings.append(
+                        f"Invalid arguments for tool '{tc.tool_name}': {validation_err}"
+                    )
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.call_id,
+                            "content": json.dumps(
+                                {"error": f"Invalid tool arguments: {validation_err}"}
+                            ),
+                        }
+                    )
+                    continue
+
+                # Execute valid tool call
                 tool_call_id = context.id_factory.next(
                     record_type="tool_call", sequence=tool_calls_made
                 )
                 tool_call = ToolCall(
                     call_id=tool_call_id,
                     run_id=context.run_id,
-                    tool_name=tool_name,
-                    arguments=args_dict,
-                    mutation_class="read_only",
+                    tool_name=tc.tool_name,
+                    arguments=tc.arguments,
+                    mutation_class=mutation_class,
                     start_time=context.clock.now(),
                 )
 
-                exec_result = await executor.execute(
-                    tool_call=tool_call,
-                    context=context,
-                )
-
+                exec_result = await executor.execute(tool_call=tool_call, context=context)
                 tool_calls_made += 1
                 tool_calls_remaining -= 1
 
@@ -155,26 +226,62 @@ class ModelAgentDriver:
                     }
                 )
 
-                tool_calls_list.append(
-                    {
-                        "tool_name": tool_name,
-                        "result": result_payload,
-                    }
-                )
-                current_state = current_state.with_data({"tool_calls": list(tool_calls_list)})
-
-                # Append tool result message for OpenAI conversation history
                 messages.append(
                     {
                         "role": "tool",
-                        "tool_call_id": tc_spec.get("id", str(tool_call_id)),
+                        "tool_call_id": tc.call_id,
                         "content": json.dumps(redact_secrets(result_payload)),
                     }
                 )
 
-        return ModelAgentResult(
-            tool_calls_made=tool_calls_made,
+            if stop_reason == AgentStopReason.SAFETY_VIOLATION:
+                break
+
+        else:
+            if stop_reason == AgentStopReason.COMPLETED and not final_response:
+                stop_reason = AgentStopReason.MAX_TURNS_EXCEEDED
+
+        return AgentRunResult(
+            run_id=str(context.run_id),
+            agent_id=self.agent_id,
+            agent_version=self.agent_version,
+            model_config_digest=self.model_configuration.canonical_digest(),
+            stop_reason=stop_reason,
             final_response=final_response,
-            checkpoints=tuple(checkpoints),
-            model_exchanges=tuple(self.model_client.exchange_history),
+            model_call_count=model_calls,
+            model_turn_count=turns,
+            tool_call_count=tool_calls_made,
+            invalid_tool_call_count=invalid_tool_calls,
+            usage=accumulated_usage,
+            warnings=warnings,
         )
+
+    def _convert_registry_to_openai_tools(
+        self,
+        registry: ToolRegistry,
+        allowed_tools: list[str],
+    ) -> list[dict[str, Any]]:
+        openai_tools: list[dict[str, Any]] = []
+        for name, handler in registry.handlers.items():
+            if allowed_tools and name not in allowed_tools:
+                continue
+            defn = handler.tool_definition
+            openai_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "description": defn.description,
+                        "parameters": defn.input_schema,
+                    },
+                }
+            )
+        return openai_tools
+
+    def _validate_arguments(self, tc: ModelToolCall, handler: Any) -> tuple[bool, str | None]:
+        schema = handler.tool_definition.input_schema
+        required = schema.get("required", [])
+        for req_field in required:
+            if req_field not in tc.arguments:
+                return False, f"Missing required parameter '{req_field}'"
+        return True, None

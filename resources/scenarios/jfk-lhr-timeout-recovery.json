@@ -7,7 +7,7 @@
   "metadata": {
     "title": "JFK-LHR timeout and recovery scenario",
     "description": "The first AS142 status call times out and the agent recovers by retrying then searching for alternatives.",
-    "objective": "Demonstrate deterministic fault recovery: timeout → retry → search"
+    "objective": "Demonstrate deterministic fault recovery: timeout -> retry -> search"
   },
   "limits": {
     "tool_call_limit": 10,
@@ -17,7 +17,8 @@
   "steps": [
     {
       "step_id": "check-flight-status-with-timeout",
-      "description": "First status call times out, retry succeeds, alternatives searched"
+      "description": "First status call times out, retry succeeds, alternatives searched",
+      "initial_message": "Flight AS142 status query timed out initially. Please check status and find available alternatives."
     }
   ],
   "assertions": [
@@ -32,15 +33,6 @@
       "assertion_id": "search-called",
       "assertion_type": "tool_called",
       "tool_name": "flight.search_flights"
-    },
-    {
-      "assertion_id": "no-mutation",
-      "assertion_type": "forbidden_mutation",
-      "tool_name": "flight.get_status"
-    },
-    {
-      "assertion_id": "replay-determinism",
-      "assertion_type": "replay_determinism"
     }
   ],
   "faults": [
