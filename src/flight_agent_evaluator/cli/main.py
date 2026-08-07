@@ -21,10 +21,15 @@ from flight_agent_evaluator.agent.model_client import (
     OpenAIResponsesModelClient,
     ReplayModelClient,
 )
+from flight_agent_evaluator.contracts.trajectory_expectation import (
+    TrajectoryExpectation,
+    validate_trajectory_expectation,
+)
 from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
 from flight_agent_evaluator.engine.runner import ScenarioRunner
 from flight_agent_evaluator.engine.scenario_loader import LoadedScenario, ScenarioLoader
 from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
+from flight_agent_evaluator.evaluation.trajectory_evaluator import TrajectoryEvaluator
 from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.replay.engine import ReplayEngine
 
@@ -397,6 +402,176 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         return 2
 
 
+def cmd_trajectory_validate(args: argparse.Namespace) -> int:
+    """Validate a trajectory expectation JSON file."""
+    path = Path(args.expectation)
+    if not path.is_file():
+        print(f"Error: Expectation file not found: {path}", file=sys.stderr)
+        return 1
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        expectation = TrajectoryExpectation.model_validate(data)
+        errors = validate_trajectory_expectation(expectation)
+        if errors:
+            print(f"Expectation validation failed for {path.name}:", file=sys.stderr)
+            for err in errors:
+                print(f"  - {err}", file=sys.stderr)
+            return 1
+
+        if getattr(args, "json", False):
+            print(
+                json.dumps(
+                    {
+                        "valid": True,
+                        "scenario_id": expectation.scenario_id,
+                        "paths_count": len(expectation.valid_paths),
+                    }
+                )
+            )
+        else:
+            print(
+                f"Expectation graph is valid for scenario '{expectation.scenario_id}' ({len(expectation.valid_paths)} valid paths)."
+            )
+        return 0
+    except Exception as exc:
+        print(f"Error validating expectation: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
+
+def cmd_trajectory_score(args: argparse.Namespace) -> int:
+    """Score a run recording against a trajectory expectation graph."""
+    rec_path = Path(args.recording)
+    exp_path = Path(args.expectation)
+
+    if not rec_path.is_file():
+        print(f"Error: Recording file not found: {rec_path}", file=sys.stderr)
+        return 1
+    if not exp_path.is_file():
+        print(f"Error: Expectation file not found: {exp_path}", file=sys.stderr)
+        return 1
+
+    try:
+        store = FileRecordingStore(rec_path.parent)
+        journal = store.read_recording(rec_path.stem)
+        summary = store.read_recording_summary(rec_path.stem)
+        exp_data = json.loads(exp_path.read_text(encoding="utf-8"))
+        expectation = TrajectoryExpectation.model_validate(exp_data)
+
+        scenario_loader = ScenarioLoader()
+        sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
+        loaded = scenario_loader.load_from_path(sc_path)
+
+        evaluator = TrajectoryEvaluator()
+        scorecard = evaluator.evaluate(
+            scenario=loaded.scenario,
+            expectation=expectation,
+            journal=journal,
+            run_id=str(summary.run_id),
+        )
+
+        if getattr(args, "json", False):
+            print(scorecard.model_dump_json(indent=2))
+        else:
+            print("Trajectory Scorecard:")
+            print(f"  Scenario ID:     {scorecard.scenario_id}")
+            print(f"  Selected Path:   {scorecard.selected_path_id}")
+            print(f"  Overall Pass:    {scorecard.overall_pass}")
+            print(f"  Composite Score: {scorecard.composite_score:.2f}")
+            print(f"  Tool Selection:  {scorecard.tool_selection_score:.2f}")
+            print(f"  Argument Correct:{scorecard.argument_correctness_score:.2f}")
+            print(f"  Ordering Score:  {scorecard.ordering_score:.2f}")
+        return 0 if scorecard.overall_pass else 1
+    except Exception as exc:
+        print(f"Error scoring trajectory: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
+
+def cmd_trajectory_explain(args: argparse.Namespace) -> int:
+    """Explain evidence attribution for a scored trajectory run."""
+    rec_path = Path(args.recording)
+    exp_path = Path(args.expectation)
+
+    if not rec_path.is_file():
+        print(f"Error: Recording file not found: {rec_path}", file=sys.stderr)
+        return 1
+    if not exp_path.is_file():
+        print(f"Error: Expectation file not found: {exp_path}", file=sys.stderr)
+        return 1
+
+    try:
+        store = FileRecordingStore(rec_path.parent)
+        journal = store.read_recording(rec_path.stem)
+        summary = store.read_recording_summary(rec_path.stem)
+        exp_data = json.loads(exp_path.read_text(encoding="utf-8"))
+        expectation = TrajectoryExpectation.model_validate(exp_data)
+
+        scenario_loader = ScenarioLoader()
+        sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
+        loaded = scenario_loader.load_from_path(sc_path)
+
+        evaluator = TrajectoryEvaluator()
+        scorecard = evaluator.evaluate(
+            scenario=loaded.scenario,
+            expectation=expectation,
+            journal=journal,
+            run_id=str(summary.run_id),
+        )
+
+        if getattr(args, "json", False):
+            print(json.dumps([ev.model_dump() for ev in scorecard.evidence_attribution], indent=2))
+        else:
+            print("Evidence Attribution Explanation:")
+            for ev in scorecard.evidence_attribution:
+                status_str = "MATCHED" if ev.matched else "UNMATCHED"
+                print(f"  - [{status_str}] Node '{ev.node_id}': {ev.details}")
+        return 0
+    except Exception as exc:
+        print(f"Error explaining trajectory: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
+
+def cmd_benchmark_validate(args: argparse.Namespace) -> int:
+    """Validate all benchmark scenarios and their expectation graphs."""
+    scenarios_dir = Path(args.scenarios)
+    if not scenarios_dir.is_dir():
+        print(f"Error: Scenarios directory not found: {scenarios_dir}", file=sys.stderr)
+        return 1
+
+    scenario_files = list(scenarios_dir.glob("*.json"))
+    if not scenario_files:
+        print(f"No scenario JSON files found in {scenarios_dir}", file=sys.stderr)
+        return 1
+
+    loader = ScenarioLoader()
+    valid_count = 0
+
+    for sc_file in scenario_files:
+        try:
+            loaded = loader.load_from_path(sc_file)
+            scenario_id = loaded.scenario.scenario_id.id
+            exp_file = sc_file.parent.parent / "expectations" / f"{scenario_id}.json"
+            if exp_file.is_file():
+                exp_data = json.loads(exp_file.read_text(encoding="utf-8"))
+                expectation = TrajectoryExpectation.model_validate(exp_data)
+                errors = validate_trajectory_expectation(expectation)
+                if errors:
+                    print(f"Expectation errors in {exp_file.name}: {errors}", file=sys.stderr)
+                    return 1
+            valid_count += 1
+        except Exception as exc:
+            print(f"Validation failed for {sc_file.name}: {_sanitise_error(exc)}", file=sys.stderr)
+            return 1
+
+    if getattr(args, "json", False):
+        print(json.dumps({"valid": True, "count": valid_count}))
+    else:
+        print(
+            f"All benchmark scenarios & expectations are valid ({valid_count} scenarios checked)."
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="flight-evaluator",
@@ -435,6 +610,30 @@ def main(argv: list[str] | None = None) -> int:
     ar_p.add_argument("--output", "-o", help="Recording output directory.")
     ar_p.set_defaults(func=cmd_agent_run)
 
+    # trajectory subcommands
+    traj_p = subparsers.add_parser(
+        "trajectory", help="Trajectory expectation scoring and analysis."
+    )
+    traj_sub = traj_p.add_subparsers(dest="trajectory_command", required=True)
+
+    traj_val = traj_sub.add_parser("validate", help="Validate an expectation JSON graph.")
+    traj_val.add_argument("expectation", help="Path to expectation JSON file.")
+    traj_val.set_defaults(func=cmd_trajectory_validate)
+
+    traj_score = traj_sub.add_parser(
+        "score", help="Score a run recording against an expectation graph."
+    )
+    traj_score.add_argument("recording", help="Path to run recording JSON file.")
+    traj_score.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
+    traj_score.set_defaults(func=cmd_trajectory_score)
+
+    traj_explain = traj_sub.add_parser(
+        "explain", help="Explain evidence attribution for a scored run."
+    )
+    traj_explain.add_argument("recording", help="Path to run recording JSON file.")
+    traj_explain.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
+    traj_explain.set_defaults(func=cmd_trajectory_explain)
+
     # benchmark run subcommand
     bm_p = subparsers.add_parser("benchmark", help="Benchmark execution.")
     bm_sub = bm_p.add_subparsers(dest="benchmark_command", required=True)
@@ -442,6 +641,12 @@ def main(argv: list[str] | None = None) -> int:
     bm_run_p.add_argument("--scenarios", default="resources/scenarios")
     bm_run_p.add_argument("--output", "-o", help="Output directory.")
     bm_run_p.set_defaults(func=cmd_benchmark_run)
+
+    bm_val_p = bm_sub.add_parser(
+        "validate", help="Validate benchmark scenarios and expectation graphs."
+    )
+    bm_val_p.add_argument("scenarios", nargs="?", default="resources/scenarios")
+    bm_val_p.set_defaults(func=cmd_benchmark_validate)
 
     # run subcommand
     run_p = subparsers.add_parser("run", help="Execute a scenario.")
