@@ -531,6 +531,59 @@ def cmd_trajectory_explain(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_trajectory_diagnose(args: argparse.Namespace) -> int:
+    """Diagnose evidence-backed failure causes for a recorded trajectory run."""
+    from flight_agent_evaluator.evaluation.diagnostics import FailureDiagnosticEngine
+
+    rec_path = Path(args.recording)
+    exp_path = Path(args.expectation)
+
+    if not rec_path.is_file():
+        print(f"Error: Recording file not found: {rec_path}", file=sys.stderr)
+        return 1
+    if not exp_path.is_file():
+        print(f"Error: Expectation file not found: {exp_path}", file=sys.stderr)
+        return 1
+
+    try:
+        store = FileRecordingStore(rec_path.parent)
+        journal = store.read_recording(rec_path.stem)
+        summary = store.read_recording_summary(rec_path.stem)
+        exp_data = json.loads(exp_path.read_text(encoding="utf-8"))
+        expectation = TrajectoryExpectation.model_validate(exp_data)
+
+        scenario_loader = ScenarioLoader()
+        sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
+        loaded = scenario_loader.load_from_path(sc_path)
+
+        evaluator = TrajectoryEvaluator()
+        scorecard = evaluator.evaluate(
+            scenario=loaded.scenario,
+            expectation=expectation,
+            journal=journal,
+            run_id=str(summary.run_id),
+        )
+
+        engine = FailureDiagnosticEngine()
+        report = engine.diagnose(scorecard, expectation, journal)
+
+        if getattr(args, "json", False):
+            print(report.model_dump_json(indent=2))
+        else:
+            print("Agent Failure Diagnostic Report:")
+            print(f"  Scenario ID:        {report.scenario_id}")
+            print(f"  Primary Root Cause: {report.primary_root_cause}")
+            print(f"  Total Failures:     {len(report.diagnoses)}")
+            for diag in report.diagnoses:
+                print(f"  - [{diag.severity.value.upper()}] {diag.category.value}: {diag.summary}")
+                print(f"    Explanation: {diag.root_cause_explanation}")
+                print(f"    Remediation: {diag.remediation_suggestion}")
+        return 0 if report.overall_pass else 1
+    except Exception as exc:
+        print(f"Error diagnosing trajectory: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
+
 def cmd_benchmark_validate(args: argparse.Namespace) -> int:
     """Validate all benchmark scenarios and their expectation graphs."""
     scenarios_dir = Path(args.scenarios)
@@ -633,6 +686,13 @@ def main(argv: list[str] | None = None) -> int:
     traj_explain.add_argument("recording", help="Path to run recording JSON file.")
     traj_explain.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
     traj_explain.set_defaults(func=cmd_trajectory_explain)
+
+    traj_diag = traj_sub.add_parser(
+        "diagnose", help="Diagnose evidence-backed failures for a scored run."
+    )
+    traj_diag.add_argument("recording", help="Path to run recording JSON file.")
+    traj_diag.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
+    traj_diag.set_defaults(func=cmd_trajectory_diagnose)
 
     # benchmark run subcommand
     bm_p = subparsers.add_parser("benchmark", help="Benchmark execution.")
