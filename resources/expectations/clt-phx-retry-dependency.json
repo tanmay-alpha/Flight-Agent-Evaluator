@@ -1,0 +1,56 @@
+{
+  "scenario_id": "clt-phx-retry-dependency",
+  "expectation_version": "1.0.0",
+  "valid_paths": [
+    {
+      "path_id": "path_dependent_search",
+      "name": "Dependent Search Path",
+      "description": "Requires flight status node to be present before alternative search node.",
+      "expected_actions": [
+        {
+          "node_id": "node_status_check",
+          "label": "Status Check",
+          "selector": {
+            "tool_name": "flight.get_status",
+            "argument_constraints": [
+              {
+                "field_pointer": "/flight_id",
+                "operator": "equals",
+                "value": "AA321"
+              }
+            ]
+          },
+          "required": true
+        },
+        {
+          "node_id": "node_search_alternatives",
+          "label": "Search Alternatives",
+          "selector": {
+            "tool_name": "flight.search_flights",
+            "argument_constraints": [
+              {
+                "field_pointer": "/origin",
+                "operator": "equals",
+                "value": "CLT"
+              }
+            ]
+          },
+          "required": true
+        }
+      ],
+      "dependency_constraints": [
+        {
+          "dependent_node_id": "node_search_alternatives",
+          "required_node_id": "node_status_check",
+          "description": "Alternative search depends on status check node"
+        }
+      ],
+      "precedence_constraints": [
+        {
+          "before_node_id": "node_status_check",
+          "after_node_id": "node_search_alternatives"
+        }
+      ]
+    }
+  ]
+}
