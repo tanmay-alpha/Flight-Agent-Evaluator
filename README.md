@@ -2,7 +2,7 @@
 
 An evaluation, replay, and fault-injection platform for aviation AI agents.
 
-> **Current status: Phase 2 — deterministic scenario execution, recording, replay, fault injection and objective evaluation complete.**
+> **Current status: Stage 1 — Benchmark-safe real model-driven agent, deterministic baselines, and replayable model exchanges complete.**
 
 ## Why this project exists
 
@@ -10,30 +10,29 @@ Aviation agents must be evaluated under deterministic, replayable, fault-rich
 conditions. This repository is the foundation for a long-lived engineering
 platform that provides:
 
-- strict, versioned domain contracts (aviation, tools, traces, events);
-- provider-independent interfaces with deterministic fixture support;
-- reproducible replay of agent behaviour;
+- strict, versioned domain contracts (aviation, tools, traces, events, model exchanges);
+- provider-independent interfaces with deterministic fixture and model client support;
+- reproducible replay of agent behaviour and SHA-256 model exchange fingerprinting;
 - typed fault specifications for chaos and resilience testing;
 - a stable assertion and evaluation framework.
 
 It is intentionally **not** a flight chatbot, a notebook, or a vendor
-integration. It is a platform.
+integration. It is an evaluation platform.
 
 ## Roadmap
 
-| Phase | Goal | Status |
-|-------|------|--------|
-| 0     | Project definition and architecture | Complete |
-| 1     | Contracts and deterministic fixture provider | Complete |
-| 2     | Scenario execution, recording, replay and objective evaluation | Complete |
-| 3     | Secure read-only provider adapters and provider-response replay | Planned |
-| 4     | MCP gateway, simulated airline services and approval enforcement | Planned |
-| 5     | Agent harness integrations, provider-conflict and security evaluation | Planned |
-| 6     | Trajectory dataset generation and verifier fine-tuning | Planned |
-| 7     | Distributed evaluation and public benchmark | Planned |
+| Stage | Milestone | Status |
+|-------|-----------|--------|
+| 0     | Evaluator correctness | Complete |
+| 1     | Real model-driven agent, deterministic baselines and replayable model exchanges | Complete |
+| 2     | Trajectory constraint graph and multiple-valid-path scoring | In Progress |
+| 3     | Failure-mode classification and evidence attribution | Planned |
+| 4     | Calibrated LLM judge and human-labelled validation | Planned |
+| 5     | Simulated approval, booking and idempotent mutation environment | Planned |
+| 6     | Multi-model benchmark and evaluator-validity experiments | Planned |
+| 7     | Public held-out benchmark and reproducible results | Planned |
 
-See `docs/PROJECT_PLAN.md` for the full plan and
-`docs/adr/` for architectural decisions.
+See `PROJECT_PLAN.md` for the full roadmap and `docs/` for architecture documents.
 
 ## License
 

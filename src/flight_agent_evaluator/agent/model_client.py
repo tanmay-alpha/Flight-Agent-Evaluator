@@ -1,144 +1,237 @@
-"""OpenAI Model Client for model-driven agent execution and replay."""
+"""Model client implementations: OpenAI Responses API client and Replay client with fingerprinting."""
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+import os
+from typing import Any, Literal
 
 import openai
-from pydantic import BaseModel
 
-from flight_agent_evaluator.agent.security import redact_secrets
-from flight_agent_evaluator.tools.base import ToolRegistry
+from flight_agent_evaluator.contracts.model import (
+    ModelError,
+    ModelErrorType,
+    ModelExchange,
+    ModelExchangeManifest,
+    ModelRequest,
+    ModelResponse,
+    ModelToolCall,
+    ModelUsage,
+)
+
+logger = logging.getLogger(__name__)
+
+ModelMode = Literal["replay", "record", "live"]
 
 
-class ModelExchange(BaseModel):
-    """Recorded turn exchange between agent and OpenAI model."""
-
-    turn_index: int
-    request_messages: list[dict[str, Any]]
-    response_message: dict[str, Any]
-    finish_reason: str = "stop"
-
-
-class ModelClient:
-    """Async OpenAI model client with recording and strict zero-network replay mode."""
+class OpenAIResponsesModelClient:
+    """Async OpenAI model client for live or recorded agent executions."""
 
     def __init__(
         self,
-        api_key: str = "mock-key",
-        model: str = "gpt-4o-mini",
+        model_id: str = "gpt-4o-mini",
+        mode: ModelMode = "replay",
+        allow_live_model: bool = False,
         base_url: str | None = None,
-        replay_mode: bool = False,
-        recorded_exchanges: list[ModelExchange] | None = None,
     ) -> None:
-        self.api_key = api_key
-        self.model = model
-        self.base_url = base_url
-        self.replay_mode = replay_mode
-        self._recorded_exchanges = recorded_exchanges or []
+        self._model_id = model_id
+        self._mode = mode
+        self._allow_live_model = allow_live_model
+        self._base_url = base_url
         self._exchange_history: list[ModelExchange] = []
         self._client: openai.AsyncOpenAI | None = None
 
-        if not self.replay_mode:
+        if self._mode in ("live", "record"):
+            if not self._allow_live_model:
+                raise ValueError(
+                    f"Live/Record mode '{self._mode}' requires explicit --allow-live-model flag."
+                )
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    f"OPENAI_API_KEY environment variable is required for mode '{self._mode}'."
+                )
             self._client = openai.AsyncOpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
+                api_key=api_key,
+                base_url=self._base_url,
             )
 
     @property
+    def provider(self) -> str:
+        return "openai"
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
     def exchange_history(self) -> list[ModelExchange]:
-        """Recorded model exchanges from the current run."""
         return list(self._exchange_history)
 
     def reset(self) -> None:
-        """Reset turn index and exchange history for replay re-execution."""
         self._exchange_history.clear()
 
-    def convert_registry_to_openai_tools(self, registry: ToolRegistry) -> list[dict[str, Any]]:
-        """Convert evaluator ToolRegistry definitions into OpenAI function tools."""
-        openai_tools: list[dict[str, Any]] = []
-        for name, handler in registry.handlers.items():
-            defn = handler.tool_definition
-            openai_tools.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "description": defn.description,
-                        "parameters": defn.input_schema,
-                    },
-                }
-            )
-        return openai_tools
-
-    async def create_chat_completion(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]] | None = None,
-        temperature: float = 0.0,
-    ) -> dict[str, Any]:
-        """Request completion from OpenAI model or replay from recorded history.
-
-        In replay mode, zero network calls are performed.
-        """
-        redacted_messages = redact_secrets(messages, custom_secrets=[self.api_key])
-        turn_index = len(self._exchange_history)
-
-        if self.replay_mode:
-            if turn_index < len(self._recorded_exchanges):
-                exchange = self._recorded_exchanges[turn_index]
-                self._exchange_history.append(exchange)
-                return exchange.response_message
-
-            # Replay unavailable if no recorded response matches
+    async def create_completion(self, request: ModelRequest) -> ModelResponse:
+        """Execute request against OpenAI API (live/record) or recorded history (replay)."""
+        if self._mode == "replay":
             raise RuntimeError(
-                f"Replay error: No recorded model exchange for turn {turn_index} in replay mode."
+                "OpenAIResponsesModelClient in replay mode requires ReplayModelClient."
             )
 
         if self._client is None:
-            raise RuntimeError("AsyncOpenAI client is required for live execution")
+            raise RuntimeError("AsyncOpenAI client not initialized.")
+
+        req_fingerprint = request.canonical_fingerprint()
 
         kwargs: dict[str, Any] = {
-            "model": self.model,
-            "messages": redacted_messages,
-            "temperature": temperature,
+            "model": request.model_id or self._model_id,
+            "messages": request.messages,
+            "temperature": request.model_configuration.temperature,
         }
-        if tools:
-            kwargs["tools"] = tools
+        if request.tools:
+            kwargs["tools"] = request.tools
 
         try:
-            response = await self._client.chat.completions.create(**kwargs)
-            choice = response.choices[0]
-            message_obj = choice.message
+            raw_resp = await self._client.chat.completions.create(**kwargs)
+            choice = raw_resp.choices[0]
+            msg = choice.message
 
-            tool_calls_payload = None
-            if message_obj.tool_calls:
-                tool_calls_payload = [
-                    {
-                        "id": tc.id,
-                        "type": tc.type,
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in message_obj.tool_calls
-                ]
+            tool_calls: list[ModelToolCall] = []
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    import json
 
-            response_dict = {
-                "role": message_obj.role,
-                "content": message_obj.content,
-                "tool_calls": tool_calls_payload,
-                "finish_reason": choice.finish_reason,
-            }
+                    try:
+                        args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                    except json.JSONDecodeError:
+                        args = {}
+                    tool_calls.append(
+                        ModelToolCall(
+                            call_id=tc.id,
+                            tool_name=tc.function.name,
+                            arguments=args,
+                        )
+                    )
+
+            usage = ModelUsage(
+                prompt_tokens=raw_resp.usage.prompt_tokens if raw_resp.usage else 0,
+                completion_tokens=raw_resp.usage.completion_tokens if raw_resp.usage else 0,
+                total_tokens=raw_resp.usage.total_tokens if raw_resp.usage else 0,
+            )
+
+            response = ModelResponse(
+                role=msg.role,
+                content=msg.content,
+                tool_calls=tool_calls,
+                finish_reason=choice.finish_reason or "stop",
+                usage=usage,
+            )
 
             exchange = ModelExchange(
-                turn_index=turn_index,
-                request_messages=redacted_messages,
-                response_message=redact_secrets(response_dict, custom_secrets=[self.api_key]),
-                finish_reason=choice.finish_reason or "stop",
+                turn_index=request.turn_index,
+                request=request,
+                response=response,
+                request_fingerprint=req_fingerprint,
+                response_digest=response.canonical_digest(),
             )
             self._exchange_history.append(exchange)
-            return response_dict
+            return response
+
+        except openai.AuthenticationError as exc:
+            err = ModelError(
+                error_type=ModelErrorType.AUTHENTICATION,
+                message="OpenAI API authentication failed",
+                safe_details={"type": "AuthenticationError"},
+            )
+            raise RuntimeError(err.message) from exc
+        except openai.RateLimitError as exc:
+            err = ModelError(
+                error_type=ModelErrorType.RATE_LIMIT,
+                message="OpenAI API rate limit exceeded",
+                safe_details={"type": "RateLimitError"},
+                retryable=True,
+            )
+            raise RuntimeError(err.message) from exc
+        except openai.APITimeoutError as exc:
+            err = ModelError(
+                error_type=ModelErrorType.TIMEOUT,
+                message="OpenAI API request timed out",
+                safe_details={"type": "APITimeoutError"},
+                retryable=True,
+            )
+            raise RuntimeError(err.message) from exc
+        except openai.APIConnectionError as exc:
+            err = ModelError(
+                error_type=ModelErrorType.CONNECTION_FAILURE,
+                message="OpenAI API connection failed",
+                safe_details={"type": "APIConnectionError"},
+                retryable=True,
+            )
+            raise RuntimeError(err.message) from exc
         except Exception as exc:
-            raise RuntimeError(f"OpenAI API request failed: {exc}") from exc
+            err = ModelError(
+                error_type=ModelErrorType.PROVIDER_UNAVAILABLE,
+                message="OpenAI API provider error",
+                safe_details={"type": type(exc).__name__},
+            )
+            raise RuntimeError(err.message) from exc
+
+
+class ReplayModelClient:
+    """Strict replay model client with SHA-256 fingerprint verification and zero network calls."""
+
+    def __init__(
+        self,
+        manifest_or_exchanges: ModelExchangeManifest | list[ModelExchange],
+        model_id: str = "gpt-4o-mini",
+    ) -> None:
+        if isinstance(manifest_or_exchanges, ModelExchangeManifest):
+            self._exchanges = manifest_or_exchanges.exchanges
+        else:
+            self._exchanges = manifest_or_exchanges
+
+        self._model_id = model_id
+        self._exchange_history: list[ModelExchange] = []
+
+    @property
+    def provider(self) -> str:
+        return "replay"
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
+    def exchange_history(self) -> list[ModelExchange]:
+        return list(self._exchange_history)
+
+    def reset(self) -> None:
+        self._exchange_history.clear()
+
+    async def create_completion(self, request: ModelRequest) -> ModelResponse:
+        """Replay recorded response for request. Zero network calls performed."""
+        turn_index = request.turn_index
+        if turn_index >= len(self._exchanges):
+            err = ModelError(
+                error_type=ModelErrorType.REPLAY_MISSING_EXCHANGE,
+                message=f"Replay error: No recorded model exchange for turn index {turn_index}",
+            )
+            raise RuntimeError(err.message)
+
+        recorded_exchange = self._exchanges[turn_index]
+        expected_fingerprint = recorded_exchange.request_fingerprint
+        actual_fingerprint = request.canonical_fingerprint()
+
+        if actual_fingerprint != expected_fingerprint:
+            err = ModelError(
+                error_type=ModelErrorType.REPLAY_FINGERPRINT_MISMATCH,
+                message=(
+                    f"Replay fingerprint mismatch at turn {turn_index}.\n"
+                    f"Expected: {expected_fingerprint}\n"
+                    f"Actual:   {actual_fingerprint}"
+                ),
+            )
+            raise RuntimeError(err.message)
+
+        self._exchange_history.append(recorded_exchange)
+        return recorded_exchange.response
