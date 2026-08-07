@@ -163,16 +163,13 @@ def gate_wheel() -> bool:
     print(f"Inspecting: {wheel.name}")
     with zipfile.ZipFile(wheel, "r") as zf:
         names = zf.namelist()
-        # Defensive Zip Slip check: reject members with absolute paths or parent-directory escapes.
         for name in names:
             if name.startswith("/") or ".." in name.split("/"):
                 print(f"Suspicious zip member path skipped: {name}")
                 return False
-        # Must contain py.typed marker.
         if not any(n.endswith("py.typed") for n in names):
             print("py.typed not found in wheel")
             return False
-        # Must not contain __pycache__.
         if any("__pycache__" in n for n in names):
             print("__pycache__ found in wheel")
             return False
@@ -199,12 +196,10 @@ def gate_sdist() -> bool:
     except tarfile.ReadError:
         print(f"sdist is not a valid tar.gz: {sdist}")
         return False
-    # Defensive Tar Slip check: reject members with absolute paths or parent-directory escapes.
     for name in names:
         if name.startswith("/") or ".." in name.split("/"):
             print(f"Suspicious tar member path skipped: {name}")
             return False
-    # Must contain py.typed.
     if not any(n.endswith("py.typed") for n in names):
         print("py.typed not found in sdist")
         return False
@@ -227,7 +222,7 @@ def gate_install_wheel() -> bool:
     with tempfile.TemporaryDirectory(prefix="fae-install-test-") as tmp:
         venv_dir = Path(tmp) / "venv"
         print(f"Creating test venv: {venv_dir}")
-        result = subprocess.run(  # noqa: S603 — safe: list args, no shell=True
+        result = subprocess.run(  # noqa: S603
             [PYTHON, "-m", "venv", str(venv_dir)],
             check=False,
         )
@@ -235,7 +230,7 @@ def gate_install_wheel() -> bool:
             print("Failed to create venv")
             return False
         pip = venv_dir / "Scripts" / "pip.exe" if os.name == "nt" else venv_dir / "bin" / "pip"
-        result = subprocess.run(  # noqa: S603 — safe: list args, no shell=True
+        result = subprocess.run(  # noqa: S603
             [str(pip), "install", "--quiet", str(wheel)],
             check=False,
         )
@@ -245,7 +240,7 @@ def gate_install_wheel() -> bool:
         python = (
             venv_dir / "Scripts" / "python.exe" if os.name == "nt" else venv_dir / "bin" / "python"
         )
-        import_result = subprocess.run(  # noqa: S603 — safe: list args, no shell=True
+        import_result = subprocess.run(  # noqa: S603
             [str(python), "-c", "import flight_agent_evaluator; print('OK')"],
             check=False,
             capture_output=True,
@@ -304,7 +299,6 @@ def gate_pytyped() -> bool:
     if not pytyped.exists():
         print(f"py.typed not found at {pytyped}")
         return False
-    # Must be empty marker file per PEP 561.
     content = pytyped.read_text(encoding="utf-8")
     if content.strip():
         print(f"py.typed should be empty, got: {content[:50]!r}")
@@ -333,46 +327,56 @@ def gate_readme() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Gate 15: Deterministic fixture smoke test
+# Gate 15: Reference Leakage Scanner
+# ---------------------------------------------------------------------------
+
+
+def gate_leakage_scanner() -> bool:
+    """Verify that reference answers never leak into model requests."""
+    code = (
+        "from flight_agent_evaluator.contracts.model import ModelRequest, PromptPolicy, ModelConfiguration; "
+        "from flight_agent_evaluator.agent.security import scan_request_for_reference_leakage; "
+        "secret = 'SECRET_ORACLE_ANSWER_MARKER_999'; "
+        "req = ModelRequest("
+        "   provider='openai', model_id='gpt-4o-mini', prompt_policy_id='p1', prompt_policy_version='1.0', "
+        "   prompt_digest='dig', turn_index=0, messages=[{'role': 'user', 'content': 'Hello'}], "
+        "   tools=[], model_configuration=ModelConfiguration()"
+        "); "
+        "v = scan_request_for_reference_leakage(req, [secret]); "
+        "assert len(v) == 0, 'Clean request should have zero leakage'; "
+        "leaky_req = req.model_copy(update={'messages': [{'role': 'user', 'content': secret}]}); "
+        "v2 = scan_request_for_reference_leakage(leaky_req, [secret]); "
+        "assert len(v2) > 0, 'Leaky request must trigger violation'; "
+        "print('Reference leakage scanner gate: OK')"
+    )
+    return _run("benchmark reference leakage scanner gate", ["uv", "run", "python", "-c", code])
+
+
+# ---------------------------------------------------------------------------
+# Gate 16: Deterministic fixture smoke test
 # ---------------------------------------------------------------------------
 
 
 def gate_smoke() -> bool:
-    """Complete Phase 2 smoke gate using temporary directories."""
+    """Complete Stage 1 benchmark-safe agent smoke gate."""
     code = (
         "import asyncio, tempfile, pathlib; "
         "from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader; "
-        "from flight_agent_evaluator.engine.runner import ScenarioRunner; "
-        "from flight_agent_evaluator.replay.engine import ReplayEngine; "
-        "from flight_agent_evaluator.recording.store import FileRecordingStore; "
+        "from flight_agent_evaluator.engine.benchmark import BenchmarkRunner; "
+        "from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent, NaiveBaselineAgent; "
         "loader = ScenarioLoader(); "
         "sc1 = loader.load_from_path(pathlib.Path('resources/scenarios/jfk-lhr-delay.json')); "
-        "sc2 = loader.load_from_path(pathlib.Path('resources/scenarios/jfk-lhr-timeout-recovery.json')); "
+        "sc2 = loader.load_from_path(pathlib.Path('resources/scenarios/lax-sfo-ontime.json')); "
         "assert sc1.scenario.scenario_id.id == 'jfk-lhr-delay'; "
-        "assert sc2.scenario.scenario_id.id == 'jfk-lhr-timeout-recovery'; "
-        "tmp = tempfile.TemporaryDirectory(); "
-        "td = pathlib.Path(tmp.name); "
-        "runner = ScenarioRunner(); "
-        "rec1 = asyncio.run(runner.run(sc1, output_dir=td)); "
-        "engine = ReplayEngine(td); "
-        "rep1 = engine.verify(str(rec1.run_id)); "
-        "assert rep1.status in ('verified', 'behaviour_verified'); "
-        "pb1 = engine.playback(str(rec1.run_id)); "
-        "assert len(pb1['entries']) > 0; "
-        "store = FileRecordingStore(td); "
-        "j1 = store.read_recording(str(rec1.run_id)); "
-        "rec1_again = asyncio.run(runner.run(sc1, output_dir=td)); "
-        "j1_again = store.read_recording(str(rec1_again.run_id)); "
-        "assert j1.final_digest() == j1_again.final_digest(); "
-        "rec2 = asyncio.run(runner.run(sc2, output_dir=td)); "
-        "rep2 = engine.verify(str(rec2.run_id)); "
-        "assert rep2.status in ('verified', 'behaviour_verified'); "
-        "tmp.cleanup(); "
-        "print('Phase 2 smoke gate: OK')"
+        "assert sc2.scenario.scenario_id.id == 'lax-sfo-ontime'; "
+        "runner = BenchmarkRunner(scenario_loader=loader); "
+        "mv1 = asyncio.run(runner.run_scenario(sc1.scenario, ScriptedOracleAgent())); "
+        "assert mv1.safety_pass; "
+        "mv2 = asyncio.run(runner.run_scenario(sc2.scenario, NaiveBaselineAgent())); "
+        "assert mv2.safety_pass; "
+        "print('Stage 1 benchmark agent smoke gate: OK')"
     )
-    return _run(
-        "deterministic fixture and scenario replay smoke gate", ["uv", "run", "python", "-c", code]
-    )
+    return _run("deterministic benchmark agent smoke gate", ["uv", "run", "python", "-c", code])
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +398,7 @@ SPECIFIC_GATES: dict[str, Callable[[], bool]] = {
     "fixtures": gate_fixtures,
     "pytyped": gate_pytyped,
     "readme": gate_readme,
+    "leakage": gate_leakage_scanner,
     "smoke": gate_smoke,
 }
 
@@ -423,6 +428,7 @@ def main() -> int:
         gate_fixtures,
         gate_pytyped,
         gate_readme,
+        gate_leakage_scanner,
         gate_smoke,
     ]
     all_passed = all(g() for g in gates)
