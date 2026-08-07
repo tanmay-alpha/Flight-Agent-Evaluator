@@ -1,15 +1,26 @@
 """Trajectory Expectation data contracts and graph validation routines.
 
-Defines versioned, pure data structures representing valid trajectory paths,
+Defines versioned, strict pure data structures representing valid trajectory paths,
 expected actions, argument predicates, precedence & dependency rules,
 forbidden actions, recovery constraints, and scoring profiles.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, field_validator, model_validator
+
+from flight_agent_evaluator.contracts.base import ContractModel, _assert_json_serialisable
+
+# Maximum bounded limits to prevent malicious/unbounded evaluation work
+MAX_VALID_PATHS: Final[int] = 20
+MAX_EXPECTED_ACTIONS_PER_PATH: Final[int] = 50
+MAX_CONSTRAINTS_PER_NODE: Final[int] = 30
+MAX_DEPENDENCY_EDGES: Final[int] = 50
+MAX_PRECEDENCE_EDGES: Final[int] = 50
+MAX_RECOVERY_RULES: Final[int] = 20
+MAX_SAFETY_RULES: Final[int] = 20
 
 # ---------------------------------------------------------------------------
 # Argument & Selector Predicates
@@ -29,7 +40,7 @@ ArgumentOperator = Literal[
 ]
 
 
-class ArgumentConstraint(BaseModel):
+class ArgumentConstraint(ContractModel):
     """Predicate constraining a single argument field extracted via JSON Pointer."""
 
     field_pointer: str = Field(
@@ -38,14 +49,24 @@ class ArgumentConstraint(BaseModel):
     )
     operator: ArgumentOperator = Field(..., description="Operator used to compare field value.")
     value: Any = Field(default=None, description="Expected literal value or range boundary.")
-    reference_pointer: str | None = Field(
+    reference_node_id: str | None = Field(
         default=None,
-        description="Optional JSON Pointer to another field in history for reference_equals.",
+        description="Explicit node ID in history for reference_equals.",
+    )
+    reference_field_pointer: str | None = Field(
+        default=None,
+        description="Explicit JSON Pointer in reference node's result for reference_equals.",
     )
     description: str = Field(default="", description="Human-readable description of constraint.")
 
+    @field_validator("value")
+    @classmethod
+    def _validate_value_serialisable(cls, v: Any) -> Any:
+        _assert_json_serialisable(v, "value")
+        return v
 
-class ActionSelector(BaseModel):
+
+class ActionSelector(ContractModel):
     """Criteria used to match observed tool calls to an expected action node."""
 
     tool_name: str | None = Field(
@@ -55,11 +76,13 @@ class ActionSelector(BaseModel):
         default=None, description="Authoritative mutation class (e.g., 'read_only')."
     )
     argument_constraints: list[ArgumentConstraint] = Field(
-        default_factory=list, description="Argument field predicates required for matching."
+        default_factory=list,
+        max_length=MAX_CONSTRAINTS_PER_NODE,
+        description="Argument field predicates required for matching.",
     )
 
 
-class OccurrenceConstraint(BaseModel):
+class OccurrenceConstraint(ContractModel):
     """Occurrence bounds for an expected action node."""
 
     min_occurs: int = Field(default=1, ge=0, description="Minimum allowed occurrences.")
@@ -71,6 +94,8 @@ class OccurrenceConstraint(BaseModel):
     def validate_bounds(self) -> OccurrenceConstraint:
         if self.max_occurs is not None and self.max_occurs < self.min_occurs:
             raise ValueError(f"max_occurs ({self.max_occurs}) < min_occurs ({self.min_occurs})")
+        if self.max_occurs is not None and self.max_occurs < 1:
+            raise ValueError(f"max_occurs ({self.max_occurs}) must be >= 1")
         return self
 
 
@@ -79,7 +104,7 @@ class OccurrenceConstraint(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class ExpectedAction(BaseModel):
+class ExpectedAction(ContractModel):
     """A node in a valid path graph representing an expected tool invocation."""
 
     node_id: str = Field(..., description="Unique node identifier within the valid path.")
@@ -93,7 +118,7 @@ class ExpectedAction(BaseModel):
     )
 
 
-class PrecedenceConstraint(BaseModel):
+class PrecedenceConstraint(ContractModel):
     """Ordering constraint requiring before_node_id to execute before after_node_id."""
 
     before_node_id: str = Field(..., description="Node ID that must execute first.")
@@ -101,7 +126,7 @@ class PrecedenceConstraint(BaseModel):
     description: str = Field(default="", description="Description of ordering requirement.")
 
 
-class DependencyConstraint(BaseModel):
+class DependencyConstraint(ContractModel):
     """Data/execution dependency requiring required_node_id prior to dependent_node_id."""
 
     dependent_node_id: str = Field(..., description="Node ID that depends on required_node_id.")
@@ -109,7 +134,7 @@ class DependencyConstraint(BaseModel):
     description: str = Field(default="", description="Description of dependency.")
 
 
-class ForbiddenActionConstraint(BaseModel):
+class ForbiddenActionConstraint(ContractModel):
     """Constraint prohibiting matching tool invocations."""
 
     rule_id: str = Field(..., description="Unique identifier for forbidden action rule.")
@@ -117,7 +142,7 @@ class ForbiddenActionConstraint(BaseModel):
     description: str = Field(default="", description="Why this action is forbidden.")
 
 
-class RecoveryConstraint(BaseModel):
+class RecoveryConstraint(ContractModel):
     """Constraint requiring specific recovery action following a trigger event."""
 
     rule_id: str = Field(..., description="Unique rule identifier.")
@@ -142,15 +167,21 @@ PathOperator = Literal[
 ]
 
 
-class PathCondition(BaseModel):
+class PathCondition(ContractModel):
     """Condition evaluated against environment or state determining path applicability."""
 
     field_pointer: str = Field(..., description="JSON Pointer in state snapshot or context.")
     operator: PathOperator = Field(..., description="Condition operator.")
     value: Any = Field(default=None, description="Expected comparison value.")
 
+    @field_validator("value")
+    @classmethod
+    def _validate_value_serialisable(cls, v: Any) -> Any:
+        _assert_json_serialisable(v, "value")
+        return v
 
-class ValidPath(BaseModel):
+
+class ValidPath(ContractModel):
     """A single valid solution path represented as a constraint graph."""
 
     path_id: str = Field(..., description="Unique path identifier (e.g., 'path_direct').")
@@ -160,23 +191,32 @@ class ValidPath(BaseModel):
         default_factory=list, description="Conditions for this path to be applicable."
     )
     expected_actions: list[ExpectedAction] = Field(
-        ..., description="Nodes representing expected tool actions."
+        ...,
+        min_length=1,
+        max_length=MAX_EXPECTED_ACTIONS_PER_PATH,
+        description="Nodes representing expected tool actions.",
     )
     precedence_constraints: list[PrecedenceConstraint] = Field(
-        default_factory=list, description="Precedence/ordering edges."
+        default_factory=list,
+        max_length=MAX_PRECEDENCE_EDGES,
+        description="Precedence/ordering edges.",
     )
     dependency_constraints: list[DependencyConstraint] = Field(
-        default_factory=list, description="Dependency edges."
+        default_factory=list,
+        max_length=MAX_DEPENDENCY_EDGES,
+        description="Dependency edges.",
     )
     forbidden_actions: list[ForbiddenActionConstraint] = Field(
         default_factory=list, description="Forbidden actions specific to this path."
     )
     recovery_constraints: list[RecoveryConstraint] = Field(
-        default_factory=list, description="Recovery rules specific to this path."
+        default_factory=list,
+        max_length=MAX_RECOVERY_RULES,
+        description="Recovery rules specific to this path.",
     )
 
 
-class SafetyConstraint(BaseModel):
+class SafetyConstraint(ContractModel):
     """Hard safety rule evaluated across all paths."""
 
     rule_id: str = Field(..., description="Rule identifier.")
@@ -189,10 +229,10 @@ class SafetyConstraint(BaseModel):
     description: str = Field(default="", description="Description of safety constraint.")
 
 
-class ScoringProfile(BaseModel):
+class ScoringProfile(ContractModel):
     """Weights and parameters for multi-dimensional scorecard generation."""
 
-    profile_id: str = Field(default="default_v1", description="Scoring profile identifier.")
+    profile_id: str = Field(default="trajectory-scoring-v1", description="Profile identifier.")
     version: str = Field(default="1.0.0", description="Profile version.")
     weight_outcome: float = Field(default=0.3, ge=0.0, le=1.0)
     weight_tool_selection: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -203,17 +243,48 @@ class ScoringProfile(BaseModel):
     unmatched_call_penalty: float = Field(default=0.05, ge=0.0, le=1.0)
     unnecessary_call_penalty: float = Field(default=0.02, ge=0.0, le=1.0)
 
+    @model_validator(mode="after")
+    def validate_weights_sum(self) -> ScoringProfile:
+        total_weight = (
+            self.weight_outcome
+            + self.weight_tool_selection
+            + self.weight_argument_correctness
+            + self.weight_dependency
+            + self.weight_ordering
+            + self.weight_efficiency
+        )
+        if abs(total_weight - 1.0) > 1e-5 and total_weight > 0:
+            # Auto-normalize component weights to ensure sum == 1.0
+            object.__setattr__(self, "weight_outcome", self.weight_outcome / total_weight)
+            object.__setattr__(
+                self, "weight_tool_selection", self.weight_tool_selection / total_weight
+            )
+            object.__setattr__(
+                self,
+                "weight_argument_correctness",
+                self.weight_argument_correctness / total_weight,
+            )
+            object.__setattr__(self, "weight_dependency", self.weight_dependency / total_weight)
+            object.__setattr__(self, "weight_ordering", self.weight_ordering / total_weight)
+            object.__setattr__(self, "weight_efficiency", self.weight_efficiency / total_weight)
+        return self
 
-class TrajectoryExpectation(BaseModel):
+
+class TrajectoryExpectation(ContractModel):
     """Complete expectation schema for a scenario, stored strictly outside agent view."""
 
     scenario_id: str = Field(..., description="Matching scenario identifier.")
     expectation_version: str = Field(default="1.0.0", description="Expectation schema version.")
     valid_paths: list[ValidPath] = Field(
-        ..., min_length=1, description="Predefined valid solution paths."
+        ...,
+        min_length=1,
+        max_length=MAX_VALID_PATHS,
+        description="Predefined valid solution paths.",
     )
     safety_constraints: list[SafetyConstraint] = Field(
-        default_factory=list, description="Global safety rules."
+        default_factory=list,
+        max_length=MAX_SAFETY_RULES,
+        description="Global safety rules.",
     )
     scoring_profile: ScoringProfile = Field(
         default_factory=ScoringProfile, description="Scoring profile weights."
@@ -233,40 +304,79 @@ def validate_trajectory_expectation(expectation: TrajectoryExpectation) -> list[
     """
     errors: list[str] = []
 
+    # Check duplicate path IDs
+    path_ids = [p.path_id for p in expectation.valid_paths]
+    if len(set(path_ids)) != len(path_ids):
+        errors.append("Expectation contains duplicate path IDs.")
+
+    # Check duplicate safety rule IDs
+    safety_rule_ids = [s.rule_id for s in expectation.safety_constraints]
+    if len(set(safety_rule_ids)) != len(safety_rule_ids):
+        errors.append("Expectation contains duplicate safety rule IDs.")
+
     for path in expectation.valid_paths:
-        node_ids = {n.node_id for n in path.expected_actions}
+        node_ids = [n.node_id for n in path.expected_actions]
+        unique_node_ids = set(node_ids)
 
         # Check duplicate node IDs
-        if len(node_ids) != len(path.expected_actions):
+        if len(unique_node_ids) != len(node_ids):
             errors.append(f"Path '{path.path_id}' contains duplicate expected node IDs.")
+
+        # Check path has at least one required action
+        if not any(n.required for n in path.expected_actions):
+            errors.append(f"Path '{path.path_id}' has no required actions.")
+
+        # Check duplicate rule IDs in forbidden and recovery constraints
+        forbidden_rule_ids = [f.rule_id for f in path.forbidden_actions]
+        if len(set(forbidden_rule_ids)) != len(forbidden_rule_ids):
+            errors.append(f"Path '{path.path_id}' contains duplicate forbidden rule IDs.")
+
+        recovery_rule_ids = [r.rule_id for r in path.recovery_constraints]
+        if len(set(recovery_rule_ids)) != len(recovery_rule_ids):
+            errors.append(f"Path '{path.path_id}' contains duplicate recovery rule IDs.")
 
         # Validate node references in precedence constraints
         for prec in path.precedence_constraints:
-            if prec.before_node_id not in node_ids:
+            if prec.before_node_id == prec.after_node_id:
+                errors.append(
+                    f"Path '{path.path_id}' contains self-precedence for node '{prec.before_node_id}'."
+                )
+            if prec.before_node_id not in unique_node_ids:
                 errors.append(
                     f"Path '{path.path_id}' precedence before_node_id '{prec.before_node_id}' not in expected nodes."
                 )
-            if prec.after_node_id not in node_ids:
+            if prec.after_node_id not in unique_node_ids:
                 errors.append(
                     f"Path '{path.path_id}' precedence after_node_id '{prec.after_node_id}' not in expected nodes."
                 )
 
         # Validate node references in dependency constraints
         for dep in path.dependency_constraints:
-            if dep.dependent_node_id not in node_ids:
+            if dep.dependent_node_id == dep.required_node_id:
+                errors.append(
+                    f"Path '{path.path_id}' contains self-dependency for node '{dep.dependent_node_id}'."
+                )
+            if dep.dependent_node_id not in unique_node_ids:
                 errors.append(
                     f"Path '{path.path_id}' dependency dependent_node_id '{dep.dependent_node_id}' not in expected nodes."
                 )
-            if dep.required_node_id not in node_ids:
+            if dep.required_node_id not in unique_node_ids:
                 errors.append(
                     f"Path '{path.path_id}' dependency required_node_id '{dep.required_node_id}' not in expected nodes."
                 )
 
-        # Check dependency cycle using DFS
-        graph: dict[str, list[str]] = {n: [] for n in node_ids}
+        # Validate node references in recovery constraints
+        errors.extend(
+            f"Path '{path.path_id}' recovery rule '{rec.rule_id}' expected_node_id '{rec.expected_node_id}' not in expected nodes."
+            for rec in path.recovery_constraints
+            if rec.expected_node_id not in unique_node_ids
+        )
+
+        # Check dependency cycles using DFS
+        dep_graph: dict[str, list[str]] = {n: [] for n in unique_node_ids}
         for dep in path.dependency_constraints:
-            if dep.dependent_node_id in graph and dep.required_node_id in graph:
-                graph[dep.dependent_node_id].append(dep.required_node_id)
+            if dep.dependent_node_id in dep_graph and dep.required_node_id in dep_graph:
+                dep_graph[dep.dependent_node_id].append(dep.required_node_id)
 
         visited_nodes: set[str] = set()
         rec_stack_nodes: set[str] = set()
@@ -285,11 +395,37 @@ def validate_trajectory_expectation(expectation: TrajectoryExpectation) -> list[
             rec_stack.remove(u)
             return False
 
-        for node in node_ids:
-            if node not in visited_nodes and dfs(node, graph, visited_nodes, rec_stack_nodes):
+        for node in unique_node_ids:
+            if node not in visited_nodes and dfs(node, dep_graph, visited_nodes, rec_stack_nodes):
                 errors.append(
                     f"Path '{path.path_id}' contains a dependency cycle involving node '{node}'."
                 )
                 break
+
+        # Check precedence cycles using DFS
+        prec_graph: dict[str, list[str]] = {n: [] for n in unique_node_ids}
+        for prec in path.precedence_constraints:
+            if prec.before_node_id in prec_graph and prec.after_node_id in prec_graph:
+                prec_graph[prec.before_node_id].append(prec.after_node_id)
+
+        prec_visited: set[str] = set()
+        prec_stack: set[str] = set()
+
+        for node in unique_node_ids:
+            if node not in prec_visited and dfs(node, prec_graph, prec_visited, prec_stack):
+                errors.append(
+                    f"Path '{path.path_id}' contains a precedence cycle involving node '{node}'."
+                )
+                break
+
+        # Check contradictory required vs forbidden actions
+        errors.extend(
+            f"Path '{path.path_id}' node '{act.node_id}' requires tool '{act.selector.tool_name}' which is unconditionally forbidden in path."
+            for act in path.expected_actions
+            if act.required
+            for forb in path.forbidden_actions
+            if act.selector.tool_name == forb.selector.tool_name
+            and not forb.selector.argument_constraints
+        )
 
     return errors

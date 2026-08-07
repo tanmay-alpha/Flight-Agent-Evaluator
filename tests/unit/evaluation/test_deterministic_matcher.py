@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from flight_agent_evaluator.contracts.json_pointer import (
+    MISSING,
+    resolve_json_pointer,
+)
 from flight_agent_evaluator.contracts.trajectory_expectation import (
     ActionSelector,
     ArgumentConstraint,
@@ -14,7 +18,6 @@ from flight_agent_evaluator.contracts.trajectory_expectation import (
 from flight_agent_evaluator.evaluation.matcher import (
     DeterministicBoundedMatcher,
     evaluate_argument_constraint,
-    resolve_json_pointer,
 )
 from flight_agent_evaluator.evaluation.observation import ObservedToolAction, ObservedTrajectory
 
@@ -24,7 +27,8 @@ def test_resolve_json_pointer():
     assert resolve_json_pointer(data, "/flight_id") == "AS142"
     assert resolve_json_pointer(data, "/passengers/0/name") == "Alice"
     assert resolve_json_pointer(data, "/passengers/1/name") == "Bob"
-    assert resolve_json_pointer(data, "/non_existent") is None
+
+    assert resolve_json_pointer(data, "/non_existent") is MISSING
 
 
 def test_evaluate_argument_constraints():
@@ -174,9 +178,9 @@ def test_all_argument_predicate_operators():
     assert evaluate_argument_constraint(c_dt, {"time": "2026-01-01T12:00:00Z"})
     assert not evaluate_argument_constraint(c_dt, {"time": "2026-01-03T00:00:00Z"})
 
-    # subset
-    c_sub = ArgumentConstraint(field_pointer="/tags", operator="subset", value=["a", "b", "c"])
-    assert evaluate_argument_constraint(c_sub, {"tags": ["a", "b"]})
+    # subset: expected ⊆ actual
+    c_sub = ArgumentConstraint(field_pointer="/tags", operator="subset", value=["a", "b"])
+    assert evaluate_argument_constraint(c_sub, {"tags": ["a", "b", "c"]})
     assert not evaluate_argument_constraint(c_sub, {"tags": ["a", "d"]})
 
     # canonical_equals
@@ -185,7 +189,10 @@ def test_all_argument_predicate_operators():
 
     # reference_equals
     c_ref = ArgumentConstraint(
-        field_pointer="/id", operator="reference_equals", reference_pointer="/ref_id"
+        field_pointer="/id",
+        operator="reference_equals",
+        reference_node_id="prev_node",
+        reference_field_pointer="/ref_id",
     )
     prev_act = ObservedToolAction(
         call_id="c0",
@@ -195,8 +202,12 @@ def test_all_argument_predicate_operators():
         result={"ref_id": "123"},
         start_time="2026-01-01T00:00:00Z",
     )
-    assert evaluate_argument_constraint(c_ref, {"id": "123"}, history_actions=[prev_act])
-    assert not evaluate_argument_constraint(c_ref, {"id": "456"}, history_actions=[prev_act])
+    assert evaluate_argument_constraint(
+        c_ref, {"id": "123"}, aligned_mapping={"prev_node": prev_act}
+    )
+    assert not evaluate_argument_constraint(
+        c_ref, {"id": "456"}, aligned_mapping={"prev_node": prev_act}
+    )
 
 
 def test_matcher_max_states_limit():
