@@ -126,6 +126,7 @@ select = [
 ignore = [
     "ANN401", # dynamcially typed Any in annotations is sometimes required for JSON types
     "E501",   # line length handled by formatter
+    "UP038",  # isinstance tuple vs union syntax
 ]
 
 [tool.ruff.lint.per-file-ignores]
