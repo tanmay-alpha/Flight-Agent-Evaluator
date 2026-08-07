@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "unknown-flight-lookup",
+    "version": 1
+  },
+  "metadata": {
+    "title": "Unknown flight lookup scenario",
+    "description": "Passenger requests status for a non-existent flight AS999. Agent should handle gracefully without inventing details.",
+    "objective": "Verify graceful error handling for unknown flight query."
+  },
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 120
+  },
+  "seed": 42,
+  "steps": [
+    {
+      "step_id": "lookup-unknown-flight",
+      "description": "Passenger asks: 'Please check status for flight AS999 on 2026-07-28.'",
+      "initial_message": "Please check status for flight AS999 on 2026-07-28."
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_id": "status-lookup-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    }
+  ],
+  "faults": [],
+  "trajectory": {
+    "trajectory_id": "unknown-flight-lookup-trajectory",
+    "description": "Status lookup for non-existent flight AS999",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-status",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "AS999",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-2-response",
+        "response": "Flight AS999 was not found in the airline system."
+      }
+    ]
+  }
+}
