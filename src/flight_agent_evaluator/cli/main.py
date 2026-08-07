@@ -478,7 +478,7 @@ def cmd_trajectory_score(args: argparse.Namespace) -> int:
             print(f"  Selected Path:   {scorecard.selected_path_id}")
             print(f"  Overall Pass:    {scorecard.overall_pass}")
             print(f"  Composite Score: {scorecard.composite_score:.2f}")
-            print(f"  Tool Selection:  {scorecard.tool_selection_score:.2f}")
+            print(f"  Tool Selection:  {scorecard.tool_f1:.2f}")
             print(f"  Argument Correct:{scorecard.argument_correctness_score:.2f}")
             print(f"  Ordering Score:  {scorecard.ordering_score:.2f}")
         return 0 if scorecard.overall_pass else 1

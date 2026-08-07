@@ -103,8 +103,14 @@ class OpenAIResponsesModelClient:
 
                     try:
                         args = json.loads(tc.function.arguments) if tc.function.arguments else {}
-                    except json.JSONDecodeError:
-                        args = {}
+                    except json.JSONDecodeError as err:
+                        raise RuntimeError(
+                            f"InvalidModelToolCall: Malformed JSON in tool call '{tc.function.name}' ({tc.id}): {err}"
+                        ) from err
+                    if not isinstance(args, dict):
+                        raise RuntimeError(
+                            f"InvalidModelToolCall: Tool call '{tc.function.name}' arguments must be a JSON object, got {type(args).__name__}"
+                        )
                     tool_calls.append(
                         ModelToolCall(
                             call_id=tc.id,
@@ -138,43 +144,43 @@ class OpenAIResponsesModelClient:
             return response
 
         except openai.AuthenticationError as exc:
-            err = ModelError(
+            m_err1 = ModelError(
                 error_type=ModelErrorType.AUTHENTICATION,
                 message="OpenAI API authentication failed",
                 safe_details={"type": "AuthenticationError"},
             )
-            raise RuntimeError(err.message) from exc
+            raise RuntimeError(m_err1.message) from exc
         except openai.RateLimitError as exc:
-            err = ModelError(
+            m_err2 = ModelError(
                 error_type=ModelErrorType.RATE_LIMIT,
                 message="OpenAI API rate limit exceeded",
                 safe_details={"type": "RateLimitError"},
                 retryable=True,
             )
-            raise RuntimeError(err.message) from exc
+            raise RuntimeError(m_err2.message) from exc
         except openai.APITimeoutError as exc:
-            err = ModelError(
+            m_err3 = ModelError(
                 error_type=ModelErrorType.TIMEOUT,
                 message="OpenAI API request timed out",
                 safe_details={"type": "APITimeoutError"},
                 retryable=True,
             )
-            raise RuntimeError(err.message) from exc
+            raise RuntimeError(m_err3.message) from exc
         except openai.APIConnectionError as exc:
-            err = ModelError(
+            m_err4 = ModelError(
                 error_type=ModelErrorType.CONNECTION_FAILURE,
                 message="OpenAI API connection failed",
                 safe_details={"type": "APIConnectionError"},
                 retryable=True,
             )
-            raise RuntimeError(err.message) from exc
+            raise RuntimeError(m_err4.message) from exc
         except Exception as exc:
-            err = ModelError(
+            m_err5 = ModelError(
                 error_type=ModelErrorType.PROVIDER_UNAVAILABLE,
                 message="OpenAI API provider error",
                 safe_details={"type": type(exc).__name__},
             )
-            raise RuntimeError(err.message) from exc
+            raise RuntimeError(m_err5.message) from exc
 
 
 class ReplayModelClient:
