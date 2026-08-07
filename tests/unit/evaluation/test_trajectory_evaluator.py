@@ -109,7 +109,7 @@ def test_trajectory_evaluator_end_to_end():
     assert scorecard.overall_pass
     assert scorecard.safety_pass
     assert scorecard.selected_path_id == "path_direct"
-    assert scorecard.tool_selection_score == 1.0
+    assert scorecard.tool_f1 == 1.0
     assert scorecard.argument_correctness_score == 1.0
     assert scorecard.composite_score > 0.8
     assert len(scorecard.evidence_attribution) == 1
@@ -125,10 +125,11 @@ def test_is_path_applicable():
     cond3 = PathCondition(field_pointer="/category", operator="one_of", value=["A", "B"])
     cond4 = PathCondition(field_pointer="/active", operator="boolean", value=True)
 
-    path1 = ValidPath(path_id="p1", expected_actions=[], applicability_conditions=[cond1])
-    path2 = ValidPath(path_id="p2", expected_actions=[], applicability_conditions=[cond2])
-    path3 = ValidPath(path_id="p3", expected_actions=[], applicability_conditions=[cond3])
-    path4 = ValidPath(path_id="p4", expected_actions=[], applicability_conditions=[cond4])
+    dummy_act = ExpectedAction(node_id="dummy", selector=ActionSelector(tool_name="dummy_tool"))
+    path1 = ValidPath(path_id="p1", expected_actions=[dummy_act], applicability_conditions=[cond1])
+    path2 = ValidPath(path_id="p2", expected_actions=[dummy_act], applicability_conditions=[cond2])
+    path3 = ValidPath(path_id="p3", expected_actions=[dummy_act], applicability_conditions=[cond3])
+    path4 = ValidPath(path_id="p4", expected_actions=[dummy_act], applicability_conditions=[cond4])
 
     obs = ObservedTrajectory(scenario_id="s", run_id="r")
 
