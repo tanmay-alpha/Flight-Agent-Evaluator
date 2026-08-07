@@ -117,7 +117,7 @@ def _make_namespace(command: str, **kwargs) -> argparse.Namespace:
 
 
 # ---------------------------------------------------------------------------
-# main()
+# Top-level main() function entrypoint tests
 # ---------------------------------------------------------------------------
 
 
