@@ -1,0 +1,43 @@
+{
+  "scenario_id": "sfo-bos-optional-lookup",
+  "expectation_version": "1.0.0",
+  "valid_paths": [
+    {
+      "path_id": "path_with_optional_policy",
+      "name": "Status Lookup with Optional Policy Check",
+      "description": "Checks status of UA789 and optionally checks UA rebooking policy.",
+      "expected_actions": [
+        {
+          "node_id": "node_status_lookup",
+          "label": "Flight Status Lookup",
+          "selector": {
+            "tool_name": "flight.get_status",
+            "argument_constraints": [
+              {
+                "field_pointer": "/flight_id",
+                "operator": "equals",
+                "value": "UA789"
+              }
+            ]
+          },
+          "required": true
+        },
+        {
+          "node_id": "node_policy_lookup",
+          "label": "Policy Lookup",
+          "selector": {
+            "tool_name": "policy.get_rebooking_rules",
+            "argument_constraints": [
+              {
+                "field_pointer": "/carrier_code",
+                "operator": "equals",
+                "value": "UA"
+              }
+            ]
+          },
+          "required": false
+        }
+      ]
+    }
+  ]
+}
