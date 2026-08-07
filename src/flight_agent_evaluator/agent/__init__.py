@@ -1,18 +1,33 @@
-"""Real model-driven agent integration for Flight Agent Evaluator.
+"""Agent execution, model clients, baselines, and safety policies."""
 
-Provides OpenAI SDK model client, LLM agent loop, secret redaction, and model exchange recording.
-"""
-
-from __future__ import annotations
-
-from flight_agent_evaluator.agent.loop import ModelAgentDriver, ModelAgentResult
-from flight_agent_evaluator.agent.model_client import ModelClient, ModelExchange
-from flight_agent_evaluator.agent.security import redact_secrets
+from flight_agent_evaluator.agent.baselines import NaiveBaselineAgent, ScriptedOracleAgent
+from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
+from flight_agent_evaluator.agent.model_client import (
+    ModelMode,
+    OpenAIResponsesModelClient,
+    ReplayModelClient,
+)
+from flight_agent_evaluator.agent.prompt import (
+    READ_ONLY_DISRUPTION_PROMPT_TEXT,
+    get_default_prompt_policy,
+)
+from flight_agent_evaluator.agent.protocol import AgentPolicy, ModelClient
+from flight_agent_evaluator.agent.security import (
+    redact_secrets,
+    scan_request_for_reference_leakage,
+)
 
 __all__ = [
-    "ModelAgentDriver",
-    "ModelAgentResult",
+    "AgentPolicy",
     "ModelClient",
-    "ModelExchange",
+    "ModelMode",
+    "ModelToolCallingAgent",
+    "NaiveBaselineAgent",
+    "OpenAIResponsesModelClient",
+    "READ_ONLY_DISRUPTION_PROMPT_TEXT",
+    "ReplayModelClient",
+    "ScriptedOracleAgent",
+    "get_default_prompt_policy",
     "redact_secrets",
+    "scan_request_for_reference_leakage",
 ]

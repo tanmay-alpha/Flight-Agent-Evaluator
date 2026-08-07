@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "dfw-den-no-alternatives",
+    "version": 1
+  },
+  "metadata": {
+    "title": "DFW-DEN no acceptable alternatives scenario",
+    "description": "Flight AS310 is cancelled and search yields no available alternative flights on that route/date.",
+    "objective": "Verify agent correctly reports absence of alternatives without hallucinating bookings or options."
+  },
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 120
+  },
+  "seed": 42,
+  "steps": [
+    {
+      "step_id": "check-cancelled-no-alt",
+      "description": "Passenger asks: 'Flight AS310 DFW to DEN on 2026-07-28 was cancelled. Are there any alternative flights?'",
+      "initial_message": "Flight AS310 DFW to DEN on 2026-07-28 was cancelled. Are there any alternative flights?"
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_id": "status-lookup-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    },
+    {
+      "assertion_id": "search-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.search_flights"
+    }
+  ],
+  "faults": [],
+  "trajectory": {
+    "trajectory_id": "dfw-den-no-alternatives-trajectory",
+    "description": "Cancelled flight with zero alternative flights available",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-status",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "AS310",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-2-search",
+        "tool_name": "flight.search_flights",
+        "arguments": {
+          "origin": "DFW",
+          "destination": "DEN",
+          "departure_date": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-3-response",
+        "response": "AS310 is cancelled and no alternative flights were found for DFW to DEN on 2026-07-28."
+      }
+    ]
+  }
+}

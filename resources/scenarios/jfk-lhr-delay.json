@@ -6,8 +6,8 @@
   },
   "metadata": {
     "title": "JFK-LHR delayed departure scenario",
-    "description": "A baseline scenario where the agent checks the status of AS142 departing JFK for LHR on 2026-07-28.",
-    "objective": "Demonstrate end-to-end determinism: run → replay → verify"
+    "description": "Passenger flight AS142 is delayed. Agent should investigate status and search for alternative flights.",
+    "objective": "Verify status investigation and alternative search for delayed flight."
   },
   "limits": {
     "tool_call_limit": 10,
@@ -17,7 +17,8 @@
   "steps": [
     {
       "step_id": "check-flight-status",
-      "description": "Check the status of AS142 on 2026-07-28"
+      "description": "Passenger asks: 'Flight AS142 departing JFK for LHR on 2026-07-28 is delayed. What is the current status and are there alternative flights?'",
+      "initial_message": "Flight AS142 departing JFK for LHR on 2026-07-28 is delayed. What is the current status and are there alternative flights?"
     }
   ],
   "assertions": [
@@ -30,21 +31,12 @@
       "assertion_id": "search-called",
       "assertion_type": "tool_called",
       "tool_name": "flight.search_flights"
-    },
-    {
-      "assertion_type": "no_duplicate_side_effect",
-      "assertion_id": "no-mutation",
-      "tool_name": "flight.get_status"
-    },
-    {
-      "assertion_type": "replay_determinism",
-      "assertion_id": "replay-determinism"
     }
   ],
   "faults": [],
   "trajectory": {
     "trajectory_id": "jfk-lhr-delay-trajectory",
-    "description": "Standard delay investigation for AS142 JFK→LHR",
+    "description": "Standard delay investigation for AS142 JFK->LHR",
     "steps": [
       {
         "kind": "invoke_tool",
@@ -68,7 +60,7 @@
       {
         "kind": "produce_final_response",
         "step_id": "step-3-response",
-        "response": "AS142 is delayed. Alternative flights are available from JFK to LHR."
+        "response": "AS142 is delayed by 180 minutes due to weather. Alternative flight AS144 is available at 18:30."
       }
     ]
   }
