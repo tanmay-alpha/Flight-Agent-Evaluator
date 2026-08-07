@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "iad-ord-redundant-lookup",
+    "version": 1
+  },
+  "metadata": {
+    "title": "IAD to ORD Disruption — Redundant Lookup Penalty Test",
+    "description": "Flight UA456 is delayed. Evaluates efficiency score penalty when agent calls status tool redundantly.",
+    "objective": "Verify efficiency metric calculation.",
+    "tags": ["disruption", "redundant_lookup", "iad_ord"]
+  },
+  "steps": [
+    {
+      "step_id": "step1",
+      "description": "Check status of UA456.",
+      "initial_message": "Flight UA456 IAD to ORD is delayed. Please check the flight status once."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 5,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "assertions": [
+    {
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    }
+  ],
+  "trajectory": {
+    "trajectory_id": "traj_iad_ord",
+    "description": "Oracle trace for IAD-ORD scenario",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "s1",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "UA456",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "s2",
+        "response": "Flight UA456 status checked."
+      }
+    ]
+  }
+}

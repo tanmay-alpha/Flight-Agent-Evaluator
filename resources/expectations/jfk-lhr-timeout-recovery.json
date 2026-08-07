@@ -1,0 +1,35 @@
+{
+  "scenario_id": "jfk-lhr-timeout-recovery",
+  "expectation_version": "1.0.0",
+  "valid_paths": [
+    {
+      "path_id": "path_timeout_recovery",
+      "name": "Timeout Recovery Path",
+      "description": "Retries or queries backup status lookup following a simulated tool fault.",
+      "expected_actions": [
+        {
+          "node_id": "node_status_initial",
+          "label": "Initial Status Attempt",
+          "selector": {
+            "tool_name": "flight.get_status"
+          },
+          "required": true
+        },
+        {
+          "node_id": "node_status_retry",
+          "label": "Status Retry",
+          "selector": {
+            "tool_name": "flight.get_status"
+          },
+          "required": false
+        }
+      ],
+      "dependency_constraints": [
+        {
+          "dependent_node_id": "node_status_retry",
+          "required_node_id": "node_status_initial"
+        }
+      ]
+    }
+  ]
+}

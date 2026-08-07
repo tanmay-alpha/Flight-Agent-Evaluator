@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "clt-phx-retry-dependency",
+    "version": 1
+  },
+  "metadata": {
+    "title": "CLT to PHX Disruption — Recovery Dependency Test",
+    "description": "Flight AA321 is delayed. Requires status check followed by alternative search dependency.",
+    "objective": "Verify recovery dependency rules.",
+    "tags": ["disruption", "recovery_dependency", "clt_phx"]
+  },
+  "steps": [
+    {
+      "step_id": "step1",
+      "description": "Check AA321 status and search for alternative flights.",
+      "initial_message": "Flight AA321 CLT to PHX is delayed. Please check flight status and search for alternative flights."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 5,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "assertions": [
+    {
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    },
+    {
+      "assertion_type": "tool_called",
+      "tool_name": "flight.search_flights"
+    }
+  ],
+  "trajectory": {
+    "trajectory_id": "traj_clt_phx",
+    "description": "Oracle trace for CLT-PHX scenario",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "s1",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "AA321",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "s2",
+        "tool_name": "flight.search_flights",
+        "arguments": {
+          "origin": "CLT",
+          "destination": "PHX",
+          "departure_date": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "s3",
+        "response": "Flight AA321 status checked and alternative flights found."
+      }
+    ]
+  }
+}
