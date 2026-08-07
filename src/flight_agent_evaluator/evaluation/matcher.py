@@ -1,59 +1,57 @@
 """Deterministic Bounded Matcher for Trajectory Constraint Graphs.
 
-Implements non-greedy branch-and-bound optimization to compute the optimal
-injective alignment between an ObservedTrajectory and a ValidPath constraint graph.
+Implements optimal injective alignment between an ObservedTrajectory and a
+ValidPath constraint graph under alignment objective 'trajectory-alignment-v1'.
 """
 
 from __future__ import annotations
 
 import fnmatch
+import math
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from flight_agent_evaluator.canonical import canonical_json
+from flight_agent_evaluator.contracts.json_pointer import MISSING, resolve_json_pointer
 from flight_agent_evaluator.contracts.trajectory_expectation import (
     ArgumentConstraint,
     ValidPath,
 )
 from flight_agent_evaluator.evaluation.observation import ObservedToolAction, ObservedTrajectory
 
+ALIGNMENT_OBJECTIVE_VERSION = "trajectory-alignment-v1"
+
 # ---------------------------------------------------------------------------
-# JSON Pointer & Argument Constraint Evaluator
+# Argument Predicate Engine
 # ---------------------------------------------------------------------------
 
 
-def resolve_json_pointer(data: dict[str, Any] | list[Any], pointer: str) -> Any:
-    """Resolve a JSON Pointer string (RFC 6901) against a nested dict/list data structure."""
-    if not pointer or pointer == "/":
-        return data
+def _parse_utc_datetime(val: Any) -> datetime | None:
+    """Parse *val* into a timezone-aware UTC datetime.
 
-    parts = pointer.lstrip("/").split("/")
-    curr: Any = data
-
-    for part in parts:
-        part_unescaped = part.replace("~1", "/").replace("~0", "~")
-        if isinstance(curr, dict):
-            if part_unescaped not in curr:
-                return None
-            curr = curr[part_unescaped]
-        elif isinstance(curr, list):
-            try:
-                idx = int(part_unescaped)
-                if idx < 0 or idx >= len(curr):
-                    return None
-                curr = curr[idx]
-            except ValueError:
-                return None
-        else:
+    Returns None if parsing fails or timestamp is naive.
+    """
+    if isinstance(val, datetime):
+        if val.tzinfo is None:
             return None
-
-    return curr
+        return val.astimezone(UTC)
+    if isinstance(val, str):
+        try:
+            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                return None
+            return dt.astimezone(UTC)
+        except (ValueError, TypeError):
+            return None
+    return None
 
 
 def evaluate_argument_constraint(
     constraint: ArgumentConstraint,
     arguments: dict[str, Any],
-    history_actions: list[ObservedToolAction] | None = None,
+    aligned_mapping: dict[str, ObservedToolAction] | None = None,
 ) -> bool:
     """Evaluate a single ArgumentConstraint predicate against tool arguments."""
     actual = resolve_json_pointer(arguments, constraint.field_pointer)
@@ -61,42 +59,78 @@ def evaluate_argument_constraint(
     expected = constraint.value
 
     if op == "equals":
+        if actual is MISSING:
+            return False
         return bool(actual == expected)
+
     if op == "not_equals":
+        if actual is MISSING:
+            return False
         return bool(actual != expected)
+
     if op == "one_of":
-        if isinstance(expected, (list, set, tuple)):
-            return actual in expected
-        return False
+        if actual is MISSING or not isinstance(expected, (list, set, tuple)):
+            return False
+        return actual in expected
+
     if op == "present":
-        return actual is not None and actual != ""
+        return actual is not MISSING and actual is not None and actual != ""
+
     if op == "absent":
-        return actual is None or actual == ""
+        return actual is MISSING or actual is None or actual == ""
+
     if op == "numeric_range":
         if (
-            isinstance(actual, (int, float))
-            and isinstance(expected, (list, tuple))
-            and len(expected) == 2
+            actual is MISSING
+            or isinstance(actual, bool)
+            or not isinstance(actual, (int, float))
+            or math.isnan(actual)
+            or math.isinf(actual)
+            or not isinstance(expected, (list, tuple))
+            or len(expected) != 2
         ):
-            return bool(expected[0] <= actual <= expected[1])
-        return False
+            return False
+        return bool(expected[0] <= actual <= expected[1])
+
     if op == "datetime_range":
-        if isinstance(actual, str) and isinstance(expected, (list, tuple)) and len(expected) == 2:
-            return bool(expected[0] <= actual <= expected[1])
-        return False
+        if actual is MISSING or not isinstance(expected, (list, tuple)) or len(expected) != 2:
+            return False
+        actual_dt = _parse_utc_datetime(actual)
+        exp_start_dt = _parse_utc_datetime(expected[0])
+        exp_end_dt = _parse_utc_datetime(expected[1])
+        if actual_dt is None or exp_start_dt is None or exp_end_dt is None:
+            return False
+        return bool(exp_start_dt <= actual_dt <= exp_end_dt)
+
     if op == "subset":
-        if isinstance(actual, (list, set, tuple)) and isinstance(expected, (list, set, tuple)):
-            return set(actual).issubset(set(expected))
-        return False
+        # Explicit semantics: expected ⊆ actual (actual contains all expected elements)
+        if (
+            actual is MISSING
+            or not isinstance(actual, (list, set, tuple))
+            or not isinstance(expected, (list, set, tuple))
+        ):
+            return False
+        return set(expected).issubset(set(actual))
+
     if op == "canonical_equals":
-        return str(actual).strip().lower() == str(expected).strip().lower()
+        if actual is MISSING:
+            return False
+        try:
+            return canonical_json(actual) == canonical_json(expected)
+        except Exception:
+            return str(actual).strip() == str(expected).strip()
+
     if op == "reference_equals":
-        if constraint.reference_pointer and history_actions:
-            for act in reversed(history_actions):
-                if act.result:
-                    ref_val = resolve_json_pointer(act.result, constraint.reference_pointer)
-                    if ref_val is not None and ref_val == actual:
-                        return True
+        if actual is MISSING:
+            return False
+        ref_node_id = constraint.reference_node_id
+        ref_pointer = constraint.reference_field_pointer
+        if ref_node_id and ref_pointer and aligned_mapping and ref_node_id in aligned_mapping:
+            target_action = aligned_mapping[ref_node_id]
+            if target_action.result:
+                ref_val = resolve_json_pointer(target_action.result, ref_pointer)
+                if ref_val is not MISSING and ref_val == actual:
+                    return True
         return False
 
     return False
@@ -158,72 +192,78 @@ class DeterministicBoundedMatcher:
         expected_nodes = path.expected_actions
         observed_actions = trajectory.actions
 
-        # Step 1: Find candidate observed actions per node
+        # Step 1: Candidate set generation per node
         candidates_per_node: dict[str, list[ObservedToolAction]] = {}
         for node in expected_nodes:
             cands: list[ObservedToolAction] = []
             sel = node.selector
             for act in observed_actions:
-                # Name match (exact or glob)
                 if sel.tool_name and not fnmatch.fnmatch(act.tool_name, sel.tool_name):
                     continue
-                # Mutation class match
                 if sel.mutation_class and act.mutation_class != sel.mutation_class:
                     continue
                 cands.append(act)
 
-            # Cap candidates per node
             candidates_per_node[node.node_id] = cands[: self.max_candidates_per_node]
 
-        # Step 2: Branch-and-bound search for optimal injective mapping
+        # Step 2: Branch-and-bound search for optimal injective alignment under trajectory-alignment-v1
         best_mapping: dict[str, ObservedToolAction] = {}
-        best_score = -1.0
+        best_objective: tuple[int, ...] = (-1, -1, -1, -1, -1, -999999, -999999)
         states_explored = 0
         complexity_exceeded = False
 
         node_list = list(expected_nodes)
 
-        def compute_mapping_score(current_map: dict[str, ObservedToolAction]) -> float:
-            score = 0.0
-            total_args_evaluated = 0
+        def compute_objective_tuple(current_map: dict[str, ObservedToolAction]) -> tuple[int, ...]:
+            matched_req = sum(1 for n in expected_nodes if n.required and n.node_id in current_map)
+            matched_opt = sum(
+                1 for n in expected_nodes if not n.required and n.node_id in current_map
+            )
+
             passed_args = 0
-
-            for node in expected_nodes:
-                if node.node_id in current_map:
-                    act = current_map[node.node_id]
-                    # Required node matched bonus
-                    if node.required:
-                        score += 10.0
-                    else:
-                        score += 2.0
-
-                    # Argument correctness evaluation
-                    for arg_c in node.selector.argument_constraints:
-                        total_args_evaluated += 1
-                        if evaluate_argument_constraint(arg_c, act.arguments):
+            for n in expected_nodes:
+                if n.node_id in current_map:
+                    act = current_map[n.node_id]
+                    for arg_c in n.selector.argument_constraints:
+                        if evaluate_argument_constraint(
+                            arg_c, act.arguments, aligned_mapping=current_map
+                        ):
                             passed_args += 1
-                            score += 5.0
-                        else:
-                            score -= 2.0
 
-            # Precedence ordering check bonus/penalty
+            satisfied_deps = 0
+            for dep in path.dependency_constraints:
+                if dep.dependent_node_id in current_map and dep.required_node_id in current_map:
+                    satisfied_deps += 1
+
+            satisfied_precs = 0
             for prec in path.precedence_constraints:
-                if prec.before_node_id in current_map and prec.after_node_id in current_map:
-                    seq_before = current_map[prec.before_node_id].sequence_number
-                    seq_after = current_map[prec.after_node_id].sequence_number
-                    if seq_before < seq_after:
-                        score += 3.0
-                    else:
-                        score -= 5.0
+                if (
+                    prec.before_node_id in current_map
+                    and prec.after_node_id in current_map
+                    and current_map[prec.before_node_id].sequence_number
+                    < current_map[prec.after_node_id].sequence_number
+                ):
+                    satisfied_precs += 1
 
-            return score
+            unmatched_calls = len(observed_actions) - len(current_map)
+            seq_sum = sum(act.sequence_number for act in current_map.values())
+
+            return (
+                matched_req,
+                passed_args,
+                satisfied_deps,
+                satisfied_precs,
+                matched_opt,
+                -unmatched_calls,
+                -seq_sum,
+            )
 
         def search(
             node_idx: int,
             current_map: dict[str, ObservedToolAction],
             used_call_ids: set[str],
         ) -> None:
-            nonlocal best_mapping, best_score, states_explored, complexity_exceeded
+            nonlocal best_mapping, best_objective, states_explored, complexity_exceeded
 
             states_explored += 1
             if states_explored > self.max_search_states:
@@ -231,9 +271,9 @@ class DeterministicBoundedMatcher:
                 return
 
             if node_idx == len(node_list):
-                sc = compute_mapping_score(current_map)
-                if sc > best_score:
-                    best_score = sc
+                obj = compute_objective_tuple(current_map)
+                if obj > best_objective:
+                    best_objective = obj
                     best_mapping = dict(current_map)
                 return
 
@@ -241,7 +281,6 @@ class DeterministicBoundedMatcher:
             node_id = node.node_id
             cands = candidates_per_node[node_id]
 
-            # Option A: Match node to a candidate observed action
             for cand in cands:
                 if cand.call_id not in used_call_ids:
                     current_map[node_id] = cand
@@ -252,7 +291,6 @@ class DeterministicBoundedMatcher:
                     used_call_ids.remove(cand.call_id)
                     del current_map[node_id]
 
-            # Option B: Leave node unmatched (if optional or if no valid candidate)
             search(node_idx + 1, current_map, used_call_ids)
 
         search(0, {}, set())
@@ -273,7 +311,9 @@ class DeterministicBoundedMatcher:
                 act = best_mapping[node.node_id]
                 for arg_c in node.selector.argument_constraints:
                     total_args += 1
-                    if evaluate_argument_constraint(arg_c, act.arguments):
+                    if evaluate_argument_constraint(
+                        arg_c, act.arguments, aligned_mapping=best_mapping
+                    ):
                         passed_args += 1
 
         arg_correctness = (passed_args / total_args) if total_args > 0 else 1.0
