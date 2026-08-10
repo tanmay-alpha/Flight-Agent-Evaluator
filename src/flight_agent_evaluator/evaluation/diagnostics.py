@@ -123,7 +123,8 @@ __all__ = [
 # We create a new StrEnum that *inherits* all new values and adds old ones.
 # Since Python StrEnum doesn't support re-open, we shadow the import:
 
-class FailureSeverity(StrEnum):  # type: ignore[no-redef]  # noqa: F811
+
+class FailureSeverity(StrEnum):  # noqa: F811
     """Unified severity enum combining the new 5-level scale with legacy aliases.
 
     New code should use CRITICAL/HIGH/MEDIUM/LOW/INFORMATIONAL.
@@ -234,9 +235,7 @@ class FailureInstance(ContractModel):
         description="Taxonomy version under which this code was assigned.",
     )
     origin: FailureOrigin = Field(..., description="Who caused this failure.")
-    severity: FailureSeverity = Field(
-        ..., description="Policy-determined severity level."
-    )
+    severity: FailureSeverity = Field(..., description="Policy-determined severity level.")
     severity_policy_version: str = Field(
         ..., description="ID of the severity policy that determined this severity."
     )
@@ -324,9 +323,7 @@ class FailureReport(ContractModel):
         default=FAILURE_TAXONOMY_VERSION,
         description="Failure taxonomy version.",
     )
-    severity_policy_version: str = Field(
-        ..., description="Severity policy version used."
-    )
+    severity_policy_version: str = Field(..., description="Severity policy version used.")
     overall_pass: bool = Field(
         ...,
         description=(
@@ -681,13 +678,17 @@ class FailureDiagnosticEngine:
             extra_meta["tool_name"] = signal.tool_name
         elif signal.signal_type == DiagnosticSignalType.SAFETY_VIOLATION:
             import re as _re
-            m = _re.search(r"tool[:\s]+['\"]?(\S+?)['\"]?(?:\s|$|\.)", signal.details, _re.IGNORECASE)
+
+            m = _re.search(
+                r"tool[:\s]+['\"]?(\S+?)['\"]?(?:\s|$|\.)", signal.details, _re.IGNORECASE
+            )
             if m:
                 extra_meta["tool_name"] = m.group(1).rstrip(".,;:)")
             extra_meta["safety_violation"] = signal.details
 
         if signal.signal_type == DiagnosticSignalType.ARGUMENT_PREDICATE_FAILED and signal.details:
             import re as _re
+
             m_field = _re.search(r"field\s+['\"]?(\w+)['\"]?", signal.details)
             if m_field:
                 extra_meta["field"] = m_field.group(1)
@@ -700,7 +701,10 @@ class FailureDiagnosticEngine:
 
         if signal.signal_type == DiagnosticSignalType.REDUNDANT_CALL and signal.details:
             import re as _re
-            m_earlier = _re.search(r"identical call made at seq=\d+\s*\(call_id=([^)]+)\)", signal.details)
+
+            m_earlier = _re.search(
+                r"identical call made at seq=\d+\s*\(call_id=([^)]+)\)", signal.details
+            )
             if m_earlier:
                 extra_meta["earlier_call_id"] = m_earlier.group(1)
 
@@ -731,7 +735,6 @@ class FailureDiagnosticEngine:
                 extra_meta["evaluator_error"] = details
 
         return code, origin, ev_id, [ev], extra_meta
-
 
     def _signal_to_code_and_origin(
         self, signal: DiagnosticSignal
@@ -902,14 +905,22 @@ class FailureDiagnosticEngine:
         edges: list[EvidenceEdge] = []
         seen_node_ids: set[str] = set()
 
-        def _add_node(node_id: str, ntype: EvidenceNodeType, ref: str, meta: dict[str, str]) -> None:
+        def _add_node(
+            node_id: str, ntype: EvidenceNodeType, ref: str, meta: dict[str, str]
+        ) -> None:
             if node_id not in seen_node_ids:
-                nodes.append(EvidenceNode(node_id=node_id, node_type=ntype, reference=ref, metadata=meta))
+                nodes.append(
+                    EvidenceNode(node_id=node_id, node_type=ntype, reference=ref, metadata=meta)
+                )
                 seen_node_ids.add(node_id)
 
         # Add evidence nodes
         for ev in evidence_collection:
-            ref = f"journal:seq={ev.journal_sequence}" if ev.journal_sequence else f"evidence:{ev.evidence_id}"
+            ref = (
+                f"journal:seq={ev.journal_sequence}"
+                if ev.journal_sequence
+                else f"evidence:{ev.evidence_id}"
+            )
             meta: dict[str, str] = {}
             if ev.entry_type:
                 meta["entry_type"] = ev.entry_type
@@ -1014,9 +1025,17 @@ class FailureDiagnosticEngine:
             if cat == FailureCategory.OUTCOME_ASSERTION:
                 summary_str = f.explanation
             elif f.failure_code == FailureCode.TOOL__ORDERING_VIOLATION:
-                summary_str = f"precedence ordering failure: {extra}" if extra else "precedence ordering failure"
+                summary_str = (
+                    f"precedence ordering failure: {extra}"
+                    if extra
+                    else "precedence ordering failure"
+                )
             elif f.failure_code == FailureCode.TOOL__DEPENDENCY_VIOLATION:
-                summary_str = f"dependency constraint failure: {extra}" if extra else "dependency constraint failure"
+                summary_str = (
+                    f"dependency constraint failure: {extra}"
+                    if extra
+                    else "dependency constraint failure"
+                )
             elif extra:
                 summary_str = f"{f.failure_code.value}: {extra}"
             else:
@@ -1033,7 +1052,9 @@ class FailureDiagnosticEngine:
 
             legacy_evidence: list[EvidencePointer] = []
             for ev_ref in f.evidence_refs:
-                ev_obj = next((e for e in report.evidence_collection if e.evidence_id == ev_ref), None)
+                ev_obj = next(
+                    (e for e in report.evidence_collection if e.evidence_id == ev_ref), None
+                )
                 if ev_obj:
                     seq_num = ev_obj.journal_sequence
                     if seq_num is None:
@@ -1052,7 +1073,7 @@ class FailureDiagnosticEngine:
 
             diagnoses.append(
                 FailureDiagnosis(
-                    failure_id=f"diag-{i+1:03d}",
+                    failure_id=f"diag-{i + 1:03d}",
                     category=cat,
                     severity=legacy_sev,
                     summary=summary_str,
@@ -1074,7 +1095,10 @@ class FailureDiagnosticEngine:
         if primary_failures:
             sorted_pf = sorted(
                 primary_failures,
-                key=lambda x: (SEVERITY_RANK.get(_FailureSeverityBase(x.severity.value), 99), x.failure_id),
+                key=lambda x: (
+                    SEVERITY_RANK.get(_FailureSeverityBase(x.severity.value), 99),
+                    x.failure_id,
+                ),
             )
             primary_cat = _get_legacy_category(sorted_pf[0].failure_code)
             primary = primary_cat.value

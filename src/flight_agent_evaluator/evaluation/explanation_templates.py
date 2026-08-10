@@ -168,9 +168,7 @@ EXPLANATION_TEMPLATES: Final[dict[str, str]] = {
         "The evaluator's bounded search exhausted its budget while evaluating "
         "path '{path_id}'. Evaluation result may be incomplete."
     ),
-    "tmpl-evaluator-internal-error-v1": (
-        "An unexpected evaluator error occurred: {details}."
-    ),
+    "tmpl-evaluator-internal-error-v1": ("An unexpected evaluator error occurred: {details}."),
     "tmpl-evaluator-invalid-expectation-v1": (
         "The trajectory expectation for scenario '{scenario_id}' is malformed: {details}."
     ),
