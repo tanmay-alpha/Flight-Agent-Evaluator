@@ -11,7 +11,7 @@ and :class:`RootCauseAnalyzer`.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import Field
 
@@ -107,9 +107,7 @@ class DiagnosticSignal(ContractModel):
     journal_sequence: int | None = Field(
         default=None, description="Journal entry sequence number, if applicable."
     )
-    node_id: str | None = Field(
-        default=None, description="Expected action node ID, if applicable."
-    )
+    node_id: str | None = Field(default=None, description="Expected action node ID, if applicable.")
     call_id: str | None = Field(default=None, description="Tool call ID, if applicable.")
     rule_id: str | None = Field(default=None, description="Constraint rule ID, if applicable.")
     tool_name: str | None = Field(default=None, description="Tool name, if applicable.")
@@ -164,10 +162,7 @@ class SignalExtractor:
         # Gate 6: expectation-derived signals — only when scorecard indicates failure.
         # A passing scorecard means all required nodes were satisfied; don't re-derive failure.
         if not scorecard.overall_pass or scorecard.evaluator_error:
-            signals.extend(
-                self._extract_from_expectation(expectation, scorecard, selected_path_id)
-            )
-
+            signals.extend(self._extract_from_expectation(expectation, scorecard, selected_path_id))
 
         # Scorecard-level signals (evaluator errors, outcome assertions)
         signals.extend(self._extract_from_scorecard(scorecard))
@@ -197,7 +192,11 @@ class SignalExtractor:
                 tool_name = str(payload.get("tool_name", ""))
                 args = payload.get("arguments", {})
                 import json as _json
-                call_key = (tool_name, _json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args))
+
+                call_key = (
+                    tool_name,
+                    _json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args),
+                )
                 if call_key in seen_tool_calls and call_key[0]:
                     earlier_seq, earlier_call_id = seen_tool_calls[call_key]
                     signals.append(
@@ -219,7 +218,6 @@ class SignalExtractor:
             elif etype == "tool_result":
                 call_id = str(payload.get("call_id", ""))
                 tool_results_by_call_id[call_id] = payload
-                tool_name = str(tool_calls_by_call_id.get(call_id, {}).get("tool_name", "")) or None
 
                 # Check fault-injected signals via tool result metadata
                 fault_type = str(payload.get("fault_type", ""))
@@ -384,7 +382,7 @@ class SignalExtractor:
             path = expectation.valid_paths[0]
 
         # Build evidence index
-        ev_by_node: dict[str, object] = {}
+        ev_by_node: dict[str, Any] = {}
         for ev in scorecard.evidence_attribution:
             ev_by_node[ev.node_id] = ev
 
@@ -394,7 +392,10 @@ class SignalExtractor:
         # Extract evidence attribution signals
         if scorecard.evidence_attribution:
             for ev in scorecard.evidence_attribution:
-                action = next((a for a in (path.expected_actions if path else []) if a.node_id == ev.node_id), None)
+                action = next(
+                    (a for a in (path.expected_actions if path else []) if a.node_id == ev.node_id),
+                    None,
+                )
                 tool_name = ev.tool_name or (action.selector.tool_name if action else None)
                 if not ev.matched:
                     signals.append(
@@ -408,9 +409,14 @@ class SignalExtractor:
                         )
                     )
                 elif ev.argument_status == "failed":
-                    seq = ev.sequence_number or (ev.pointer.journal_sequence if getattr(ev, "pointer", None) else None)
-                    call_id = ev.call_id or (ev.pointer.call_id if getattr(ev, "pointer", None) else None)
-                    details = ev.details or (ev.pointer.details if getattr(ev, "pointer", None) else None) or f"Argument predicate failed for node '{ev.node_id}'."
+                    ptr = getattr(ev, "pointer", None)
+                    seq = ev.sequence_number or (ptr.journal_sequence if ptr is not None else None)
+                    call_id = ev.call_id or (ptr.call_id if ptr is not None else None)
+                    details = (
+                        ev.details
+                        or (ptr.details if ptr is not None else None)
+                        or f"Argument predicate failed for node '{ev.node_id}'."
+                    )
                     signals.append(
                         DiagnosticSignal(
                             signal_type=DiagnosticSignalType.ARGUMENT_PREDICATE_FAILED,
@@ -423,19 +429,19 @@ class SignalExtractor:
                     )
         elif path is not None and scorecard.required_recall < 1.0:
             # Fallback to path.expected_actions only if required_recall < 1.0
-            for action in path.expected_actions:
-                if action.required:
-                    signals.append(
-                        DiagnosticSignal(
-                            signal_type=DiagnosticSignalType.MISSING_REQUIRED_NODE,
-                            node_id=action.node_id,
-                            tool_name=action.selector.tool_name,
-                            details=(
-                                f"Required node '{action.node_id}' "
-                                f"(tool: {action.selector.tool_name!r}) was not matched."
-                            ),
-                        )
-                    )
+            signals.extend(
+                DiagnosticSignal(
+                    signal_type=DiagnosticSignalType.MISSING_REQUIRED_NODE,
+                    node_id=action.node_id,
+                    tool_name=action.selector.tool_name,
+                    details=(
+                        f"Required node '{action.node_id}' "
+                        f"(tool: {action.selector.tool_name!r}) was not matched."
+                    ),
+                )
+                for action in path.expected_actions
+                if action.required
+            )
 
         # Forbidden tool calls (per-path)
         matched_tool_names: set[str] = set()
@@ -460,8 +466,8 @@ class SignalExtractor:
         # (signals from journal are merged here logically; exact merging in RootCauseAnalyzer)
         for rec in path.recovery_constraints:
             if rec.trigger_event in ("tool_error", "retryable_error"):
-                ev = ev_by_node.get(rec.expected_node_id)
-                if ev is None or not getattr(ev, "matched", False):
+                rec_ev = ev_by_node.get(rec.expected_node_id)
+                if rec_ev is None or not getattr(rec_ev, "matched", False):
                     signals.append(
                         DiagnosticSignal(
                             signal_type=DiagnosticSignalType.RETRY_MISSING,
@@ -491,8 +497,7 @@ class SignalExtractor:
             # Any non-None evaluator_error indicates a complexity or structural evaluator problem.
             details = (
                 f"Evaluator error: {scorecard.evaluator_error!r}."
-                if scorecard.evaluator_error
-                != "evaluator_complexity_limit"
+                if scorecard.evaluator_error != "evaluator_complexity_limit"
                 else "Evaluator complexity limit reached during bounded search."
             )
             signals.append(
@@ -746,42 +751,38 @@ class RootCauseAnalyzer:
         relationship_map: dict[str, CausalRelationship] = {}
 
         # Build quick lookups
-        by_id: dict[str, object] = {f.failure_id: f for f in failures}  # type: ignore[union-attr]
+        by_id: dict[str, object] = {f.failure_id: f for f in failures}
 
         # Step 1: SAFETY and EVALUATOR failures are always PRIMARY
         for f in failures:
-            prefix = f.failure_code.value.split(".")[0]  # type: ignore[union-attr]
+            prefix = f.failure_code.value.split(".")[0]
             if prefix in ("SAFETY", "EVALUATOR"):
-                relationship_map[f.failure_id] = CausalRelationship.PRIMARY  # type: ignore[union-attr]
+                relationship_map[f.failure_id] = CausalRelationship.PRIMARY
 
         # Step 2: ENVIRONMENT failures that predate a RECOVERY failure are PRIMARY;
         # the RECOVERY failure is SECONDARY.
-        env_failures = [
-            f for f in failures if f.failure_code.value.startswith("ENVIRONMENT.")  # type: ignore[union-attr]
-        ]
-        recovery_failures = [
-            f for f in failures if f.failure_code.value.startswith("RECOVERY.")  # type: ignore[union-attr]
-        ]
+        env_failures = [f for f in failures if f.failure_code.value.startswith("ENVIRONMENT.")]
+        recovery_failures = [f for f in failures if f.failure_code.value.startswith("RECOVERY.")]
 
         for env_f in env_failures:
-            env_seq = env_f.first_observed_sequence or 0  # type: ignore[union-attr]
+            env_seq = env_f.first_observed_sequence or 0
             for rec_f in recovery_failures:
-                rec_seq = rec_f.first_observed_sequence or 0  # type: ignore[union-attr]
+                rec_seq = rec_f.first_observed_sequence or 0
                 if env_seq <= rec_seq:
                     # Environment failure precedes recovery failure — causal link
-                    if env_f.failure_id not in relationship_map:  # type: ignore[union-attr]
-                        relationship_map[env_f.failure_id] = CausalRelationship.PRIMARY  # type: ignore[union-attr]
-                    if rec_f.failure_id not in relationship_map:  # type: ignore[union-attr]
-                        relationship_map[rec_f.failure_id] = CausalRelationship.SECONDARY  # type: ignore[union-attr]
+                    if env_f.failure_id not in relationship_map:
+                        relationship_map[env_f.failure_id] = CausalRelationship.PRIMARY
+                    if rec_f.failure_id not in relationship_map:
+                        relationship_map[rec_f.failure_id] = CausalRelationship.SECONDARY
                     causal_links.append(
                         CausalLink(
-                            cause_failure_id=env_f.failure_id,  # type: ignore[union-attr]
-                            effect_failure_id=rec_f.failure_id,  # type: ignore[union-attr]
+                            cause_failure_id=env_f.failure_id,
+                            effect_failure_id=rec_f.failure_id,
                             relationship=CausalRelationship.SECONDARY,
                             rationale=(
-                                f"Environment failure {env_f.failure_code.value!r} at "  # type: ignore[union-attr]
+                                f"Environment failure {env_f.failure_code.value!r} at "
                                 f"seq={env_seq} preceded recovery failure "
-                                f"{rec_f.failure_code.value!r} at seq={rec_seq}. "  # type: ignore[union-attr]
+                                f"{rec_f.failure_code.value!r} at seq={rec_seq}. "
                                 f"Correlation observed; direct causality inferred by journal order."
                             ),
                         )
@@ -789,8 +790,8 @@ class RootCauseAnalyzer:
 
         # Step 3: Remaining unclassified failures default to PRIMARY (independent)
         for f in failures:
-            if f.failure_id not in relationship_map:  # type: ignore[union-attr]
-                relationship_map[f.failure_id] = CausalRelationship.PRIMARY  # type: ignore[union-attr]
+            if f.failure_id not in relationship_map:
+                relationship_map[f.failure_id] = CausalRelationship.PRIMARY
 
         # Step 4: Annotate failures (caller will update their causal_relation field)
         root_cause_ids = [
