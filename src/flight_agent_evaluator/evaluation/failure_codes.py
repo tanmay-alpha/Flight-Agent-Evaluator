@@ -364,7 +364,7 @@ class FailureSeverityPolicy(ContractModel):
             policy_id="severity-policy-v1",
             version="1.0.0",
             digest=_compute_policy_digest(_DEFAULT_SEVERITY_MAP),
-            mappings={k.value: v for k, v in _DEFAULT_SEVERITY_MAP.items()},
+            mappings=dict(_DEFAULT_SEVERITY_MAP),
         )
 
 
