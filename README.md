@@ -2,7 +2,7 @@
 
 An evaluation, replay, and fault-injection platform for aviation AI agents.
 
-> **Current status: Stage 2 — Trajectory constraint graph and multiple-valid-path scoring complete.**
+> **Current status: Stage 4 — Failure taxonomy and root cause diagnostics complete.**
 
 ## Why this project exists
 
@@ -26,13 +26,11 @@ integration. It is an evaluation platform.
 | 0     | Evaluator correctness | Complete |
 | 1     | Real model-driven agent, deterministic baselines and replayable model exchanges | Complete |
 | 2     | Trajectory constraint graph and multiple-valid-path scoring | Complete |
-| 3     | Failure-mode classification and evidence attribution | Planned |
-| 4     | Calibrated LLM judge and human-labelled validation | Planned |
+| 3     | Failure-mode classification and evidence attribution | Complete |
+| 4     | Failure taxonomy and root cause diagnostics | Complete |
 | 5     | Simulated approval, booking and idempotent mutation environment | Planned |
 | 6     | Multi-model benchmark and evaluator-validity experiments | Planned |
 | 7     | Public held-out benchmark and reproducible results | Planned |
-
-See `PROJECT_PLAN.md` for the full roadmap and `docs/` for architecture documents.
 
 ## License
 
