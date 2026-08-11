@@ -25,7 +25,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator"
-Documentation = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator/blob/main/docs/PROJECT_PLAN.md"
+Documentation = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator#readme"
 Repository = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator"
 "Bug Tracker" = "https://github.com/tanmay-alpha/Flight-Agent-Evaluator/issues"
 
@@ -126,7 +126,6 @@ select = [
 ignore = [
     "ANN401", # dynamcially typed Any in annotations is sometimes required for JSON types
     "E501",   # line length handled by formatter
-    "UP038",  # isinstance tuple vs union syntax
 ]
 
 [tool.ruff.lint.per-file-ignores]
