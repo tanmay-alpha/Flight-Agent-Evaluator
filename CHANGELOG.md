@@ -6,9 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.0] - 2026-08-12
 
 ### Added
+
+- **Stage 7 — V1 Release & Interactive Demo Command**
+  - CLI subcommand: `demo` / `demo run` running zero-network end-to-end evaluation demonstration with colorful ASCII banner and full score breakdown.
+  - Release report: `docs/reports/stage-7-v1-release-report.md` summarizing V1 architecture, 7 stages, ablation findings, human calibration status, and quality metrics.
+  - Updated `README.md` and `docs/README.md` for V1 completion.
 
 - **Stage 6 — Multi-Model Benchmark Suite & Evaluator Ablations**
   - `benchmarks/contracts.py`: `ModelFamily`, `AblationConfig`, `ScenarioBenchmarkResult`, `BenchmarkRunSummary`, `AblationComparisonReport`.
