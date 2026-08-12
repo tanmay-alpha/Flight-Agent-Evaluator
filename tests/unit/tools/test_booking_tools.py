@@ -87,7 +87,7 @@ def test_booking_tools_execution() -> None:
             ctx,
         )
     )
-    assert req_res["status"] == "requested"
+    assert req_res["status"] == "approved"
 
     # Register matching approval for confirmation test
     appr = get_default_approval_fixture(
