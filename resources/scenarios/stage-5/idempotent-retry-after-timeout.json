@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "idempotent-retry-after-timeout",
+    "version": 1
+  },
+  "metadata": {
+    "title": "Idempotent Retry After Timeout",
+    "description": "Confirm rebooking times out; retry using the same idempotency key.",
+    "objective": "Test transactional state machine and side-effect safety.",
+    "tags": [
+      "stage-5",
+      "transaction",
+      "approval"
+    ],
+    "author": "Flight Agent Evaluator"
+  },
+  "initial_state": {
+    "booking_reference": "AS-1001",
+    "status": "disrupted"
+  },
+  "fixture_references": [
+    {
+      "fixture_name": "flight_status_delayed",
+      "raw_payload_reference": {
+        "uri": "fixture://flight_status_delayed.json",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "byte_length": 1000
+      }
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "s1",
+      "description": "Confirm rebooking times out; retry using the same idempotency key.",
+      "initial_message": "Confirm rebooking times out; retry using the same idempotency key."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "reference_time": "2026-08-12T12:00:00+00:00",
+  "trajectory": {
+    "trajectory_id": "idempotent-retry-after-timeout-trajectory",
+    "description": "Scripted trajectory for idempotent-retry-after-timeout",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-get",
+        "tool_name": "booking.get_current",
+        "arguments": {
+          "booking_reference": "AS-1001"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-2-resp",
+        "response": "Completed scenario idempotent-retry-after-timeout"
+      }
+    ]
+  }
+}
