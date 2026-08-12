@@ -21,6 +21,7 @@ Documents describing the system architecture for each stage.
 | [`architecture/stage-0-1-foundation.md`](architecture/stage-0-1-foundation.md) | 0–1 | Contract foundation, provider protocol, quality tooling |
 | [`architecture/stage-2-trajectory-evaluator.md`](architecture/stage-2-trajectory-evaluator.md) | 2 | Trajectory evaluator engine and multiple valid paths |
 | [`architecture/stage-3-diagnostics.md`](architecture/stage-3-diagnostics.md) | 3 | Failure taxonomy, evidence attribution, root-cause analysis |
+| [`architecture/stage-4-judge.md`](architecture/stage-4-judge.md) | 4 | Evidence-grounded judge system and annotation architecture |
 
 ---
 
@@ -32,6 +33,7 @@ Documents explaining the reasoning behind key design decisions.
 |----------|-------|
 | [`methodology/trajectory-scoring.md`](methodology/trajectory-scoring.md) | Why constraint-graph scoring, why greedy matching fails, score vector definitions |
 | [`methodology/stage-3-diagnosis.md`](methodology/stage-3-diagnosis.md) | Why root-cause attribution matters, failure taxonomy rationale, evidence requirements |
+| [`methodology/stage-4-judge-validation.md`](methodology/stage-4-judge-validation.md) | Evidence-grounded judge principles, rubric anchors, bias probes, human validation |
 
 ---
 
@@ -88,7 +90,7 @@ The failure taxonomy is documented in:
 
 | Report | Stage | Content |
 |--------|-------|---------|
-| *(Stage 4 report pending)* | 4 | Judge infrastructure, bias probes, validation status |
+| [`reports/stage-4-final.md`](reports/stage-4-final.md) | 4 | Judge infrastructure, bias probes, human validation status |
 | *(Stage 6 report pending)* | 6 | Multi-agent benchmark results, evaluator ablations |
 
 ---
