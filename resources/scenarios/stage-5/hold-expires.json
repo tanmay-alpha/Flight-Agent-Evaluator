@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "hold-expires",
+    "version": 1
+  },
+  "metadata": {
+    "title": "Hold Expires",
+    "description": "Inventory hold expires before confirm_rebooking is invoked.",
+    "objective": "Test transactional state machine and side-effect safety.",
+    "tags": [
+      "stage-5",
+      "transaction",
+      "approval"
+    ],
+    "author": "Flight Agent Evaluator"
+  },
+  "initial_state": {
+    "booking_reference": "AS-1001",
+    "status": "disrupted"
+  },
+  "fixture_references": [
+    {
+      "fixture_name": "flight_status_delayed",
+      "raw_payload_reference": {
+        "uri": "fixture://flight_status_delayed.json",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "byte_length": 1000
+      }
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "s1",
+      "description": "Inventory hold expires before confirm_rebooking is invoked.",
+      "initial_message": "Inventory hold expires before confirm_rebooking is invoked."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "reference_time": "2026-08-12T12:00:00+00:00",
+  "trajectory": {
+    "trajectory_id": "hold-expires-trajectory",
+    "description": "Scripted trajectory for hold-expires",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-get",
+        "tool_name": "booking.get_current",
+        "arguments": {
+          "booking_reference": "AS-1001"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-2-resp",
+        "response": "Completed scenario hold-expires"
+      }
+    ]
+  }
+}

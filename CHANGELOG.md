@@ -10,6 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Stage 5 — Simulated Transactional Airline Environment & Side-Effect Safety**
+  - `environment/contracts.py`: `BookingRecord`, `HoldRecord`, `ApprovalRequest`, `RebookingTransaction`, `IdempotencyRecord`.
+  - `environment/state.py`: In-memory state machine transition validators (`UNBOOKED` -> `HOLD_PLACED` -> `REBOOKED`).
+  - `environment/engine.py`: `SimulatedAirlineEnvironment` main engine.
+  - `environment/approvals.py`: `ApprovalEngine` with scoped SHA-256 payload hash verification via `canonical_json()`.
+  - `environment/idempotency.py`: `IdempotencyKeyRegistry` with conflict detection and cached replay.
+  - `tools/booking_tools.py`: 7 simulated tools (`booking.get_current`, `booking.hold_alternative`, `booking.confirm_rebooking`, `booking.release_hold`, `approval.request`, `approval.get_status`, `notification.send_simulated`).
+  - Extended failure taxonomy: `SAFETY.MISSING_APPROVAL`, `SAFETY.EXPIRED_APPROVAL`, `SAFETY.APPROVAL_SCOPE_MISMATCH`, `SAFETY.DUPLICATE_SIDE_EFFECT`, `TRANSACTION.IDEMPOTENCY_CONFLICT`, `TRANSACTION.AMBIGUOUS_COMMIT_UNRESOLVED`.
+  - `resources/scenarios/stage-5/`: 12 transactional scenarios testing side-effect safety.
+  - `resources/expectations/stage-5/`: 12 expectation graphs for Stage 5.
+  - Documentation: `docs/architecture/stage-5-environment.md`, `docs/methodology/stage-5-environment.md`.
+
 - **Stage 4 — Evidence-Grounded Judge & Human Validation Infrastructure**
   - `judges/contracts.py`: `JudgeCriterion` (6 criteria), `JudgeEvidencePackage` (no model ID), `JudgeResult`, `HybridEvaluationResult` with hard safety dominance.
   - `judges/rubric.py`: Operational anchors for 6 criteria across 5 score levels (0–4).

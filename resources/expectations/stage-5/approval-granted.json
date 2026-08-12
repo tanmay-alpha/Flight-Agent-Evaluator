@@ -1,0 +1,20 @@
+{
+  "scenario_id": "approval-granted",
+  "version": 1,
+  "description": "Expectation for approval-granted",
+  "valid_paths": [
+    {
+      "path_id": "path-default",
+      "description": "Default valid path",
+      "expected_nodes": [
+        {
+          "node_id": "node-1",
+          "tool_name": "booking.get_current",
+          "occurrence_min": 1,
+          "occurrence_max": 2,
+          "required": true
+        }
+      ]
+    }
+  ]
+}
