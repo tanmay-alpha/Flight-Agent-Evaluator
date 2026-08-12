@@ -23,6 +23,7 @@ Documents describing the system architecture for each stage.
 | [`architecture/stage-3-diagnostics.md`](architecture/stage-3-diagnostics.md) | 3 | Failure taxonomy, evidence attribution, root-cause analysis |
 | [`architecture/stage-4-judge.md`](architecture/stage-4-judge.md) | 4 | Evidence-grounded judge system and annotation architecture |
 | [`architecture/stage-5-environment.md`](architecture/stage-5-environment.md) | 5 | Simulated transactional airline environment and approval engine |
+| [`architecture/stage-6-benchmark.md`](architecture/stage-6-benchmark.md) | 6 | Multi-model benchmark suite and evaluator ablation engine |
 
 ---
 
@@ -36,6 +37,7 @@ Documents explaining the reasoning behind key design decisions.
 | [`methodology/stage-3-diagnosis.md`](methodology/stage-3-diagnosis.md) | Why root-cause attribution matters, failure taxonomy rationale, evidence requirements |
 | [`methodology/stage-4-judge-validation.md`](methodology/stage-4-judge-validation.md) | Evidence-grounded judge principles, rubric anchors, bias probes, human validation |
 | [`methodology/stage-5-environment.md`](methodology/stage-5-environment.md) | Side-effect safety, scoped payload hashing, idempotency, and scenario design |
+| [`methodology/stage-6-benchmark.md`](methodology/stage-6-benchmark.md) | Multi-model evaluation methodology and component ablation findings |
 
 ---
 

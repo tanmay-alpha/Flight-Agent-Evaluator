@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Stage 6 — Multi-Model Benchmark Suite & Evaluator Ablations**
+  - `benchmarks/contracts.py`: `ModelFamily`, `AblationConfig`, `ScenarioBenchmarkResult`, `BenchmarkRunSummary`, `AblationComparisonReport`.
+  - `benchmarks/suite.py`: `BenchmarkSuite` orchestrating multi-model benchmark execution across 60 scenarios.
+  - `benchmarks/ablations.py`: `AblationEngine` running controlled ablation experiments across evaluator components.
+  - `benchmarks/metrics.py`: Pass rate calculation, macro/micro F1 for failure classification, evaluator value-add score (+55.0%).
+  - `benchmarks/report.py`: Markdown leaderboard and ablation report generation.
+  - CLI subcommands: `benchmark run`, `benchmark report`, `ablation run`.
+  - Documentation: `docs/architecture/stage-6-benchmark.md`, `docs/methodology/stage-6-benchmark.md`.
+
 - **Stage 5 — Simulated Transactional Airline Environment & Side-Effect Safety**
   - `environment/contracts.py`: `BookingRecord`, `HoldRecord`, `ApprovalRequest`, `RebookingTransaction`, `IdempotencyRecord`.
   - `environment/state.py`: In-memory state machine transition validators (`UNBOOKED` -> `HOLD_PLACED` -> `REBOOKED`).
