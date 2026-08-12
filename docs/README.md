@@ -22,6 +22,7 @@ Documents describing the system architecture for each stage.
 | [`architecture/stage-2-trajectory-evaluator.md`](architecture/stage-2-trajectory-evaluator.md) | 2 | Trajectory evaluator engine and multiple valid paths |
 | [`architecture/stage-3-diagnostics.md`](architecture/stage-3-diagnostics.md) | 3 | Failure taxonomy, evidence attribution, root-cause analysis |
 | [`architecture/stage-4-judge.md`](architecture/stage-4-judge.md) | 4 | Evidence-grounded judge system and annotation architecture |
+| [`architecture/stage-5-environment.md`](architecture/stage-5-environment.md) | 5 | Simulated transactional airline environment and approval engine |
 
 ---
 
@@ -34,6 +35,7 @@ Documents explaining the reasoning behind key design decisions.
 | [`methodology/trajectory-scoring.md`](methodology/trajectory-scoring.md) | Why constraint-graph scoring, why greedy matching fails, score vector definitions |
 | [`methodology/stage-3-diagnosis.md`](methodology/stage-3-diagnosis.md) | Why root-cause attribution matters, failure taxonomy rationale, evidence requirements |
 | [`methodology/stage-4-judge-validation.md`](methodology/stage-4-judge-validation.md) | Evidence-grounded judge principles, rubric anchors, bias probes, human validation |
+| [`methodology/stage-5-environment.md`](methodology/stage-5-environment.md) | Side-effect safety, scoped payload hashing, idempotency, and scenario design |
 
 ---
 
