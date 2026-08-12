@@ -21,6 +21,10 @@ from flight_agent_evaluator.agent.model_client import (
     OpenAIResponsesModelClient,
     ReplayModelClient,
 )
+from flight_agent_evaluator.annotation import (
+    AnnotationBundle,
+    verify_bundle_digest,
+)
 from flight_agent_evaluator.contracts.trajectory_expectation import (
     TrajectoryExpectation,
     validate_trajectory_expectation,
@@ -30,6 +34,10 @@ from flight_agent_evaluator.engine.runner import ScenarioRunner
 from flight_agent_evaluator.engine.scenario_loader import LoadedScenario, ScenarioLoader
 from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
 from flight_agent_evaluator.evaluation.trajectory_evaluator import TrajectoryEvaluator
+from flight_agent_evaluator.judges import (
+    FakeJudgeClient,
+    JudgeEvidencePackage,
+)
 from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.replay.engine import ReplayEngine
 
@@ -625,6 +633,62 @@ def cmd_benchmark_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_annotation_validate(args: argparse.Namespace) -> int:
+    bundle_path = Path(args.bundle)
+    if not bundle_path.is_file():
+        print(f"Bundle file not found: {bundle_path.name}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(bundle_path.read_text(encoding="utf-8"))
+        bundle = AnnotationBundle.model_validate(data)
+        if not verify_bundle_digest(bundle):
+            print(f"Bundle digest mismatch in {bundle_path.name}", file=sys.stderr)
+            return 1
+        if getattr(args, "json", False):
+            print(
+                json.dumps(
+                    {
+                        "valid": True,
+                        "bundle_id": bundle.bundle_id,
+                        "tasks": len(bundle.tasks),
+                        "status": bundle.annotation_status,
+                    }
+                )
+            )
+        else:
+            print(
+                f"Annotation bundle '{bundle.bundle_id}' is valid ({len(bundle.tasks)} tasks, status: {bundle.annotation_status})."
+            )
+        return 0
+    except Exception as exc:
+        print(f"Validation failed: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
+
+def cmd_judge_score(args: argparse.Namespace) -> int:
+    package_path = Path(args.package)
+    if not package_path.is_file():
+        print(f"Package file not found: {package_path.name}", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(package_path.read_text(encoding="utf-8"))
+        package = JudgeEvidencePackage.model_validate(data)
+        fake_client = FakeJudgeClient()
+        result = asyncio.run(fake_client.judge(package))
+        if getattr(args, "json", False):
+            print(json.dumps(result.model_dump(mode="json"), indent=2))
+        else:
+            print(f"Judge Evaluation Result for Package: {package.package_id}")
+            print(f"Overall Score: {result.overall_score}")
+            print(f"Validation Status: {result.validation_status}")
+            for cr in result.criteria_results:
+                print(f"  - {cr.criterion.value}: {cr.score}/4 ({cr.rationale})")
+        return 0
+    except Exception as exc:
+        print(f"Judge scoring failed: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="flight-evaluator",
@@ -742,6 +806,20 @@ def main(argv: list[str] | None = None) -> int:
     eval_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
     eval_p.add_argument("--scenario", "-s", help="Path to scenario JSON file (optional).")
     eval_p.set_defaults(func=cmd_evaluate)
+
+    # annotation subcommand
+    ann_p = subparsers.add_parser("annotation", help="Annotation bundle management.")
+    ann_sub = ann_p.add_subparsers(dest="annotation_command", required=True)
+    ann_val = ann_sub.add_parser("validate", help="Validate an annotation bundle file.")
+    ann_val.add_argument("bundle", help="Path to annotation bundle JSON file.")
+    ann_val.set_defaults(func=cmd_annotation_validate)
+
+    # judge subcommand
+    judge_p = subparsers.add_parser("judge", help="LLM judge scoring and evaluation.")
+    judge_sub = judge_p.add_subparsers(dest="judge_command", required=True)
+    judge_score_p = judge_sub.add_parser("score", help="Score an evidence package.")
+    judge_score_p.add_argument("package", help="Path to evidence package JSON file.")
+    judge_score_p.set_defaults(func=cmd_judge_score)
 
     args = parser.parse_args(argv)
     func = getattr(args, "func", None)
