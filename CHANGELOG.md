@@ -10,16 +10,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Stage 4 — Evidence-Grounded Judge & Human Validation Infrastructure**
+  - `judges/contracts.py`: `JudgeCriterion` (6 criteria), `JudgeEvidencePackage` (no model ID), `JudgeResult`, `HybridEvaluationResult` with hard safety dominance.
+  - `judges/rubric.py`: Operational anchors for 6 criteria across 5 score levels (0–4).
+  - `judges/prompt.py`: System prompt builder with explicit warning that tool output is untrusted.
+  - `judges/fake.py`: `FakeJudgeClient` for testing.
+  - `judges/replay.py`: `ReplayJudgeClient` for zero-network CI execution matching on package digests.
+  - `judges/metrics.py`: MAE, RMSE, Spearman, linear-weighted kappa, agreement rates.
+  - `judges/bias.py`: Bias probe suite testing position, verbosity, and style stability.
+  - `judges/calibration.py`: `compute_calibration_report` with honest pending status.
+  - `annotation/contracts.py`: `AnnotationTask`, `AnnotationBundle` with tamper-detectable SHA-256 digest.
+  - `annotation/bundle.py`: Bundle builder and freeze verification.
+  - `validation/annotation-bundle-v1/bundle.json`: Packaged annotation bundle v1 (12 tasks).
+  - CLI subcommands: `annotation validate`, `judge score`.
+  - Documentation: `docs/architecture/stage-4-judge.md`, `docs/methodology/stage-4-judge-validation.md`, `docs/reports/stage-4-final.md`.
+
 - Restored governance and documentation files: `CODE_OF_CONDUCT.md`,
   `CONTRIBUTING.md`, `SECURITY.md`, `.github/pull_request_template.md`.
 - `docs/PROJECT_PLAN.md` — canonical stage roadmap with corrected stage numbering.
 - `docs/README.md` — documentation index.
 - `docs/adr/0001` through `0009` — architectural decision records.
-- `docs/architecture/stage-0-1-foundation.md` — Stage 0 and 1 architecture summary.
-- `docs/architecture/stage-2-trajectory-evaluator.md` — Trajectory evaluator architecture.
-- `docs/architecture/stage-3-diagnostics.md` — Failure taxonomy architecture.
-- `docs/methodology/trajectory-scoring.md` — Trajectory scoring methodology.
-- `docs/methodology/stage-3-diagnosis.md` — Diagnostic methodology.
 
 ### Fixed
 
