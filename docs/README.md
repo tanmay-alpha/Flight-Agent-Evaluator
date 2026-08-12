@@ -41,6 +41,17 @@ Documents explaining the reasoning behind key design decisions.
 
 ---
 
+## Reports
+
+Summary reports for major milestones and release validation.
+
+| Document | Topic |
+|----------|-------|
+| [`reports/stage-4-final.md`](reports/stage-4-final.md) | Stage 4 Evidence-Grounded Judge & Human Validation Report |
+| [`reports/stage-7-v1-release-report.md`](reports/stage-7-v1-release-report.md) | Flight Agent Evaluator V1.0.0 Canonical Release Report |
+
+---
+
 ## Architectural Decision Records (ADRs)
 
 Each major design decision is recorded as an ADR. ADRs are historical records;
