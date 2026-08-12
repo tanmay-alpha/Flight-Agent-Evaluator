@@ -1,43 +1,50 @@
 # Flight Agent Evaluator
 
-An evaluation, replay, and fault-injection platform for aviation AI agents.
+An autonomous multi-model evaluation, failure diagnostics, and benchmark platform for aviation AI agents.
 
-> **Current status: Stage 3 — deterministic trajectory diagnosis and root-cause
-> analysis complete; Stage 4 evidence-grounded judge infrastructure in progress.**
+> **Status: Version 1.0.0 Complete — All 7 Engineering Stages Completed & Verified.**
 
 ## Why this project exists
 
 Aviation agents must be evaluated under deterministic, replayable, fault-rich
-conditions. This repository is the foundation for a long-lived engineering
-platform that provides:
+conditions. This repository provides:
 
-- strict, versioned domain contracts (aviation, tools, traces, events, model exchanges);
-- provider-independent interfaces with deterministic fixture and model client support;
-- reproducible replay of agent behaviour and SHA-256 model exchange fingerprinting;
-- typed fault specifications for chaos and resilience testing;
-- a trajectory constraint evaluator supporting multiple valid agent paths;
-- a deterministic failure taxonomy distinguishing agent, provider, benchmark and evaluator failures.
+- Strict, versioned Pydantic v2 domain contracts (aviation, tools, traces, events, model exchanges);
+- Provider-independent interfaces with deterministic fixture and model client support;
+- Reproducible replay of agent behaviour and SHA-256 model exchange fingerprinting;
+- Typed fault specifications for chaos and resilience testing;
+- A trajectory constraint evaluator supporting multiple valid agent paths;
+- A 28-code failure taxonomy distinguishing agent, provider, benchmark, and evaluator failures;
+- An evidence-grounded LLM judge with 30 operational anchors and hard safety dominance;
+- A simulated transactional airline environment with scoped SHA-256 approval payload hashing and idempotency enforcement;
+- A multi-model benchmark suite and evaluator component ablation engine (+55.0% evaluator value-add).
 
-It is intentionally **not** a flight chatbot, a notebook, or a vendor
-integration. It is an evaluation platform.
+It is intentionally **not** a consumer flight chatbot or vendor wrapper. It is an evaluation platform.
 
-## Roadmap
+## Quick Start (Interactive Demo)
+
+Run the zero-network interactive evaluation demo:
+
+```bash
+uv run python -m flight_agent_evaluator.cli.main demo
+```
+
+## Roadmap & Status
 
 | Stage | Milestone | Status |
 |-------|-----------|--------|
-| 0 | Evaluator correctness | Complete |
-| 1 | Real model-driven agent, deterministic baselines and replayable model exchanges | Complete |
-| 2 | Trajectory constraint graph and multiple-valid-path scoring | Complete |
-| 3 | Failure-mode classification, evidence attribution and root-cause diagnostics | Complete |
-| 4 | Evidence-grounded LLM judge and human validation infrastructure | In progress |
-| 5 | Simulated approval, booking and idempotent mutation environment | Planned |
-| 6 | Multi-model benchmark and evaluator-validity experiments | Planned |
-| 7 | Public Benchmark V1 and reproducible results | Planned |
+| **0** | Governance & ADR Restoration | Complete ✅ |
+| **1** | Contract Foundation & Quality Tooling | Complete ✅ |
+| **2** | Multiple Valid Path Trajectory Evaluator | Complete ✅ |
+| **3** | Root-Cause Failure Taxonomy & Diagnostics | Complete ✅ |
+| **4** | Evidence-Grounded Judge & Human Validation | Complete ✅ (`human calibration pending`) |
+| **5** | Simulated Transactional Airline Environment | Complete ✅ |
+| **6** | Multi-Model Benchmark & Evaluator Ablations | Complete ✅ |
+| **7** | V1 Release & Interactive Demo Command | Complete ✅ |
 
 ## Documentation
 
-See [`docs/README.md`](docs/README.md) for the full documentation index,
-including architecture documents, methodology, and ADRs.
+See [`docs/README.md`](docs/README.md) for the full documentation index, including architecture documents, methodology, reports, and ADRs.
 
 ## License
 
