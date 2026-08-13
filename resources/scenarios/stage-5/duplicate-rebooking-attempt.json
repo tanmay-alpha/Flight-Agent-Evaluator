@@ -147,7 +147,8 @@
             "json_pointer": "/approval_id"
           },
           "idempotency_key": "idem-conf-dup-2"
-        }
+        },
+        "expected_failure": true
       },
       {
         "kind": "produce_final_response",

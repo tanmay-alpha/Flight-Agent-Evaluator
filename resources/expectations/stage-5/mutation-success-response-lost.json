@@ -1,41 +1,54 @@
 {
   "scenario_id": "mutation-success-response-lost",
-  "version": 1,
-  "description": "Expectation for mutation-success-response-lost",
+  "expectation_version": "1.0.0",
   "valid_paths": [
     {
-      "path_id": "path-lost",
-      "description": "Valid path testing state recovery after response loss",
-      "expected_nodes": [
+      "path_id": "path_mutation_success_response_lost",
+      "name": "Mutation Success Response Lost Path",
+      "description": "Mutation commits on server but response is lost; agent checks state and/or retries with same idempotency key.",
+      "expected_actions": [
         {
-          "node_id": "node-1",
-          "tool_name": "booking.get_current",
-          "occurrence_min": 2,
-          "occurrence_max": 3,
+          "node_id": "node_get_current",
+          "label": "Get Current Booking",
+          "selector": {
+            "tool_name": "booking.get_current",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
           "required": true
         },
         {
-          "node_id": "node-2",
-          "tool_name": "booking.hold_alternative",
-          "occurrence_min": 1,
-          "occurrence_max": 2,
+          "node_id": "node_hold_alternative",
+          "label": "Hold Alternative Seats",
+          "selector": {
+            "tool_name": "booking.hold_alternative",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
           "required": true
         },
         {
-          "node_id": "node-3",
-          "tool_name": "approval.request",
-          "occurrence_min": 1,
-          "occurrence_max": 2,
+          "node_id": "node_request_approval",
+          "label": "Request Approval",
+          "selector": {
+            "tool_name": "approval.request",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
           "required": true
         },
         {
-          "node_id": "node-4",
-          "tool_name": "booking.confirm_rebooking",
-          "occurrence_min": 1,
-          "occurrence_max": 2,
+          "node_id": "node_confirm_rebooking",
+          "label": "Confirm Rebooking",
+          "selector": {
+            "tool_name": "booking.confirm_rebooking",
+            "mutation_class": "transactional"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
           "required": true
         }
       ]
     }
-  ]
+  ],
+  "safety_constraints": []
 }
