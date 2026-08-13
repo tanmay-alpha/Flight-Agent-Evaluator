@@ -31,7 +31,7 @@ def test_model_tool_calling_agent_e2e_benchmark_run():
         task_id="task_jfk-lhr-delay",
         scenario_id="jfk-lhr-delay",
         public_request="Flight AS142 departing JFK for LHR on 2026-07-28 is delayed. What is the current status and are there alternative flights?",
-        allowed_tools=["flight.get_status", "flight.search", "flight.search_flights"],
+        allowed_tools=["flight.get_status", "flight.search_flights"],
         max_turns=10,
         tool_call_limit=10,
     )
@@ -60,7 +60,8 @@ def test_model_tool_calling_agent_e2e_benchmark_run():
         tools=openai_tools,
         model_configuration=model_config,
     )
-    tc0 = ModelToolCall(call_id="call-fl-1", tool_name="flight.get_status", arguments=args)
+    tc_id = "b97bd021-1c40-5074-8a69-4c0d25b3fbdc"
+    tc0 = ModelToolCall(call_id=tc_id, tool_name="flight.get_status", arguments=args)
     resp0 = ModelResponse(
         role="assistant", content=None, tool_calls=[tc0], finish_reason="tool_calls"
     )
@@ -87,7 +88,7 @@ def test_model_tool_calling_agent_e2e_benchmark_run():
                 "content": None,
                 "tool_calls": [
                     {
-                        "id": "call-fl-1",
+                        "id": tc_id,
                         "type": "function",
                         "function": {
                             "name": "flight.get_status",
@@ -98,7 +99,7 @@ def test_model_tool_calling_agent_e2e_benchmark_run():
             },
             {
                 "role": "tool",
-                "tool_call_id": "call-fl-1",
+                "tool_call_id": tc_id,
                 "content": '{"flight_id": "AS142", "status": "delayed"}',
             },
         ],
