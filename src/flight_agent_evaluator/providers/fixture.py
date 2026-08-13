@@ -52,6 +52,7 @@ KNOWN_FLIGHT_STATUS_FIXTURES: dict[str, dict[str, str]] = {
 }
 KNOWN_SEARCH_FIXTURES: dict[str, dict[str, str]] = {
     "JFK-LAX-2026-07-28": {"origin": "JFK", "destination": "LAX", "date": "2026-07-28"},
+    "JFK-LHR-2026-07-28": {"origin": "JFK", "destination": "LHR", "date": "2026-07-28"},
 }
 
 # ---------------------------------------------------------------------------

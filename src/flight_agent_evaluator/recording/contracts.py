@@ -166,6 +166,8 @@ class InvokeToolStep(ContractModel):
     step_id: NonEmptyIdentifier
     tool_name: str = Field(min_length=1)
     arguments: dict[str, Any] = Field(default_factory=dict)
+    expected_failure: bool = Field(default=False)
+    allow_failure: bool = Field(default=False)
 
 
 class ProduceFinalResponseStep(ContractModel):

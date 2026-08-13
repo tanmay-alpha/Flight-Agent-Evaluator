@@ -2,6 +2,10 @@
 
 import pytest
 
+from flight_agent_evaluator.drivers.resolver import (
+    PriorStepRecord,
+    TrajectoryReferenceError,
+)
 from flight_agent_evaluator.drivers.scripted import resolve_step_arguments
 
 
@@ -41,8 +45,9 @@ def test_resolve_step_arguments_out_of_range():
 
 
 def test_resolve_step_arguments_missing_pointer():
-    with pytest.raises(KeyError):
-        resolve_step_arguments({"ref": {"$ref_step": 0, "json_pointer": "/nonexistent"}}, [{}])
+    steps = [PriorStepRecord(step_index=0, tool_name="test", success=True, result={})]
+    with pytest.raises((KeyError, TrajectoryReferenceError)):
+        resolve_step_arguments({"ref": {"$ref_step": 0, "json_pointer": "/nonexistent"}}, steps)
 
-    with pytest.raises(KeyError):
-        resolve_step_arguments({"ref": "$ref:0/nonexistent"}, [{}])
+    with pytest.raises((KeyError, TrajectoryReferenceError)):
+        resolve_step_arguments({"ref": "$ref:0/nonexistent"}, steps)

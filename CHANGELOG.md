@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.0] - 2026-08-14
+
+### Fixed & Finalized — Benchmark V1 Semantic Validity Repair
+- **Trajectory Reference Resolution**: Created `TrajectoryReferenceResolver` in `drivers/resolver.py` supporting typed step references (`$ref_step` + `json_pointer`) and string syntax (`$ref:0/hold_id`). Refactored `ScriptedAgentDriver`, `ScriptedOracleAgent`, and `ToolExecutor`.
+- **Scenario-Driven Environments**: Added `ScenarioEnvironmentConfig` and `SimulatedAirlineEnvironment.from_scenario(scenario)` mapping Stage 5 scenarios to explicit booking references (`AS-1001` to `AS-1012`) and approval policies.
+- **Post-Commit Fault Injection**: Real post-commit network timeout handling in `confirm_rebooking` when `response_lost_on_confirm` is enabled, validating idempotent recovery without duplicate side-effects.
+- **Stage 5 Integration Test Suite**: Added `tests/integration/test_stage5_integration.py` covering all 12 Stage 5 scenarios end-to-end.
+- **Model Resolution**: Removed dynamic substring heuristics (`if "gpt-4o" in name`).
+- **Release Verification**: Added `flight-evaluator benchmark verify-release` command running all quality gates (lock, sync, ruff, mypy, pytest, check.py, uv build).
+- **Unified Release Version**: Standardized release version `0.2.0` across `pyproject.toml`, `README.md`, `CHANGELOG.md`, `PROJECT_PLAN.md`, and created `CITATION.cff`.
+
+---
+
 ## [1.0.0] - 2026-08-12
 
 ### Added
