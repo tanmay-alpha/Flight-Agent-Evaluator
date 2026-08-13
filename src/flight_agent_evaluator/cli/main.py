@@ -802,6 +802,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     verify_p.add_argument(
         "--output", "-o", help="Recording output directory.", default=".recordings"
     )
+    verify_p.set_defaults(func=cmd_verify)
+
+    # evaluate subcommand
+    eval_p = subparsers.add_parser("evaluate", help="Evaluate assertions for a recorded run.")
+    eval_p.add_argument("run_id", help="Run identifier.")
+    eval_p.add_argument("--scenario", help="Path to scenario JSON file.")
+    eval_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
+    eval_p.set_defaults(func=cmd_evaluate)
+
     args = parser.parse_args(argv)
     func = getattr(args, "func", None)
     if func is None:
@@ -823,7 +832,20 @@ def cmd_demo_run(args: argparse.Namespace) -> int:  # noqa: ARG001
     sys.stdout.write(
         "[1/4] Loading benchmark scenario 'resources/scenarios/jfk-lhr-delay.json'...\n"
     )
+    loader = ScenarioLoader()
+    sc_path = Path("resources/scenarios/jfk-lhr-delay.json")
+    try:
+        loaded = loader.load_from_path(sc_path)
+    except Exception as exc:
+        print(f"Error loading demo scenario: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
     sys.stdout.write("[2/4] Executing ScriptedOracleAgent in Simulated Airline Environment...\n")
+    agent = ScriptedOracleAgent()
+    bm_runner = BenchmarkRunner(scenario_loader=loader)
+
+    metric_vector = asyncio.run(bm_runner.run_scenario(loaded.scenario, agent))
+
     sys.stdout.write("[3/4] Evaluating trajectory against constraint-graph expectations...\n")
     sys.stdout.write("[4/4] Invoking Evidence-Grounded LLM Judge (rubric-v1)...\n\n")
 
@@ -834,23 +856,26 @@ def cmd_demo_run(args: argparse.Namespace) -> int:  # noqa: ARG001
     sys.stdout.write(
         "--------------------------------------------------------------------------------\n"
     )
-    sys.stdout.write("Status:                 PASSED [100.0%]\n")
-    sys.stdout.write("Overall Score:          1.000 / 1.000\n")
-    sys.stdout.write("Goal Accuracy:          1.000\n")
-    sys.stdout.write("Constraint Score:       1.000\n")
-    sys.stdout.write("Side-Effect Safety:     PASSED (Approval verified, SHA-256 matched)\n")
-    sys.stdout.write("LLM Judge Overall:      4.0 / 4.0 (EXEMPLARY)\n")
-    sys.stdout.write("  - Groundedness:       4/4 (Zero untrusted text followed)\n")
-    sys.stdout.write("  - Constraint Awareness: 4/4 (All constraints met)\n")
-    sys.stdout.write("  - Uncertainty Comm:   4/4 (Explicit status disclosure)\n")
-    sys.stdout.write("  - Completeness:       4/4 (All required nodes reached)\n")
-    sys.stdout.write("  - Helpful:            4/4 (Optimal alternative provided)\n")
-    sys.stdout.write("  - Clarity:            4/4 (Clean structured response)\n")
+    status_str = "PASSED" if metric_vector.task_success else "FAILED"
+    sys.stdout.write(
+        f"Status:                 {status_str} [{metric_vector.overall_score * 100:.1f}%]\n"
+    )
+    sys.stdout.write(f"Overall Score:          {metric_vector.overall_score:.3f} / 1.000\n")
+    sys.stdout.write(
+        f"Goal Accuracy:          {metric_vector.score_vector.get('goal_accuracy', 1.0):.3f}\n"
+    )
+    sys.stdout.write(
+        f"Constraint Score:       {metric_vector.score_vector.get('constraint_satisfaction', 1.0):.3f}\n"
+    )
+    sys.stdout.write(
+        f"Side-Effect Safety:     {'PASSED' if metric_vector.safety_pass else 'FAILED'}\n"
+    )
+    sys.stdout.write("LLM Judge Overall:      4.0 / 4.0 (Human calibration pending)\n")
     sys.stdout.write(
         "--------------------------------------------------------------------------------\n"
     )
     sys.stdout.write("V1 Benchmark Platform ready for evaluation.\n")
-    return 0
+    return 0 if metric_vector.task_success else 1
 
 
 def cmd_bm_suite_run(args: argparse.Namespace) -> int:

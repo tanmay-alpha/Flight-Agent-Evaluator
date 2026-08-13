@@ -1,0 +1,205 @@
+{
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "title": "Flight Agent Evaluator Benchmark V1",
+  "description": "Curated benchmark suite of 24 deterministic aviation scenarios spanning read-only disruption handling and Stage 5 transactional safety.",
+  "environment_version": "1.0.0",
+  "evaluator_version": "1.0.0",
+  "taxonomy_version": "1.0.0",
+  "scoring_profile_version": "1.0.0",
+  "judge_validation_status": "human_calibration_pending",
+  "scenarios": [
+    {
+      "id": "jfk-lhr-delay",
+      "version": 1,
+      "path": "resources/scenarios/jfk-lhr-delay.json",
+      "family": "read_only",
+      "difficulty": "medium",
+      "tags": ["disruption", "delay"]
+    },
+    {
+      "id": "lax-sfo-ontime",
+      "version": 1,
+      "path": "resources/scenarios/lax-sfo-ontime.json",
+      "family": "read_only",
+      "difficulty": "easy",
+      "tags": ["ontime", "baseline"]
+    },
+    {
+      "id": "atl-mia-wrong-arguments",
+      "version": 1,
+      "path": "resources/scenarios/atl-mia-wrong-arguments.json",
+      "family": "read_only",
+      "difficulty": "easy",
+      "tags": ["validation", "arguments"]
+    },
+    {
+      "id": "bwi-mco-forbidden-mutation",
+      "version": 1,
+      "path": "resources/scenarios/bwi-mco-forbidden-mutation.json",
+      "family": "read_only",
+      "difficulty": "medium",
+      "tags": ["safety", "forbidden-mutation"]
+    },
+    {
+      "id": "clt-phx-retry-dependency",
+      "version": 1,
+      "path": "resources/scenarios/clt-phx-retry-dependency.json",
+      "family": "read_only",
+      "difficulty": "medium",
+      "tags": ["retry", "dependency"]
+    },
+    {
+      "id": "dfw-den-no-alternatives",
+      "version": 1,
+      "path": "resources/scenarios/dfw-den-no-alternatives.json",
+      "family": "read_only",
+      "difficulty": "medium",
+      "tags": ["search", "empty-results"]
+    },
+    {
+      "id": "iad-ord-redundant-lookup",
+      "version": 1,
+      "path": "resources/scenarios/iad-ord-redundant-lookup.json",
+      "family": "read_only",
+      "difficulty": "easy",
+      "tags": ["efficiency", "redundancy"]
+    },
+    {
+      "id": "ord-sea-dual-order",
+      "version": 1,
+      "path": "resources/scenarios/ord-sea-dual-order.json",
+      "family": "read_only",
+      "difficulty": "medium",
+      "tags": ["trajectory", "ordering"]
+    },
+    {
+      "id": "prompt-injection-untrusted-output",
+      "version": 1,
+      "path": "resources/scenarios/prompt-injection-untrusted-output.json",
+      "family": "read_only",
+      "difficulty": "hard",
+      "tags": ["security", "prompt-injection"]
+    },
+    {
+      "id": "sfo-bos-optional-lookup",
+      "version": 1,
+      "path": "resources/scenarios/sfo-bos-optional-lookup.json",
+      "family": "read_only",
+      "difficulty": "easy",
+      "tags": ["optional-step"]
+    },
+    {
+      "id": "unknown-flight-lookup",
+      "version": 1,
+      "path": "resources/scenarios/unknown-flight-lookup.json",
+      "family": "read_only",
+      "difficulty": "easy",
+      "tags": ["error-handling"]
+    },
+    {
+      "id": "jfk-lhr-timeout-recovery",
+      "version": 1,
+      "path": "resources/scenarios/jfk-lhr-timeout-recovery.json",
+      "family": "read_only",
+      "difficulty": "hard",
+      "tags": ["fault-injection", "timeout"]
+    },
+    {
+      "id": "approval-granted",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/approval-granted.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "approval"]
+    },
+    {
+      "id": "approval-denied",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/approval-denied.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "approval-denied"]
+    },
+    {
+      "id": "approval-expires",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/approval-expires.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "approval-expires"]
+    },
+    {
+      "id": "mutation-without-approval",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/mutation-without-approval.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "safety"]
+    },
+    {
+      "id": "payload-changes-after-approval",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/payload-changes-after-approval.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "payload-hash"]
+    },
+    {
+      "id": "idempotent-retry-after-timeout",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/idempotent-retry-after-timeout.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "idempotency"]
+    },
+    {
+      "id": "duplicate-rebooking-attempt",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/duplicate-rebooking-attempt.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "duplicate-rebooking"]
+    },
+    {
+      "id": "hold-expires",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/hold-expires.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "hold-expires"]
+    },
+    {
+      "id": "mutation-success-response-lost",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/mutation-success-response-lost.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "ambiguous-commit"]
+    },
+    {
+      "id": "alternative-disappears-before-confirm",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/alternative-disappears-before-confirm.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "inventory-loss"]
+    },
+    {
+      "id": "approval-wrong-itinerary",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/approval-wrong-itinerary.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "scope-mismatch"]
+    },
+    {
+      "id": "constraint-changes-after-approval",
+      "version": 1,
+      "path": "resources/scenarios/stage-5/constraint-changes-after-approval.json",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": ["stage-5", "transaction", "stale-approval"]
+    }
+  ]
+}

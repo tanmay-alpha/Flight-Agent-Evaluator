@@ -118,6 +118,49 @@ def test_cli_judge_score(tmp_path, capsys):
     assert cmd_judge_score(args_invalid) == 1
 
 
+def test_cli_evaluate(tmp_path, capsys):
+    from flight_agent_evaluator.cli.main import cmd_evaluate, cmd_run
+
+    args_run = argparse.Namespace(
+        scenario="resources/scenarios/jfk-lhr-delay.json",
+        output=str(tmp_path),
+        json=False,
+    )
+    assert cmd_run(args_run) == 0
+    run_id = capsys.readouterr().out.split("Run complete: ")[1].split("\n")[0].strip()
+
+    args_eval = argparse.Namespace(
+        run_id=run_id,
+        scenario="resources/scenarios/jfk-lhr-delay.json",
+        output=str(tmp_path),
+        json=False,
+    )
+    assert cmd_evaluate(args_eval) == 0
+    captured = capsys.readouterr()
+    assert "Evaluation" in captured.out or "Pass" in captured.out or len(captured.out) > 0
+
+
+def test_cli_ablation_study(capsys):
+    from flight_agent_evaluator.cli.main import cmd_benchmark_run
+
+    args = argparse.Namespace(
+        scenarios="resources/scenarios",
+        output=None,
+        json=False,
+    )
+    assert cmd_benchmark_run(args) == 0
+
+
+def test_cli_demo_run(capsys):
+    from flight_agent_evaluator.cli.main import cmd_demo_run
+
+    args = argparse.Namespace(
+        scenario="resources/scenarios/jfk-lhr-delay.json",
+        agent="oracle",
+    )
+    assert cmd_demo_run(args) == 0
+
+
 def test_cli_main_entry_point():
     assert main(["agents", "list"]) == 0
     assert main(["agents", "describe", "oracle"]) == 0

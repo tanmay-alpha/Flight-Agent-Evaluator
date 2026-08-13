@@ -202,6 +202,7 @@ class AgentTask(BaseModel):
     scenario_id: str
     public_request: str
     allowed_tools: list[str] = Field(default_factory=list)
+    scenario_mode: str = "read_only"
     max_turns: int = 10
     tool_call_limit: int = 15
 
