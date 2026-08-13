@@ -234,6 +234,10 @@ class ScriptedTrajectory(ContractModel):
             json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
         ).hexdigest()
 
+    def canonical_digest(self) -> str:
+        """Alias for digest()."""
+        return self.digest()
+
 
 # Re-export key types so external callers can import a single module.
 __all__ = [
