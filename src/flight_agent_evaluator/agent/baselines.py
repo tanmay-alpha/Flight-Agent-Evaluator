@@ -11,6 +11,10 @@ from flight_agent_evaluator.contracts.model import (
     AgentTask,
 )
 from flight_agent_evaluator.contracts.tools import ToolCall
+from flight_agent_evaluator.drivers.resolver import (
+    PriorStepRecord,
+    TrajectoryReferenceResolver,
+)
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.state import StateSnapshot
@@ -46,6 +50,9 @@ class ScriptedOracleAgent:
         tool_calls_made = 0
         final_response: str | None = None
         current_state = state
+        prior_steps: list[PriorStepRecord] = []
+        resolver = TrajectoryReferenceResolver()
+        stop_reason = AgentStopReason.COMPLETED
 
         for step in self._golden_steps:
             if step.get("type") == "final_response":
@@ -53,7 +60,8 @@ class ScriptedOracleAgent:
                 break
 
             tool_name = step.get("tool_name", "")
-            args = step.get("arguments", {})
+            raw_args = step.get("arguments", {})
+            resolved_args = resolver.resolve_arguments(raw_args, prior_steps)
 
             tool_call_id = context.id_factory.next(
                 record_type="tool_call", sequence=tool_calls_made
@@ -70,7 +78,7 @@ class ScriptedOracleAgent:
                 call_id=tool_call_id,
                 run_id=context.run_id,
                 tool_name=tool_name,
-                arguments=args,
+                arguments=resolved_args,
                 mutation_class=mutation_class,
                 start_time=context.clock.now(),
             )
@@ -78,15 +86,41 @@ class ScriptedOracleAgent:
             exec_result = await executor.execute(tool_call=tool_call, context=context)
             tool_calls_made += 1
 
-            if exec_result.status == "success" and exec_result.result:
-                current_state = current_state.with_data({"last_result": exec_result.result})
+            is_success = exec_result.status == "success"
+            res_payload = (
+                exec_result.result
+                if isinstance(exec_result.result, dict)
+                else {"result": exec_result.result}
+            )
+            prior_steps.append(
+                PriorStepRecord(
+                    step_index=len(prior_steps),
+                    tool_name=tool_name,
+                    success=is_success,
+                    result=res_payload,
+                )
+            )
+
+            if is_success:
+                if exec_result.result:
+                    current_state = current_state.with_data({"last_result": exec_result.result})
+            else:
+                expected_failure = step.get("expected_failure", False) or step.get(
+                    "allow_failure", False
+                )
+                if not expected_failure:
+                    stop_reason = AgentStopReason.ERROR
+                    final_response = (
+                        f"Scripted step '{tool_name}' failed unexpectedly: {exec_result.error}"
+                    )
+                    break
 
         return AgentRunResult(
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
-            stop_reason=AgentStopReason.COMPLETED,
-            final_response=final_response or "Oracle task completed successfully.",
+            stop_reason=stop_reason,
+            final_response=final_response or "Oracle task completed.",
             tool_call_count=tool_calls_made,
         )
 

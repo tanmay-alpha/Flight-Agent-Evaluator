@@ -105,6 +105,7 @@ class ToolExecutor:
         self._projector: Any = state_projector or _IdentityProjector()
         self._tool_call_limit = tool_call_limit
         self._logical_time_limit_ns = logical_time_limit_ns
+        self._start_ns = int(clock.now().timestamp() * 1_000_000_000) if clock is not None else 0
         self._provider = provider
         self._call_count = 0
         self._event_emitter: Callable[[dict[str, Any]], None] | None = None
@@ -171,7 +172,7 @@ class ToolExecutor:
         # 4. Logical-time limit check.
         if self._clock is not None:
             now_ns = int(now_dt.timestamp() * 1_000_000_000)
-            if now_ns > self._logical_time_limit_ns:
+            if (now_ns - self._start_ns) > self._logical_time_limit_ns:
                 self._call_count += 1
                 return self._time_limit_exceeded(tool_call, now_dt)
 

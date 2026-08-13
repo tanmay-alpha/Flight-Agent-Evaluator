@@ -100,7 +100,8 @@
             "json_pointer": "/approval_id"
           },
           "idempotency_key": "idem-conf-lost-1"
-        }
+        },
+        "expected_failure": true
       },
       {
         "kind": "invoke_tool",

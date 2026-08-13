@@ -776,6 +776,32 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     bm_val_p.add_argument("scenarios", nargs="?", default="resources/scenarios")
     bm_val_p.set_defaults(func=cmd_benchmark_validate)
 
+    bm_ab_p = bm_sub.add_parser("ablation", help="Run evaluator ablation study.")
+    bm_ab_p.set_defaults(func=cmd_ablation_run)
+
+    bm_rep_p = bm_sub.add_parser("report", help="Generate benchmark summary report.")
+    bm_rep_p.add_argument("summary_file", nargs="?", default="benchmark_summary.json")
+    bm_rep_p.set_defaults(func=cmd_benchmark_report)
+
+    bm_ver_p = bm_sub.add_parser(
+        "verify-release", help="Verify release integrity across all quality gates."
+    )
+    bm_ver_p.set_defaults(func=cmd_verify_release)
+
+    # annotation subcommand
+    ann_p = subparsers.add_parser("annotation", help="Annotation management.")
+    ann_sub = ann_p.add_subparsers(dest="annotation_command", required=True)
+    ann_val = ann_sub.add_parser("validate", help="Validate an annotation bundle.")
+    ann_val.add_argument("bundle", help="Path to annotation bundle JSON file.")
+    ann_val.set_defaults(func=cmd_annotation_validate)
+
+    # judge subcommand
+    jdg_p = subparsers.add_parser("judge", help="Judge evaluation.")
+    jdg_sub = jdg_p.add_subparsers(dest="judge_command", required=True)
+    jdg_score = jdg_sub.add_parser("score", help="Score a judge evidence package.")
+    jdg_score.add_argument("package", help="Path to judge evidence package JSON file.")
+    jdg_score.set_defaults(func=cmd_judge_score)
+
     # run subcommand
     run_p = subparsers.add_parser("run", help="Execute a scenario.")
     run_p.add_argument("scenario", help="Path to a scenario JSON file.")
@@ -899,6 +925,30 @@ def cmd_bm_suite_run(args: argparse.Namespace) -> int:
 def cmd_benchmark_report(args: argparse.Namespace) -> int:
     """CLI handler for benchmark report."""
     sys.stdout.write(f"Benchmark report generated for {args.summary_file}\n")
+    return 0
+
+
+def cmd_verify_release(args: argparse.Namespace) -> int:  # noqa: ARG001
+    """Run full release verification suite across all quality gates."""
+    import subprocess
+
+    cmds = [
+        ["uv", "lock", "--check"],
+        ["uv", "sync", "--locked"],
+        ["uv", "run", "ruff", "check", "."],
+        ["uv", "run", "ruff", "format", "--check", "."],
+        ["uv", "run", "mypy", "src"],
+        ["uv", "run", "pytest"],
+        ["uv", "run", "python", "scripts/check.py"],
+        ["uv", "build"],
+    ]
+    for cmd in cmds:
+        sys.stdout.write(f"Executing: {' '.join(cmd)}...\n")
+        res = subprocess.run(cmd)  # noqa: S603
+        if res.returncode != 0:
+            print(f"Release verification step failed: {' '.join(cmd)}", file=sys.stderr)
+            return res.returncode
+    sys.stdout.write("All release verification checks passed successfully!\n")
     return 0
 
 

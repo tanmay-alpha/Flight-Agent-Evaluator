@@ -14,7 +14,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from flight_agent_evaluator.contracts.json_pointer import MISSING, resolve_json_pointer
+from flight_agent_evaluator.drivers.resolver import (
+    PriorStepRecord,
+    TrajectoryReferenceResolver,
+)
 from flight_agent_evaluator.recording.contracts import (
     InvokeToolStep,
     ProduceFinalResponseStep,
@@ -34,39 +37,24 @@ class ScriptedDriverResult:
     checkpoints: tuple[str, ...]
 
 
-def _resolve_argument_value(val: Any, prior_results: list[dict[str, Any]]) -> Any:
-    if isinstance(val, dict):
-        if "$ref_step" in val and "json_pointer" in val:
-            step_idx = int(val["$ref_step"])
-            pointer = str(val["json_pointer"])
-            if step_idx < 0 or step_idx >= len(prior_results):
-                raise ValueError(f"Step reference index {step_idx} out of range")
-            res = resolve_json_pointer(prior_results[step_idx], pointer)
-            if res is MISSING:
-                raise KeyError(f"Reference '{pointer}' not found in output of step {step_idx}")
-            return res
-        return {k: _resolve_argument_value(v, prior_results) for k, v in val.items()}
-    if isinstance(val, str) and val.startswith("$ref:"):
-        # Format: $ref:step_index/json_pointer
-        parts = val[5:].split("/", 1)
-        step_idx = int(parts[0])
-        pointer = "/" + parts[1] if len(parts) > 1 else ""
-        if step_idx < 0 or step_idx >= len(prior_results):
-            raise ValueError(f"Step reference index {step_idx} out of range")
-        res = resolve_json_pointer(prior_results[step_idx], pointer)
-        if res is MISSING:
-            raise KeyError(f"Reference '{pointer}' not found in output of step {step_idx}")
-        return res
-    if isinstance(val, list):
-        return [_resolve_argument_value(v, prior_results) for v in val]
-    return val
-
-
 def resolve_step_arguments(
-    arguments: dict[str, Any], prior_results: list[dict[str, Any]]
+    arguments: dict[str, Any], prior_results: list[dict[str, Any]] | list[PriorStepRecord]
 ) -> dict[str, Any]:
     """Resolve JSON pointer references to outputs of prior trajectory steps."""
-    return {k: _resolve_argument_value(v, prior_results) for k, v in arguments.items()}
+    resolver = TrajectoryReferenceResolver()
+    if prior_results and isinstance(prior_results[0], dict):
+        prior_steps = [
+            PriorStepRecord(
+                step_index=idx,
+                tool_name="unknown",
+                success=True,
+                result=res,  # type: ignore[arg-type]
+            )
+            for idx, res in enumerate(prior_results)
+        ]
+    else:
+        prior_steps = prior_results  # type: ignore[assignment]
+    return resolver.resolve_arguments(arguments, prior_steps)
 
 
 class ScriptedAgentDriver:
@@ -98,7 +86,8 @@ class ScriptedAgentDriver:
         checkpoints: list[str] = []
         current_state = state
         tool_calls_list: list[dict[str, object]] = []
-        prior_results: list[dict[str, Any]] = []
+        prior_steps: list[PriorStepRecord] = []
+        resolver = TrajectoryReferenceResolver()
 
         for step in trajectory.steps:
             if isinstance(step, InvokeToolStep):
@@ -107,7 +96,7 @@ class ScriptedAgentDriver:
                 tool_call_id = context.id_factory.next(
                     record_type="tool_call", sequence=tool_calls_made
                 )
-                resolved_args = resolve_step_arguments(step.arguments, prior_results)
+                resolved_args = resolver.resolve_arguments(step.arguments, prior_steps)
                 tool_call = ToolCall(
                     call_id=tool_call_id,
                     run_id=context.run_id,
@@ -120,11 +109,21 @@ class ScriptedAgentDriver:
                     tool_call=tool_call,
                     context=context,
                 )
-                if result.status == "success":
+                is_success = result.status == "success"
+                res_payload = (
+                    result.result if isinstance(result.result, dict) else {"result": result.result}
+                )
+                prior_steps.append(
+                    PriorStepRecord(
+                        step_index=len(prior_steps),
+                        tool_name=step.tool_name,
+                        success=is_success,
+                        result=res_payload,
+                    )
+                )
+                if is_success:
                     tool_calls_made += 1
                     tool_calls_remaining -= 1
-                    res_payload = result.result if isinstance(result.result, dict) else {}
-                    prior_results.append(res_payload)
                     tool_calls_list.append(
                         {
                             "tool_name": step.tool_name,

@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this benchmark software, please cite it as below."
+authors:
+  - family-names: "Mangal"
+    given-names: "Tanmay"
+title: "Flight Agent Evaluator: Autonomous Multi-Model Benchmark & Failure Diagnostics Platform"
+version: 0.2.0
+date-released: 2026-08-14
+url: "https://github.com/tanmay-alpha/Flight-Agent-Evaluator"

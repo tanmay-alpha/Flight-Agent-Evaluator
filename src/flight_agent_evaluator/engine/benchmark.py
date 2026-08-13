@@ -72,11 +72,15 @@ class BenchmarkRunner:
     async def run_scenario(
         self,
         scenario: BenchmarkScenario,
-        agent: AgentPolicy,
+        agent: Any,
         expectation: TrajectoryExpectation | None = None,
+        environment: SimulatedAirlineEnvironment | None = None,
         output_dir: Path | None = None,  # noqa: ARG002
     ) -> BenchmarkMetricVector:
-        """Run a single scenario against an agent policy and collect evidence-backed metric vector."""
+        """Run a single benchmark scenario against an agent policy."""
+        # Ensure scenario mode matches scenario configuration
+        scenario_mode = getattr(scenario, "scenario_mode", "read_only")
+
         public_req = (
             getattr(scenario, "public_request", None)
             or (scenario.steps[0].initial_message if scenario.steps else None)
@@ -111,7 +115,7 @@ class BenchmarkRunner:
             scenario_id=scenario.scenario_id.id,
             public_request=public_req,
             allowed_tools=allowed_tools,
-            scenario_mode=getattr(scenario, "scenario_mode", "read_only"),
+            scenario_mode=scenario_mode,
             max_turns=10,
             tool_call_limit=scenario.limits.tool_call_limit,
         )
@@ -147,7 +151,8 @@ class BenchmarkRunner:
 
         journal = HashChainJournal()
         provider = FixtureFlightProvider()
-        airline_env = SimulatedAirlineEnvironment(id_factory=id_factory)
+        airline_env = environment or SimulatedAirlineEnvironment.from_scenario(scenario)
+        airline_env.id_factory = id_factory
         registry = build_registry_for_scenario(scenario, env=airline_env)
         executor = ToolExecutor(
             registry=registry,
@@ -169,6 +174,8 @@ class BenchmarkRunner:
                             "type": "tool_call",
                             "tool_name": step.tool_name,
                             "arguments": step.arguments,
+                            "expected_failure": getattr(step, "expected_failure", False),
+                            "allow_failure": getattr(step, "allow_failure", False),
                         }
                     )
                 elif step.kind == "produce_final_response":
