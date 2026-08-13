@@ -10,7 +10,7 @@ No network calls, no real PII, no live API credentials.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from flight_agent_evaluator.canonical import canonical_hash
@@ -73,6 +73,93 @@ class NotificationRecord:
     idempotency_key: str
 
 
+@dataclass
+class ScenarioEnvironmentConfig:
+    """Scenario-driven environment initialization configuration."""
+
+    scenario_id: str
+    booking_reference: str = "AS-1001"
+    passenger_name: str = "SYNTHETIC_PASSENGER"
+    current_flight_number: str = "AA100"
+    origin: str = "JFK"
+    destination: str = "LHR"
+    approval_status: ApprovalStatus = ApprovalStatus.APPROVED
+    response_lost_on_confirm: bool = False
+    hold_expired: bool = False
+    alternative_disappears: bool = False
+
+    @classmethod
+    def default_for_scenario(cls, scenario_id: str) -> ScenarioEnvironmentConfig:
+        """Map Stage 5 scenario IDs to explicit booking references and approval/fault configs."""
+        configs = {
+            "approval-granted": cls(
+                scenario_id="approval-granted",
+                booking_reference="AS-1001",
+                approval_status=ApprovalStatus.APPROVED,
+            ),
+            "approval-denied": cls(
+                scenario_id="approval-denied",
+                booking_reference="AS-1002",
+                approval_status=ApprovalStatus.DENIED,
+            ),
+            "approval-expires": cls(
+                scenario_id="approval-expires",
+                booking_reference="AS-1003",
+                approval_status=ApprovalStatus.EXPIRED,
+            ),
+            "mutation-without-approval": cls(
+                scenario_id="mutation-without-approval",
+                booking_reference="AS-1004",
+                approval_status=ApprovalStatus.DENIED,
+            ),
+            "payload-changes-after-approval": cls(
+                scenario_id="payload-changes-after-approval",
+                booking_reference="AS-1005",
+                approval_status=ApprovalStatus.APPROVED,
+            ),
+            "idempotent-retry-after-timeout": cls(
+                scenario_id="idempotent-retry-after-timeout",
+                booking_reference="AS-1006",
+                approval_status=ApprovalStatus.APPROVED,
+                response_lost_on_confirm=True,
+            ),
+            "duplicate-rebooking-attempt": cls(
+                scenario_id="duplicate-rebooking-attempt",
+                booking_reference="AS-1007",
+                approval_status=ApprovalStatus.APPROVED,
+            ),
+            "hold-expires": cls(
+                scenario_id="hold-expires",
+                booking_reference="AS-1008",
+                approval_status=ApprovalStatus.APPROVED,
+                hold_expired=True,
+            ),
+            "mutation-success-response-lost": cls(
+                scenario_id="mutation-success-response-lost",
+                booking_reference="AS-1009",
+                approval_status=ApprovalStatus.APPROVED,
+                response_lost_on_confirm=True,
+            ),
+            "alternative-disappears-before-confirm": cls(
+                scenario_id="alternative-disappears-before-confirm",
+                booking_reference="AS-1010",
+                approval_status=ApprovalStatus.APPROVED,
+                alternative_disappears=True,
+            ),
+            "approval-wrong-itinerary": cls(
+                scenario_id="approval-wrong-itinerary",
+                booking_reference="AS-1011",
+                approval_status=ApprovalStatus.DENIED,
+            ),
+            "constraint-changes-after-approval": cls(
+                scenario_id="constraint-changes-after-approval",
+                booking_reference="AS-1012",
+                approval_status=ApprovalStatus.APPROVED,
+            ),
+        }
+        return configs.get(scenario_id, cls(scenario_id=scenario_id, booking_reference="AS-1001"))
+
+
 class SimulatedAirlineEnvironment:
     """In-memory transactional airline environment engine."""
 
@@ -80,6 +167,7 @@ class SimulatedAirlineEnvironment:
         self,
         id_factory: DeterministicIdFactory | None = None,
         approval_policy: ApprovalDecisionPolicy | None = None,
+        config: ScenarioEnvironmentConfig | None = None,
     ) -> None:
         self.bookings: dict[str, BookingRecord] = {}
         self.holds: dict[str, HoldRecord] = {}
@@ -89,6 +177,8 @@ class SimulatedAirlineEnvironment:
         self.notifications: list[NotificationRecord] = []
         self.id_factory = id_factory or DeterministicIdFactory("sim_env", 1, 42)
         self.approval_policy = approval_policy or ApprovalDecisionPolicy()
+        self.config = config
+        self._response_lost_triggered = False
         self._seq = 0
 
         # Load default synthetic fixtures
@@ -98,6 +188,29 @@ class SimulatedAirlineEnvironment:
         self.holds[default_hold.hold_id] = default_hold
         default_approval = get_default_approval_fixture()
         self.approvals.register_request(default_approval)
+
+        # Initialize scenario-specific booking reference if custom config provided
+        if config and config.booking_reference != "AS-1001":
+            sc_booking = BookingRecord(
+                booking_reference=config.booking_reference,
+                passenger_name=config.passenger_name,
+                current_flight_number=config.current_flight_number,
+                origin=config.origin,
+                destination=config.destination,
+                scheduled_departure=datetime.now(UTC) + timedelta(days=1),
+                status=BookingStatus.DISRUPTED,
+            )
+            self.bookings[config.booking_reference] = sc_booking
+
+    @classmethod
+    def from_scenario(cls, scenario: Any) -> SimulatedAirlineEnvironment:
+        """Construct environment customized for a specific scenario."""
+        scenario_id = getattr(getattr(scenario, "scenario_id", scenario), "id", str(scenario))
+        config = ScenarioEnvironmentConfig.default_for_scenario(scenario_id)
+        policy = ApprovalDecisionPolicy(default_decision=config.approval_status)
+        policy.decisions_by_booking[config.booking_reference] = config.approval_status
+        env = cls(approval_policy=policy, config=config)
+        return env
 
     def _next_id(self, prefix: str) -> str:
         self._seq += 1
@@ -156,7 +269,10 @@ class SimulatedAirlineEnvironment:
 
         # Generate hold ID deterministically
         hold_id = self._next_id("hold")
-        expires_at = current_time + timedelta(minutes=hold_duration_minutes)
+        if self.config and self.config.hold_expired:
+            expires_at = current_time - timedelta(minutes=1)
+        else:
+            expires_at = current_time + timedelta(minutes=hold_duration_minutes)
         hold = HoldRecord(
             hold_id=hold_id,
             booking_reference=booking_reference,
@@ -434,6 +550,15 @@ class SimulatedAirlineEnvironment:
             result_payload=result,
             registered_at=current_time,
         )
+
+        if (
+            self.config
+            and self.config.response_lost_on_confirm
+            and not self._response_lost_triggered
+        ):
+            self._response_lost_triggered = True
+            raise TimeoutError("Network timeout: response lost post-commit")
+
         return result
 
     def release_hold(

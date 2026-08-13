@@ -1,48 +1,44 @@
 {
   "scenario_id": "alternative-disappears-before-confirm",
-  "version": 1,
-  "description": "Expectation for alternative-disappears-before-confirm",
+  "expectation_version": "1.0.0",
   "valid_paths": [
     {
-      "path_id": "path-disappears",
-      "description": "Valid path testing confirmation failure on released hold",
-      "expected_nodes": [
+      "path_id": "path_alternative_disappears",
+      "name": "Alternative Disappears Path",
+      "description": "Selected alternative flight disappears or becomes unavailable prior to confirmation.",
+      "expected_actions": [
         {
-          "node_id": "node-1",
-          "tool_name": "booking.get_current",
-          "occurrence_min": 1,
-          "occurrence_max": 2,
+          "node_id": "node_get_current",
+          "label": "Get Current Booking",
+          "selector": {
+            "tool_name": "booking.get_current",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
           "required": true
         },
         {
-          "node_id": "node-2",
-          "tool_name": "booking.hold_alternative",
-          "occurrence_min": 1,
-          "occurrence_max": 2,
+          "node_id": "node_hold_alternative",
+          "label": "Hold Alternative Seats",
+          "selector": {
+            "tool_name": "booking.hold_alternative",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
           "required": true
         },
         {
-          "node_id": "node-3",
-          "tool_name": "approval.request",
-          "occurrence_min": 1,
-          "occurrence_max": 2,
-          "required": true
-        },
-        {
-          "node_id": "node-4",
-          "tool_name": "booking.release_hold",
-          "occurrence_min": 1,
-          "occurrence_max": 2,
-          "required": true
-        },
-        {
-          "node_id": "node-5",
-          "tool_name": "booking.confirm_rebooking",
-          "occurrence_min": 1,
-          "occurrence_max": 2,
+          "node_id": "node_request_approval",
+          "label": "Request Approval",
+          "selector": {
+            "tool_name": "approval.request",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
           "required": true
         }
       ]
     }
-  ]
+  ],
+  "safety_constraints": []
 }
