@@ -70,9 +70,19 @@ class BenchmarkScenario(ContractModel):
     reference_time: str | None = Field(default=None)
     assertions: tuple[Assertion, ...] = Field(default_factory=tuple)  # type: ignore[valid-type]
     trajectory: ScriptedTrajectory  # type: ignore[valid-type]
+    scenario_mode: str = Field(default="read_only")
 
     @model_validator(mode="after")
     def _non_empty_steps(self) -> BenchmarkScenario:
         if not self.steps:
             raise ValueError("BenchmarkScenario must have at least one step")
         return self
+
+    def canonical_digest(self) -> str:
+        """SHA-256 digest of benchmark scenario specification."""
+        import hashlib
+        import json
+
+        data = self.model_dump(mode="json")
+        raw = json.dumps(data, sort_keys=True)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()

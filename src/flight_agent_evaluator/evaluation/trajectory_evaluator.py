@@ -92,6 +92,26 @@ class TrajectoryScorecard(ContractModel):
     safety_violations: list[str] = Field(default_factory=list)
     evidence_attribution: list[EvidenceAttribution] = Field(default_factory=list)
 
+    @property
+    def overall_score(self) -> float:
+        """Alias for composite_score."""
+        return self.composite_score
+
+    @property
+    def goal_accuracy(self) -> float:
+        """Alias for outcome_score."""
+        return self.outcome_score
+
+    @property
+    def constraint_satisfaction(self) -> float:
+        """Alias for argument_correctness_score."""
+        return self.argument_correctness_score
+
+    @property
+    def unnecessary_action_count(self) -> int:
+        """Count of unmatched / unnecessary actions."""
+        return sum(1 for e in self.evidence_attribution if not e.matched)
+
 
 # ---------------------------------------------------------------------------
 # Path Applicability Evaluator

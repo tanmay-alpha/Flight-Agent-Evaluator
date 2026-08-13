@@ -7,7 +7,7 @@
   "metadata": {
     "title": "Approval Granted",
     "description": "Passenger flight AS142 is cancelled. Request approval and confirm rebooking on AS144.",
-    "objective": "Test transactional state machine and side-effect safety.",
+    "objective": "Test transactional state machine, external approval, and side-effect confirmation.",
     "tags": [
       "stage-5",
       "transaction",
@@ -15,6 +15,7 @@
     ],
     "author": "Flight Agent Evaluator"
   },
+  "scenario_mode": "transactional",
   "initial_state": {
     "booking_reference": "AS-1001",
     "status": "disrupted"
@@ -24,8 +25,8 @@
       "fixture_name": "flight_status_delayed",
       "raw_payload_reference": {
         "uri": "fixture://flight_status_delayed.json",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "byte_length": 1000
+        "sha256": "1e6e098d77ddf55c378e0c5520434cce24bf33c59d9ef8d439efcd8558ce4921",
+        "byte_length": 1366
       }
     }
   ],
@@ -55,9 +56,66 @@
         }
       },
       {
+        "kind": "invoke_tool",
+        "step_id": "step-2-hold",
+        "tool_name": "booking.hold_alternative",
+        "arguments": {
+          "booking_reference": "AS-1001",
+          "offer_id": "offer-alt-1",
+          "flight_number": "AS144",
+          "origin": "JFK",
+          "destination": "LHR",
+          "price_amount": 550.0,
+          "idempotency_key": "idem-hold-granted-1"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-3-appr",
+        "tool_name": "approval.request",
+        "arguments": {
+          "booking_reference": "AS-1001",
+          "action_type": "confirm_rebooking",
+          "offer_id": "offer-alt-1",
+          "reason": "Flight AS142 cancelled due to severe weather.",
+          "idempotency_key": "idem-appr-granted-1",
+          "hold_id": {
+            "$ref_step": 1,
+            "json_pointer": "/hold_id"
+          }
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-4-conf",
+        "tool_name": "booking.confirm_rebooking",
+        "arguments": {
+          "booking_reference": "AS-1001",
+          "hold_id": {
+            "$ref_step": 1,
+            "json_pointer": "/hold_id"
+          },
+          "approval_id": {
+            "$ref_step": 2,
+            "json_pointer": "/approval_id"
+          },
+          "idempotency_key": "idem-conf-granted-1"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-5-notif",
+        "tool_name": "notification.send_simulated",
+        "arguments": {
+          "passenger_name": "Jane Doe",
+          "message": "Flight AS1001 successfully rebooked to AS144.",
+          "idempotency_key": "idem-notif-granted-1"
+        }
+      },
+      {
         "kind": "produce_final_response",
-        "step_id": "step-2-resp",
-        "response": "Completed scenario approval-granted"
+        "step_id": "step-6-resp",
+        "response": "Successfully rebooked AS-1001 to AS144 with supervisor approval and passenger notification."
       }
     ]
   }

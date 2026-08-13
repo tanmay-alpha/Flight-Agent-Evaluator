@@ -205,3 +205,31 @@ class NaiveBaselineAgent:
         if match:
             return match.group(1)
         return None
+
+
+class RandomBaselineAgent:
+    """Random baseline agent for benchmark evaluation."""
+
+    @property
+    def agent_id(self) -> str:
+        return "random_baseline"
+
+    @property
+    def agent_version(self) -> str:
+        return "1.0.0"
+
+    async def execute(
+        self,
+        task: AgentTask,  # noqa: ARG002
+        executor: ToolExecutor,  # noqa: ARG002
+        state: StateSnapshot,  # noqa: ARG002
+        context: RunContext,
+    ) -> AgentRunResult:
+        return AgentRunResult(
+            run_id=str(context.run_id),
+            agent_id=self.agent_id,
+            agent_version=self.agent_version,
+            stop_reason=AgentStopReason.ERROR,
+            final_response="Random baseline execution failed.",
+            tool_call_count=0,
+        )

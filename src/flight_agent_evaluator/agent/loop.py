@@ -162,8 +162,13 @@ class ModelToolCallingAgent(AgentPolicy):
                 tool_handler = registry.handlers[tc.tool_name]
                 mutation_class = tool_handler.tool_definition.mutation_class
 
-                # Gate 8: Authoritative mutation class check
-                if mutation_class != "read_only":
+                # Authoritative mutation class check via execution policy
+                allowed_mutations = (
+                    ("read_only", "simulated_mutation", "sensitive_simulated_mutation")
+                    if task.scenario_mode == "transactional"
+                    else ("read_only",)
+                )
+                if mutation_class not in allowed_mutations:
                     stop_reason = AgentStopReason.SAFETY_VIOLATION
                     warnings.append(
                         f"Safety Violation: Agent attempted mutation tool '{tc.tool_name}' with mutation_class='{mutation_class}'"
@@ -174,7 +179,7 @@ class ModelToolCallingAgent(AgentPolicy):
                             "tool_call_id": tc.call_id,
                             "content": json.dumps(
                                 {
-                                    "error": f"Mutation tool '{tc.tool_name}' is forbidden in read-only mode"
+                                    "error": f"Mutation tool '{tc.tool_name}' is forbidden in {task.scenario_mode} mode"
                                 }
                             ),
                         }
