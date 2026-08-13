@@ -197,6 +197,7 @@ class ApprovalRequestHandler(ToolHandler):
                     "offer_id": {"type": "string", "minLength": 1},
                     "reason": {"type": "string", "minLength": 1},
                     "idempotency_key": {"type": "string", "minLength": 1},
+                    "hold_id": {"type": "string"},
                 },
                 "required": [
                     "booking_reference",
@@ -216,18 +217,15 @@ class ApprovalRequestHandler(ToolHandler):
         provider: FlightProvider,  # noqa: ARG002
         context: RunContext,
     ) -> Any:
-        mutation_payload = {
-            "booking_reference": str(arguments["booking_reference"]),
-            "hold_id": "hold-9901",
-        }
+        hold_id = str(arguments["hold_id"]) if "hold_id" in arguments else None
         return self._env.request_approval(
             booking_reference=str(arguments["booking_reference"]),
             action_type=str(arguments["action_type"]),
             offer_id=str(arguments["offer_id"]),
-            mutation_payload=mutation_payload,
             reason=str(arguments["reason"]),
             idempotency_key=str(arguments["idempotency_key"]),
             current_time=context.clock.now(),
+            hold_id=hold_id,
         )
 
 
@@ -271,7 +269,8 @@ class NotificationSendSimulatedHandler(ToolHandler):
 
     tool_name = "notification.send_simulated"
 
-    def __init__(self) -> None:
+    def __init__(self, env: SimulatedAirlineEnvironment | None = None) -> None:
+        self._env = env
         self.tool_definition = ToolDefinition(
             name=self.tool_name,
             description="Send a simulated passenger notification (SMS/email).",
@@ -291,8 +290,20 @@ class NotificationSendSimulatedHandler(ToolHandler):
 
     async def execute(
         self,
-        arguments: dict[str, Any],  # noqa: ARG002
+        arguments: dict[str, Any],
         provider: FlightProvider,  # noqa: ARG002
-        context: RunContext,  # noqa: ARG002
+        context: RunContext,
     ) -> Any:
-        return {"status": "sent", "channel": "simulated_sms"}
+        if self._env is not None:
+            return self._env.send_notification(
+                passenger_name=str(arguments["passenger_name"]),
+                message=str(arguments["message"]),
+                idempotency_key=str(arguments["idempotency_key"]),
+                current_time=context.clock.now(),
+            )
+        return {
+            "notification_id": f"notif-{arguments['idempotency_key'][:8]}",
+            "status": "sent",
+            "channel": "simulated_sms",
+            "passenger_name": str(arguments["passenger_name"]),
+        }
