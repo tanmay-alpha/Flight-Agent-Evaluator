@@ -9,7 +9,7 @@ No network calls, no real PII, no live API credentials.
 
 from __future__ import annotations
 
-import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -40,17 +40,56 @@ from flight_agent_evaluator.environment.state import (
     validate_booking_transition,
     validate_hold_transition,
 )
+from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
+
+
+@dataclass
+class ApprovalDecisionPolicy:
+    """Policy for determining scenario approval outcomes externally."""
+
+    default_decision: ApprovalStatus = ApprovalStatus.APPROVED
+    decisions_by_booking: dict[str, ApprovalStatus] = field(default_factory=dict)
+    decisions_by_offer: dict[str, ApprovalStatus] = field(default_factory=dict)
+
+    def get_decision(
+        self, booking_reference: str, offer_id: str, action_type: str
+    ) -> ApprovalStatus:
+        del action_type
+        if booking_reference in self.decisions_by_booking:
+            return self.decisions_by_booking[booking_reference]
+        if offer_id in self.decisions_by_offer:
+            return self.decisions_by_offer[offer_id]
+        return self.default_decision
+
+
+@dataclass
+class NotificationRecord:
+    """Record of a simulated notification side-effect."""
+
+    notification_id: str
+    passenger_name: str
+    message: str
+    sent_at: datetime
+    idempotency_key: str
 
 
 class SimulatedAirlineEnvironment:
     """In-memory transactional airline environment engine."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        id_factory: DeterministicIdFactory | None = None,
+        approval_policy: ApprovalDecisionPolicy | None = None,
+    ) -> None:
         self.bookings: dict[str, BookingRecord] = {}
         self.holds: dict[str, HoldRecord] = {}
         self.approvals = ApprovalEngine()
         self.idempotency = IdempotencyKeyRegistry()
         self.transactions: list[RebookingTransaction] = []
+        self.notifications: list[NotificationRecord] = []
+        self.id_factory = id_factory or DeterministicIdFactory("sim_env", 1, 42)
+        self.approval_policy = approval_policy or ApprovalDecisionPolicy()
+        self._seq = 0
 
         # Load default synthetic fixtures
         default_booking = get_default_booking_fixture()
@@ -59,6 +98,11 @@ class SimulatedAirlineEnvironment:
         self.holds[default_hold.hold_id] = default_hold
         default_approval = get_default_approval_fixture()
         self.approvals.register_request(default_approval)
+
+    def _next_id(self, prefix: str) -> str:
+        self._seq += 1
+        raw_uuid = self.id_factory.next(prefix, self._seq)
+        return f"{prefix}-{raw_uuid.hex[:8]}"
 
     def get_booking(self, booking_reference: str) -> BookingRecord:
         """Retrieve a booking record by reference."""
@@ -110,8 +154,8 @@ class SimulatedAirlineEnvironment:
         # Validate booking exists
         booking = self.get_booking(booking_reference)
 
-        # Generate hold ID and record
-        hold_id = f"hold-{uuid.uuid4().hex[:8]}"
+        # Generate hold ID deterministically
+        hold_id = self._next_id("hold")
         expires_at = current_time + timedelta(minutes=hold_duration_minutes)
         hold = HoldRecord(
             hold_id=hold_id,
@@ -163,21 +207,21 @@ class SimulatedAirlineEnvironment:
         booking_reference: str,
         action_type: str,
         offer_id: str,
-        mutation_payload: dict[str, Any],
         reason: str,
         idempotency_key: str,
         current_time: datetime,
+        hold_id: str | None = None,
         approval_duration_minutes: int = 60,
     ) -> dict[str, Any]:
         """Request supervisor/human approval for a sensitive mutation.
 
+        Decision is determined externally by ApprovalDecisionPolicy (not by agent reason string).
         Idempotent: repeating with same key returns cached result.
         """
         payload = {
             "booking_reference": booking_reference,
             "action_type": action_type,
             "offer_id": offer_id,
-            "mutation_payload": mutation_payload,
             "reason": reason,
         }
 
@@ -190,12 +234,38 @@ class SimulatedAirlineEnvironment:
         if cached is not None:
             return cached.result_payload
 
-        approval_id = f"appr-{uuid.uuid4().hex[:8]}"
-        expires_at = current_time + timedelta(minutes=approval_duration_minutes)
-        p_hash = canonical_hash(mutation_payload)
+        booking = self.get_booking(booking_reference)
+        target_hold_id = hold_id or booking.active_hold_id or ""
+        hold = self.holds.get(target_hold_id)
 
-        # Default synthetic decision is APPROVED unless reason contains 'denied'
-        status = ApprovalStatus.DENIED if "deny" in reason.lower() else ApprovalStatus.APPROVED
+        if hold is not None:
+            sensitive_payload: dict[str, Any] = {
+                "action_type": action_type,
+                "booking_reference": booking_reference,
+                "hold_id": target_hold_id,
+                "offer_id": offer_id,
+                "flight_number": hold.flight_number,
+                "price_amount": hold.price.amount,
+                "price_currency": hold.price.currency,
+            }
+        else:
+            sensitive_payload = {
+                "action_type": action_type,
+                "booking_reference": booking_reference,
+                "hold_id": target_hold_id,
+                "offer_id": offer_id,
+            }
+
+        approval_id = self._next_id("appr")
+        expires_at = current_time + timedelta(minutes=approval_duration_minutes)
+        p_hash = canonical_hash(sensitive_payload)
+
+        # External approval decision policy
+        status = self.approval_policy.get_decision(
+            booking_reference=booking_reference,
+            offer_id=offer_id,
+            action_type=action_type,
+        )
 
         req = ApprovalRequest(
             approval_id=approval_id,
@@ -212,7 +282,6 @@ class SimulatedAirlineEnvironment:
         self.approvals.register_request(req)
 
         # Update booking
-        booking = self.get_booking(booking_reference)
         self.bookings[booking_reference] = BookingRecord(
             booking_reference=booking.booking_reference,
             passenger_name=booking.passenger_name,
@@ -251,13 +320,32 @@ class SimulatedAirlineEnvironment:
     ) -> dict[str, Any]:
         """Confirm flight rebooking using a hold and a verified approval.
 
-        Requires valid, non-expired approval whose payload_hash matches mutation payload.
+        Requires valid, non-expired approval whose payload_hash matches sensitive mutation payload.
         Idempotent: repeating with same key returns cached result.
         """
-        mutation_payload: dict[str, object] = {
+        hold = self.holds.get(hold_id)
+        if hold is None:
+            raise ResourceNotFoundError(f"Hold ID '{hold_id}' was not found.")
+
+        payload_full: dict[str, Any] = {
+            "action_type": "confirm_rebooking",
+            "booking_reference": booking_reference,
+            "hold_id": hold_id,
+            "offer_id": hold.offer_id,
+            "flight_number": hold.flight_number,
+            "price_amount": hold.price.amount,
+            "price_currency": hold.price.currency,
+        }
+        payload_minimal: dict[str, Any] = {
             "booking_reference": booking_reference,
             "hold_id": hold_id,
         }
+        appr_req = self.approvals.get_request(approval_id) if approval_id else None
+        mutation_payload: dict[str, Any]
+        if appr_req and appr_req.payload_hash == canonical_hash(payload_minimal):
+            mutation_payload = payload_minimal
+        else:
+            mutation_payload = payload_full
 
         cached = self.idempotency.check_or_register(
             key=idempotency_key,
@@ -268,7 +356,7 @@ class SimulatedAirlineEnvironment:
         if cached is not None:
             return cached.result_payload
 
-        # 1. Enforce approval check
+        # 1. Enforce approval check first
         self.approvals.verify_approval_for_mutation(
             approval_id=approval_id,
             action_type="confirm_rebooking",
@@ -277,11 +365,7 @@ class SimulatedAirlineEnvironment:
             current_time=current_time,
         )
 
-        # 2. Enforce hold check
-        hold = self.holds.get(hold_id)
-        if hold is None:
-            raise ResourceNotFoundError(f"Hold ID '{hold_id}' was not found.")
-
+        # 2. Enforce hold expiration / active status
         if hold.status != HoldStatus.ACTIVE or hold.is_expired(current_time):
             raise HoldExpiredError(
                 f"Hold ID '{hold_id}' has expired or is not active (status: {hold.status.value})."
@@ -322,7 +406,9 @@ class SimulatedAirlineEnvironment:
         self.bookings[booking_reference] = updated_booking
 
         # Record transaction
+        tx_id = self._next_id("tx")
         tx = RebookingTransaction(
+            transaction_id=tx_id,
             booking_reference=booking_reference,
             hold_id=hold_id,
             approval_id=approval_id,
@@ -372,6 +458,21 @@ class SimulatedAirlineEnvironment:
         if hold is None:
             raise ResourceNotFoundError(f"Hold ID '{hold_id}' was not found.")
 
+        if hold.status in (HoldStatus.RELEASED, HoldStatus.CONFIRMED):
+            res = {
+                "hold_id": hold_id,
+                "status": "released",
+                "released_at": current_time.isoformat(),
+            }
+            self.idempotency.save_result(
+                key=idempotency_key,
+                tool_name="booking.release_hold",
+                payload=payload,
+                result_payload=res,
+                registered_at=current_time,
+            )
+            return res
+
         validate_hold_transition(hold.status, HoldStatus.RELEASED)
         self.holds[hold_id] = HoldRecord(
             hold_id=hold.hold_id,
@@ -390,6 +491,50 @@ class SimulatedAirlineEnvironment:
         self.idempotency.save_result(
             key=idempotency_key,
             tool_name="booking.release_hold",
+            payload=payload,
+            result_payload=result,
+            registered_at=current_time,
+        )
+        return result
+
+    def send_notification(
+        self,
+        *,
+        passenger_name: str,
+        message: str,
+        idempotency_key: str,
+        current_time: datetime,
+    ) -> dict[str, Any]:
+        """Send a simulated passenger notification with idempotency and state logging."""
+        payload = {"passenger_name": passenger_name, "message": message}
+        cached = self.idempotency.check_or_register(
+            key=idempotency_key,
+            tool_name="notification.send_simulated",
+            payload=payload,
+            registered_at=current_time,
+        )
+        if cached is not None:
+            return cached.result_payload
+
+        notif_id = self._next_id("notif")
+        record = NotificationRecord(
+            notification_id=notif_id,
+            passenger_name=passenger_name,
+            message=message,
+            sent_at=current_time,
+            idempotency_key=idempotency_key,
+        )
+        self.notifications.append(record)
+
+        result = {
+            "notification_id": notif_id,
+            "status": "sent",
+            "channel": "simulated_sms",
+            "passenger_name": passenger_name,
+        }
+        self.idempotency.save_result(
+            key=idempotency_key,
+            tool_name="notification.send_simulated",
             payload=payload,
             result_payload=result,
             registered_at=current_time,

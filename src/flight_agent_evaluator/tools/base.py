@@ -140,11 +140,51 @@ class ToolRegistry:
         return name in self._handlers
 
 
-def build_default_registry() -> ToolRegistry:
-    """Build default registry containing default flight tools."""
+def build_readonly_registry() -> ToolRegistry:
+    """Build registry containing only read-only flight/policy/itinerary tools."""
     from flight_agent_evaluator.tools.flight import register_default_tools
 
     return register_default_tools()
+
+
+def build_transactional_registry(env: Any = None) -> ToolRegistry:
+    """Build registry containing read-only AND transactional handlers sharing ONE environment."""
+    from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
+    from flight_agent_evaluator.tools.booking_tools import (
+        ApprovalGetStatusHandler,
+        ApprovalRequestHandler,
+        BookingConfirmRebookingHandler,
+        BookingGetCurrentHandler,
+        BookingHoldAlternativeHandler,
+        BookingReleaseHoldHandler,
+        NotificationSendSimulatedHandler,
+    )
+    from flight_agent_evaluator.tools.flight import register_default_tools
+
+    registry = register_default_tools()
+    airline_env = env if env is not None else SimulatedAirlineEnvironment()
+
+    registry.register(BookingGetCurrentHandler(airline_env))
+    registry.register(BookingHoldAlternativeHandler(airline_env))
+    registry.register(BookingConfirmRebookingHandler(airline_env))
+    registry.register(BookingReleaseHoldHandler(airline_env))
+    registry.register(ApprovalRequestHandler(airline_env))
+    registry.register(ApprovalGetStatusHandler(airline_env))
+    registry.register(NotificationSendSimulatedHandler(airline_env))
+    return registry
+
+
+def build_registry_for_scenario(scenario: Any, env: Any = None) -> ToolRegistry:
+    """Build tool registry appropriate for scenario mode (read_only vs transactional)."""
+    scenario_mode = getattr(scenario, "scenario_mode", "read_only")
+    if scenario_mode == "transactional":
+        return build_transactional_registry(env)
+    return build_readonly_registry()
+
+
+def build_default_registry() -> ToolRegistry:
+    """Build default registry containing default flight tools."""
+    return build_readonly_registry()
 
 
 __all__ = [
@@ -154,4 +194,7 @@ __all__ = [
     "ToolRegistry",
     "UnknownToolError",
     "build_default_registry",
+    "build_readonly_registry",
+    "build_transactional_registry",
+    "build_registry_for_scenario",
 ]
