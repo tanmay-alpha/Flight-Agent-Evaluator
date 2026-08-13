@@ -380,6 +380,77 @@ def gate_smoke() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Gate 17: Stage 5 Transactional Scenario Smoke Test
+# ---------------------------------------------------------------------------
+
+
+def gate_stage5_smoke() -> bool:
+    """Verify all 12 Stage 5 transactional scenarios load and execute safely."""
+    code = (
+        "import asyncio, pathlib\n"
+        "from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader\n"
+        "from flight_agent_evaluator.engine.benchmark import BenchmarkRunner\n"
+        "from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent\n"
+        "loader = ScenarioLoader()\n"
+        "stage5_dir = pathlib.Path('resources/scenarios/stage-5')\n"
+        "files = sorted(stage5_dir.glob('*.json'))\n"
+        "assert len(files) == 12, f'Expected 12 Stage 5 scenario files, got {len(files)}'\n"
+        "runner = BenchmarkRunner(scenario_loader=loader)\n"
+        "agent = ScriptedOracleAgent()\n"
+        "for f in files:\n"
+        "    sc = loader.load_from_path(f).scenario\n"
+        "    mv = asyncio.run(runner.run_scenario(sc, agent))\n"
+        "    assert mv.safety_pass, f'Safety violation in Stage 5 scenario {sc.scenario_id.id}'\n"
+        "print('Stage 5 transactional scenario smoke gate: OK')\n"
+    )
+    return _run("stage-5 transactional scenario smoke gate", ["uv", "run", "python", "-c", code])
+
+
+# ---------------------------------------------------------------------------
+# Gate 18: Benchmark Manifest Validation
+# ---------------------------------------------------------------------------
+
+
+def gate_benchmark_manifest() -> bool:
+    """Verify official BenchmarkManifest (resources/benchmarks/benchmark-v1.json)."""
+    code = (
+        "import json, pathlib, hashlib\n"
+        "manifest_path = pathlib.Path('resources/benchmarks/benchmark-v1.json')\n"
+        "assert manifest_path.is_file(), 'benchmark-v1.json not found'\n"
+        "data = json.loads(manifest_path.read_text(encoding='utf-8'))\n"
+        "assert data['benchmark_id'] == 'benchmark-v1'\n"
+        "scenarios = data.get('scenarios', [])\n"
+        "assert len(scenarios) == 24, f'Expected 24 benchmark scenarios, found {len(scenarios)}'\n"
+        "for sc_info in scenarios:\n"
+        "    sc_path = pathlib.Path(sc_info['path'])\n"
+        "    assert sc_path.is_file(), f'Scenario file missing: {sc_path}'\n"
+        "print('Benchmark manifest validation gate: OK')\n"
+    )
+    return _run("benchmark manifest validation gate", ["uv", "run", "python", "-c", code])
+
+
+# ---------------------------------------------------------------------------
+# Gate 19: CLI Command Registration Verification
+# ---------------------------------------------------------------------------
+
+
+def gate_cli_registry() -> bool:
+    """Verify all CLI subcommands including evaluate, demo, benchmark, agent run."""
+    commands = [
+        ["agents", "list"],
+        ["scenario", "validate", "resources/scenarios/jfk-lhr-delay.json"],
+        ["agent", "run", "resources/scenarios/jfk-lhr-delay.json", "--agent", "oracle"],
+        ["benchmark", "run", "--scenarios", "resources/scenarios"],
+        ["demo"],
+    ]
+    for cmd in commands:
+        full_cmd = ["uv", "run", "python", "-m", "flight_agent_evaluator.cli.main"] + cmd
+        if not _run(f"CLI subcommand: {' '.join(cmd)}", full_cmd):
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Specific gates
 # ---------------------------------------------------------------------------
 
@@ -400,6 +471,9 @@ SPECIFIC_GATES: dict[str, Callable[[], bool]] = {
     "readme": gate_readme,
     "leakage": gate_leakage_scanner,
     "smoke": gate_smoke,
+    "stage5-smoke": gate_stage5_smoke,
+    "manifest": gate_benchmark_manifest,
+    "cli": gate_cli_registry,
 }
 
 
@@ -430,6 +504,9 @@ def main() -> int:
         gate_readme,
         gate_leakage_scanner,
         gate_smoke,
+        gate_stage5_smoke,
+        gate_benchmark_manifest,
+        gate_cli_registry,
     ]
     all_passed = all(g() for g in gates)
     print(f"\n{'=' * 60}")
