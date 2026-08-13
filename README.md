@@ -2,7 +2,7 @@
 
 An autonomous multi-model evaluation, failure diagnostics, and benchmark platform for aviation AI agents.
 
-> **Status: Version 1.0.0 Complete — All 7 Engineering Stages Completed & Verified.**
+> **Status: V1 Complete — Reproducible, Evidence-Backed Evaluation & Benchmark Platform.**
 
 ## Why this project exists
 
