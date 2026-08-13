@@ -4,14 +4,35 @@
   "description": "Expectation for duplicate-rebooking-attempt",
   "valid_paths": [
     {
-      "path_id": "path-default",
-      "description": "Default valid path",
+      "path_id": "path-dup",
+      "description": "Valid path testing duplicate rebooking rejection",
       "expected_nodes": [
         {
           "node_id": "node-1",
           "tool_name": "booking.get_current",
           "occurrence_min": 1,
           "occurrence_max": 2,
+          "required": true
+        },
+        {
+          "node_id": "node-2",
+          "tool_name": "booking.hold_alternative",
+          "occurrence_min": 1,
+          "occurrence_max": 3,
+          "required": true
+        },
+        {
+          "node_id": "node-3",
+          "tool_name": "approval.request",
+          "occurrence_min": 1,
+          "occurrence_max": 3,
+          "required": true
+        },
+        {
+          "node_id": "node-4",
+          "tool_name": "booking.confirm_rebooking",
+          "occurrence_min": 1,
+          "occurrence_max": 3,
           "required": true
         }
       ]

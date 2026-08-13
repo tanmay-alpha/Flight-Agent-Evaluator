@@ -6,17 +6,18 @@
   },
   "metadata": {
     "title": "Mutation Success Response Lost",
-    "description": "Confirm rebooking succeeds on server but response is lost due to network drop.",
-    "objective": "Test transactional state machine and side-effect safety.",
+    "description": "Confirmation mutation succeeds in environment but response is lost. Agent recovers safely by querying current booking state.",
+    "objective": "Verify agent handles ambiguous commit outcomes via state-read recovery without duplicate side-effects.",
     "tags": [
       "stage-5",
       "transaction",
-      "approval"
+      "ambiguous-commit"
     ],
     "author": "Flight Agent Evaluator"
   },
+  "scenario_mode": "transactional",
   "initial_state": {
-    "booking_reference": "AS-1001",
+    "booking_reference": "AS-1009",
     "status": "disrupted"
   },
   "fixture_references": [
@@ -24,16 +25,16 @@
       "fixture_name": "flight_status_delayed",
       "raw_payload_reference": {
         "uri": "fixture://flight_status_delayed.json",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "byte_length": 1000
+        "sha256": "1e6e098d77ddf55c378e0c5520434cce24bf33c59d9ef8d439efcd8558ce4921",
+        "byte_length": 1366
       }
     }
   ],
   "steps": [
     {
       "step_id": "s1",
-      "description": "Confirm rebooking succeeds on server but response is lost due to network drop.",
-      "initial_message": "Confirm rebooking succeeds on server but response is lost due to network drop."
+      "description": "Test recovery after response loss on AS-1009.",
+      "initial_message": "Test recovery after response loss on AS-1009."
     }
   ],
   "limits": {
@@ -48,16 +49,71 @@
     "steps": [
       {
         "kind": "invoke_tool",
-        "step_id": "step-1-get",
+        "step_id": "step-1-get-initial",
         "tool_name": "booking.get_current",
         "arguments": {
-          "booking_reference": "AS-1001"
+          "booking_reference": "AS-1009"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-2-hold",
+        "tool_name": "booking.hold_alternative",
+        "arguments": {
+          "booking_reference": "AS-1009",
+          "offer_id": "offer-lost-1",
+          "flight_number": "AS164",
+          "origin": "JFK",
+          "destination": "LHR",
+          "price_amount": 560.0,
+          "idempotency_key": "idem-hold-lost-1"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-3-appr",
+        "tool_name": "approval.request",
+        "arguments": {
+          "booking_reference": "AS-1009",
+          "action_type": "confirm_rebooking",
+          "offer_id": "offer-lost-1",
+          "reason": "Rebooking approval.",
+          "idempotency_key": "idem-appr-lost-1",
+          "hold_id": {
+            "$ref_step": 1,
+            "json_pointer": "/hold_id"
+          }
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-4-conf",
+        "tool_name": "booking.confirm_rebooking",
+        "arguments": {
+          "booking_reference": "AS-1009",
+          "hold_id": {
+            "$ref_step": 1,
+            "json_pointer": "/hold_id"
+          },
+          "approval_id": {
+            "$ref_step": 2,
+            "json_pointer": "/approval_id"
+          },
+          "idempotency_key": "idem-conf-lost-1"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-5-get-recovery",
+        "tool_name": "booking.get_current",
+        "arguments": {
+          "booking_reference": "AS-1009"
         }
       },
       {
         "kind": "produce_final_response",
-        "step_id": "step-2-resp",
-        "response": "Completed scenario mutation-success-response-lost"
+        "step_id": "step-6-resp",
+        "response": "Confirmed booking AS-1009 status as REBOOKED via state check after response loss."
       }
     ]
   }
