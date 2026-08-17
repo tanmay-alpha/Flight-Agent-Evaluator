@@ -6,8 +6,10 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 
+import pytest
+
 from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
-from flight_agent_evaluator.environment.fixtures import get_default_approval_fixture
+from flight_agent_evaluator.environment.errors import StateTransitionError
 from flight_agent_evaluator.providers.fixture import FixtureFlightProvider
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
@@ -89,13 +91,6 @@ def test_booking_tools_execution() -> None:
     )
     assert req_res["status"] == "approved"
 
-    # Register matching approval for confirmation test
-    appr = get_default_approval_fixture(
-        booking_reference="AS-1001",
-        mutation_payload={"booking_reference": "AS-1001", "hold_id": hold_id},
-    )
-    env.approvals.register_request(appr)
-
     # 4. confirm_rebooking
     confirm_handler = BookingConfirmRebookingHandler(env)
     res2 = asyncio.run(
@@ -103,7 +98,7 @@ def test_booking_tools_execution() -> None:
             {
                 "booking_reference": "AS-1001",
                 "hold_id": hold_id,
-                "approval_id": appr.approval_id,
+                "approval_id": req_res["approval_id"],
                 "idempotency_key": "key-confirm-tool-1",
             },
             provider,
@@ -114,17 +109,17 @@ def test_booking_tools_execution() -> None:
 
     # 5. get_status
     appr_handler = ApprovalGetStatusHandler(env)
-    res3 = asyncio.run(appr_handler.execute({"approval_id": appr.approval_id}, provider, ctx))
-    assert res3["approval_id"] == appr.approval_id
+    res3 = asyncio.run(appr_handler.execute({"approval_id": req_res["approval_id"]}, provider, ctx))
+    assert res3["approval_id"] == req_res["approval_id"]
 
     # 6. release_hold tool
     rel_handler = BookingReleaseHoldHandler(env)
-    rel_res = asyncio.run(
-        rel_handler.execute(
-            {"hold_id": hold_id, "idempotency_key": "key-rel-tool-1"}, provider, ctx
+    with pytest.raises(StateTransitionError):
+        asyncio.run(
+            rel_handler.execute(
+                {"hold_id": hold_id, "idempotency_key": "key-rel-tool-1"}, provider, ctx
+            )
         )
-    )
-    assert rel_res["status"] == "released"
 
     # 7. notification
     notif_handler = NotificationSendSimulatedHandler()

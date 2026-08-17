@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from flight_agent_evaluator.contracts.tools import ToolCall
+from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.fault_engine import FaultEngine
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.runtime.clock import VirtualClock
@@ -59,12 +60,22 @@ def _make_context(seed: int = 42) -> RunContext:
     )
 
 
+def _read_policy(context: RunContext, *tools: str) -> ExecutionToolPolicy:
+    return ExecutionToolPolicy(
+        scenario_id=context.scenario_id,
+        allowed_tool_names=tools,
+        allowed_mutation_classes=("read_only",),
+    )
+
+
 def test_executor_invokes_handler():
     registry = ToolRegistry()
     registry.register(_EchoHandler())
     provider: Any = _EchoProvider()
-    executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
     context = _make_context()
+    executor = ToolExecutor(
+        registry, FaultEngine(()), provider=provider, execution_policy=_read_policy(context, "echo")
+    )
     from flight_agent_evaluator.contracts.aviation import FlightIdentity, FlightStatusQuery
 
     query = FlightStatusQuery(
@@ -101,7 +112,7 @@ def test_executor_returns_failure_for_unknown_tool():
     result = asyncio.run(executor.execute(call, provider=None, context=context))
     assert result.status == "failure"
     assert result.error is not None
-    assert result.error.error_type == "invalid_arguments"
+    assert result.error.error_type == "authorization_error"
 
 
 def test_executor_handles_handler_exception():
@@ -117,8 +128,13 @@ def test_executor_handles_handler_exception():
     registry = ToolRegistry()
     registry.register(_BrokenHandler())
     provider: Any = _EchoProvider()
-    executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
     context = _make_context()
+    executor = ToolExecutor(
+        registry,
+        FaultEngine(()),
+        provider=provider,
+        execution_policy=_read_policy(context, "broken"),
+    )
     call = ToolCall(
         call_id=uuid.uuid4(),
         run_id=context.run_id,
@@ -149,8 +165,14 @@ def test_executor_enforces_tool_call_limit():
     registry = ToolRegistry()
     registry.register(_EchoHandler())
     provider: Any = _EchoProvider()
-    executor = ToolExecutor(registry, FaultEngine(()), provider=provider, tool_call_limit=1)
     context = _make_context()
+    executor = ToolExecutor(
+        registry,
+        FaultEngine(()),
+        provider=provider,
+        tool_call_limit=1,
+        execution_policy=_read_policy(context, "echo"),
+    )
     call = ToolCall(
         call_id=uuid.uuid4(),
         run_id=context.run_id,
@@ -218,8 +240,10 @@ def test_scripted_agent_driver_execution():
     registry = ToolRegistry()
     registry.register(_EchoHandler())
     provider: Any = _EchoProvider()
-    executor = ToolExecutor(registry, FaultEngine(()), provider=provider)
     context = _make_context()
+    executor = ToolExecutor(
+        registry, FaultEngine(()), provider=provider, execution_policy=_read_policy(context, "echo")
+    )
     driver = ScriptedAgentDriver()
 
     # With tool_calls_remaining = 1, first call succeeds, second skipped
