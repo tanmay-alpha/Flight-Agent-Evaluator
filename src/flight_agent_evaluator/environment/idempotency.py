@@ -9,6 +9,7 @@ with a different request payload.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime
 from typing import Any
 
@@ -21,17 +22,20 @@ class IdempotencyKeyRegistry:
     """In-memory idempotency key registry."""
 
     def __init__(self) -> None:
-        self._records: dict[str, IdempotencyRecord] = {}
+        self._records: dict[tuple[str, str], IdempotencyRecord] = {}
 
-    def get_record(self, key: str) -> IdempotencyRecord | None:
+    def get_record(self, key: str, tool_name: str | None = None) -> IdempotencyRecord | None:
         """Return the record for an idempotency key, or None if not registered."""
-        return self._records.get(key)
+        if tool_name is not None:
+            return self._records.get((tool_name, key))
+        matches = [record for (tool, raw_key), record in self._records.items() if raw_key == key]
+        return matches[0] if len(matches) == 1 else None
 
     def check_or_register(
         self,
         *,
         key: str,
-        tool_name: str,  # noqa: ARG002
+        tool_name: str,
         payload: dict[str, Any],
         registered_at: datetime,  # noqa: ARG002
     ) -> IdempotencyRecord | None:
@@ -41,7 +45,7 @@ class IdempotencyKeyRegistry:
         If key is REUSED with SAME payload: returns existing IdempotencyRecord.
         If key is REUSED with DIFFERENT payload: raises IdempotencyConflictError.
         """
-        existing = self._records.get(key)
+        existing = self._records.get((tool_name, key))
         if existing is None:
             return None
 
@@ -52,7 +56,7 @@ class IdempotencyKeyRegistry:
                 f"'{existing.payload_hash[:8]}...' but current payload hash is '{current_hash[:8]}...'."
             )
 
-        return existing
+        return existing.model_copy(update={"result_payload": deepcopy(existing.result_payload)})
 
     def save_result(
         self,
@@ -65,12 +69,19 @@ class IdempotencyKeyRegistry:
     ) -> IdempotencyRecord:
         """Save a new idempotency record after successful operation execution."""
         p_hash = canonical_hash(payload)
+        existing = self._records.get((tool_name, key))
+        if existing is not None:
+            if existing.payload_hash != p_hash:
+                raise IdempotencyConflictError(
+                    f"Idempotency key '{key}' is already bound to a different {tool_name!r} request."
+                )
+            return existing.model_copy(update={"result_payload": deepcopy(existing.result_payload)})
         record = IdempotencyRecord(
             key=key,
             payload_hash=p_hash,
             tool_name=tool_name,
-            result_payload=result_payload,
+            result_payload=deepcopy(result_payload),
             registered_at=registered_at,
         )
-        self._records[key] = record
-        return record
+        self._records[(tool_name, key)] = record
+        return record.model_copy(update={"result_payload": deepcopy(record.result_payload)})

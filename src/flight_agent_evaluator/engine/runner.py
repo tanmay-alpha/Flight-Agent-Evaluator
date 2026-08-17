@@ -7,18 +7,19 @@ from pathlib import Path
 from typing import Any
 
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
+from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.fault_engine import FaultEngine
 from flight_agent_evaluator.engine.scenario_loader import LoadedScenario
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
-from flight_agent_evaluator.recording.contracts import RunRecording
+from flight_agent_evaluator.recording.contracts import InvokeToolStep, RunRecording
 from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 from flight_agent_evaluator.runtime.state import StateSnapshot
-from flight_agent_evaluator.tools.base import build_default_registry
+from flight_agent_evaluator.tools.base import build_registry_for_scenario
 
 
 class ScenarioRunner:
@@ -120,7 +121,13 @@ class ScenarioRunner:
             tuple(getattr(scenario, "faults", ()) or ()),
             clock=clock,
         )
-        registry = build_default_registry()
+        from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
+
+        environment = SimulatedAirlineEnvironment.from_scenario(scenario)
+        registry = build_registry_for_scenario(scenario, env=environment)
+        allowed_tools = [
+            step.tool_name for step in trajectory.steps if isinstance(step, InvokeToolStep)
+        ]
         executor = ToolExecutor(
             registry=registry,
             faults=fault_engine,
@@ -129,6 +136,12 @@ class ScenarioRunner:
             journal=journal,
             provider=provider,
             tool_call_limit=context.tool_call_limit,
+            execution_policy=ExecutionToolPolicy.for_task(
+                scenario_id=scenario.scenario_id.id,
+                allowed_tool_names=allowed_tools,
+                scenario_mode=scenario.scenario_mode,
+                maximum_mutations=context.tool_call_limit,
+            ),
         )
         state = StateSnapshot()
 

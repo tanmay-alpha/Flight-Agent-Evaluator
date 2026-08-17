@@ -17,14 +17,16 @@ from flight_agent_evaluator.contracts.model import (
     ModelResponse,
     ModelToolCall,
 )
+from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
+from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
 from flight_agent_evaluator.providers.fixture import FixtureFlightProvider
 from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 from flight_agent_evaluator.runtime.state import StateSnapshot
-from flight_agent_evaluator.tools.base import build_default_registry
+from flight_agent_evaluator.tools.base import build_default_registry, build_transactional_registry
 
 
 def _make_context():
@@ -134,3 +136,118 @@ def test_model_tool_calling_agent_execution_loop():
     assert res.stop_reason == AgentStopReason.COMPLETED, f"Warnings: {res.warnings}"
     assert res.tool_call_count == 1
     assert res.final_response == "Flight AS142 is on time."
+
+
+def test_registered_tool_outside_task_allowlist_is_denied_by_executor() -> None:
+    task = AgentTask(
+        task_id="t-hidden",
+        scenario_id="s-hidden",
+        public_request="Check the flight.",
+        allowed_tools=["flight.get_status"],
+    )
+    context = _make_context()
+    journal = HashChainJournal()
+    executor = ToolExecutor(
+        registry=build_default_registry(),
+        clock=context.clock,
+        journal=journal,
+        provider=FixtureFlightProvider(),
+    )
+
+    class HiddenToolClient:
+        provider = "replay"
+        model_id = "gpt-4o-mini"
+
+        def reset(self) -> None:
+            return None
+
+        async def create_completion(self, request: ModelRequest) -> ModelResponse:
+            if request.turn_index == 0:
+                return ModelResponse(
+                    content=None,
+                    tool_calls=[
+                        ModelToolCall(
+                            call_id="hidden-1",
+                            tool_name="policy.get_rebooking_rules",
+                            arguments={},
+                        )
+                    ],
+                    finish_reason="tool_calls",
+                )
+            return ModelResponse(content="Unable to access that tool.", finish_reason="stop")
+
+    result = asyncio.run(
+        ModelToolCallingAgent(HiddenToolClient()).execute(
+            task=task, executor=executor, state=StateSnapshot(), context=context
+        )
+    )
+
+    assert result.stop_reason == AgentStopReason.COMPLETED
+    assert result.tool_call_count == 1
+    assert result.invalid_tool_call_count == 1
+    tool_calls = [entry for entry in journal.entries if entry.type == "tool_call"]
+    assert len(tool_calls) == 1
+    assert tool_calls[0].payload["authorization_decision"] == "denied"
+
+
+def test_agent_task_cannot_broaden_runner_installed_execution_policy() -> None:
+    """A model task is not allowed to replace the runner's scenario policy."""
+    context = _make_context()
+    journal = HashChainJournal()
+    env = SimulatedAirlineEnvironment()
+    executor = ToolExecutor(
+        registry=build_transactional_registry(env),
+        clock=context.clock,
+        journal=journal,
+        provider=FixtureFlightProvider(),
+        execution_policy=ExecutionToolPolicy(
+            scenario_id=context.scenario_id,
+            allowed_tool_names=("booking.get_current",),
+            allowed_mutation_classes=("read_only",),
+        ),
+    )
+    task = AgentTask(
+        task_id="t-broaden",
+        scenario_id=context.scenario_id,
+        public_request="Send an update.",
+        allowed_tools=["notification.send_simulated"],
+        scenario_mode="transactional",
+    )
+
+    class BroadenPolicyClient:
+        provider = "replay"
+        model_id = "gpt-4o-mini"
+
+        def reset(self) -> None:
+            return None
+
+        async def create_completion(self, request: ModelRequest) -> ModelResponse:
+            if request.turn_index == 0:
+                return ModelResponse(
+                    content=None,
+                    tool_calls=[
+                        ModelToolCall(
+                            call_id="broaden-1",
+                            tool_name="notification.send_simulated",
+                            arguments={
+                                "passenger_name": "Jane Doe",
+                                "message": "unsafe",
+                                "idempotency_key": "blocked-notification",
+                            },
+                        )
+                    ],
+                    finish_reason="tool_calls",
+                )
+            return ModelResponse(content="Done.", finish_reason="stop")
+
+    result = asyncio.run(
+        ModelToolCallingAgent(BroadenPolicyClient()).execute(
+            task=task, executor=executor, state=StateSnapshot(), context=context
+        )
+    )
+
+    assert result.invalid_tool_call_count == 1
+    assert env.notifications == []
+    assert executor.execution_policy is not None
+    assert executor.execution_policy.allowed_tool_names == ("booking.get_current",)
+    assert journal.entries[0].payload["authorization_decision"] == "denied"

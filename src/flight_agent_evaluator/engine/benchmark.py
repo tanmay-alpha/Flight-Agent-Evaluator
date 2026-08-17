@@ -14,6 +14,7 @@ from flight_agent_evaluator.agent.protocol import AgentPolicy
 from flight_agent_evaluator.contracts.model import AgentRunResult, AgentStopReason, AgentTask
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.contracts.trajectory_expectation import TrajectoryExpectation
+from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
@@ -161,6 +162,12 @@ class BenchmarkRunner:
             journal=journal,
             provider=provider,
             tool_call_limit=context.tool_call_limit,
+            execution_policy=ExecutionToolPolicy.for_task(
+                scenario_id=scenario.scenario_id.id,
+                allowed_tool_names=allowed_tools,
+                scenario_mode=scenario_mode,
+                maximum_mutations=context.tool_call_limit,
+            ),
         )
         state = StateSnapshot()
 

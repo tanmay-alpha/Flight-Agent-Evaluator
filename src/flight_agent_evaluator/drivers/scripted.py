@@ -102,7 +102,6 @@ class ScriptedAgentDriver:
                     run_id=context.run_id,
                     tool_name=step.tool_name,
                     arguments=resolved_args,
-                    mutation_class="read_only",
                     start_time=context.clock.now(),
                 )
                 result = await executor.execute(

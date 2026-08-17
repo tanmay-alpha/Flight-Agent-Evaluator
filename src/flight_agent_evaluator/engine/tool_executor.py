@@ -32,10 +32,26 @@ from flight_agent_evaluator.contracts.tools import (
     ToolError,
     ToolResult,
 )
+from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.fault_engine import (
     FaultEngine,
     InjectedFault,
     UnsupportedFaultConfigurationError,
+)
+from flight_agent_evaluator.environment.errors import (
+    AmbiguousCommitError,
+    ApprovalExpiredError,
+    ApprovalMissingError,
+    ApprovalScopeMismatchError,
+    EnvironmentError,
+    HoldExpiredError,
+    IdempotencyConflictError,
+    OfferUnavailableError,
+    OwnershipMismatchError,
+    ResourceNotFoundError,
+    StateTransitionError,
+    TransactionConflictError,
+    UnknownOfferError,
 )
 from flight_agent_evaluator.providers.base import FlightProvider
 from flight_agent_evaluator.recording.contracts import JournalEntry
@@ -93,6 +109,7 @@ class ToolExecutor:
         tool_call_limit: int = 100,
         logical_time_limit_ns: int = 60 * 60 * 1_000_000_000,
         provider: FlightProvider | None = None,
+        execution_policy: ExecutionToolPolicy | None = None,
     ) -> None:
         self._registry = registry
         if isinstance(faults, FaultEngine):
@@ -107,7 +124,9 @@ class ToolExecutor:
         self._logical_time_limit_ns = logical_time_limit_ns
         self._start_ns = int(clock.now().timestamp() * 1_000_000_000) if clock is not None else 0
         self._provider = provider
+        self._execution_policy = execution_policy
         self._call_count = 0
+        self._mutation_count = 0
         self._event_emitter: Callable[[dict[str, Any]], None] | None = None
 
     @property
@@ -119,6 +138,18 @@ class ToolExecutor:
     def call_count(self) -> int:
         """Number of tool calls attempted (including failed/limit-exceeded)."""
         return self._call_count
+
+    @property
+    def execution_policy(self) -> ExecutionToolPolicy | None:
+        """Return the trusted policy used at the final execution boundary."""
+        return self._execution_policy
+
+    def set_execution_policy(self, policy: ExecutionToolPolicy) -> None:
+        """Install a scenario-owned policy once; it can never be broadened."""
+        if self._execution_policy is None:
+            self._execution_policy = policy
+        elif self._execution_policy != policy:
+            raise ValueError("Execution policy is immutable once installed")
 
     def set_event_emitter(self, emitter: Callable[[dict[str, Any]], None] | None) -> None:
         """Override the default event emitter (used by tests)."""
@@ -142,41 +173,73 @@ class ToolExecutor:
 
         # 1. Tool-call limit (always counts the attempt).
         if self._call_count >= self._tool_call_limit:
+            definition = self._registry.definition_for(tool_call.tool_name)
+            self._journal_tool_call(
+                tool_call,
+                context,
+                now_dt,
+                mutation_class=definition.mutation_class if definition else None,
+                authorization_decision="denied",
+            )
             self._call_count += 1
-            return self._limit_exceeded(tool_call, now_dt)
+            return self._handler_error(
+                tool_call,
+                error_type="invalid_arguments",
+                message="Tool-call limit exceeded — stopping execution",
+                now_dt=now_dt,
+                context=context,
+            )
 
-        # 2. Append the ToolCall journal entry.
-        self._journal_event(
-            entry_type="tool_call",
-            run_id=context.run_id,
-            correlation_id=context.correlation_id,
-            time=now_dt,
-            payload={
-                "call_id": tool_call.call_id.hex,
-                "tool_name": tool_call.tool_name,
-                "mutation_class": tool_call.mutation_class,
-                "arguments": tool_call.arguments,
-                "timeout_seconds": tool_call.timeout_seconds,
-                "idempotency_key": tool_call.idempotency_key,
-                "approval_request_id": tool_call.approval_request_id,
-            },
-        )
-
-        # 3. Resolve handler.
+        # 2. Resolve the registry definition before writing trusted journal metadata.
         try:
             handler = self._registry.get(tool_call.tool_name)
         except UnknownToolError:
             self._call_count += 1
-            return self._unknown_tool(tool_call, now_dt, context)
+            self._journal_tool_call(
+                tool_call, context, now_dt, mutation_class=None, authorization_decision="denied"
+            )
+            return self._authorization_denied(
+                tool_call, now_dt, context, "Unknown or unregistered tool requested"
+            )
 
-        # 4. Logical-time limit check.
+        authoritative_class = handler.tool_definition.mutation_class
+        denial: str | None = None
+        if tool_call.mutation_class is not None and tool_call.mutation_class != authoritative_class:
+            denial = "Caller mutation metadata conflicts with registry definition"
+        elif self._execution_policy is None:
+            denial = "No trusted scenario execution policy is installed"
+        else:
+            if self._execution_policy.scenario_id != context.scenario_id:
+                denial = "Execution policy does not belong to this scenario"
+            elif not self._execution_policy.permits_tool(tool_call.tool_name):
+                denial = "Tool is not authorized by the scenario execution policy"
+            elif not self._execution_policy.permits_mutation_class(authoritative_class):
+                denial = "Tool mutation class is not authorized by the scenario execution policy"
+            elif (
+                authoritative_class != "read_only"
+                and self._mutation_count >= self._execution_policy.maximum_mutations
+            ):
+                denial = "Scenario mutation limit has been reached"
+
+        self._journal_tool_call(
+            tool_call,
+            context,
+            now_dt,
+            mutation_class=authoritative_class,
+            authorization_decision="denied" if denial else "allowed",
+        )
+        if denial is not None:
+            self._call_count += 1
+            return self._authorization_denied(tool_call, now_dt, context, denial)
+
+        # 3. Logical-time limit check.
         if self._clock is not None:
             now_ns = int(now_dt.timestamp() * 1_000_000_000)
             if (now_ns - self._start_ns) > self._logical_time_limit_ns:
                 self._call_count += 1
                 return self._time_limit_exceeded(tool_call, now_dt)
 
-        # 5. Fault injection.
+        # 4. Fault injection.
         fault = self._fault_engine.apply(tool_call, sequence=self._call_count)
         if fault is not None:
             if fault.fault_type == "delayed_response":
@@ -212,13 +275,13 @@ class ToolExecutor:
                 self._call_count += 1
                 return self._fault_result(tool_call, fault, now_dt, context)
 
-        # 6. Validate arguments against the handler's input schema.
+        # 5. Validate arguments against the handler's input schema.
         input_schema = handler.tool_definition.input_schema
         if not _validate_arguments(tool_call.arguments, input_schema):
             self._call_count += 1
             return self._invalid_arguments(tool_call, input_schema, now_dt, context)
 
-        # 7. Invoke handler.
+        # 6. Invoke handler.
         self._call_count += 1
         effective_provider = provider or self._provider
         try:
@@ -237,6 +300,17 @@ class ToolExecutor:
             )
         except UnsupportedFaultConfigurationError:
             raise
+        except EnvironmentError as exc:
+            logger.debug("Handler raised expected environment error", exc_info=exc)
+            error_type, retryable = _environment_error_details(exc)
+            return self._handler_error(
+                tool_call,
+                error_type=error_type,
+                message=_safe_environment_message(error_type),
+                now_dt=now_dt,
+                context=context,
+                retryable=retryable,
+            )
         except (ValueError, TypeError, LookupError) as exc:
             logger.debug("Handler raised expected error", exc_info=exc)
             return self._handler_error(
@@ -281,6 +355,8 @@ class ToolExecutor:
                 "result": payload,
             },
         )
+        if authoritative_class != "read_only":
+            self._mutation_count += 1
         if fault is not None and fault.fault_type == "duplicate_event":
             for _ in range(fault.duplication_count):
                 self._journal_event(
@@ -321,12 +397,19 @@ class ToolExecutor:
         )
         return ToolResult(call_id=call.call_id, status="timeout", error=tool_error, end_time=now_dt)
 
-    def _unknown_tool(self, call: ToolCall, now_dt: Any, context: RunContext) -> ToolResult:
+    def _authorization_denied(
+        self,
+        call: ToolCall,
+        now_dt: Any,
+        context: RunContext,
+        message: str,
+    ) -> ToolResult:
+        """Record a blocked request as trusted evaluator evidence."""
         tool_error = ToolError(
-            error_type="invalid_arguments",
-            message=f"Unknown tool: {call.tool_name!r}",
+            error_type="authorization_error",
+            message=message,
             retryable=False,
-            details={"correlation_id": call.call_id.hex},
+            details={"correlation_id": call.call_id.hex, "tool_name": call.tool_name},
         )
         result = ToolResult(
             call_id=call.call_id,
@@ -345,7 +428,7 @@ class ToolExecutor:
                 "error": tool_error.model_dump(mode="json"),
             },
         )
-        self._project_state({"call_id": call.call_id.hex, "status": "unknown_tool"})
+        self._project_state({"call_id": call.call_id.hex, "status": "authorization_denied"})
         return result
 
     def _invalid_arguments(
@@ -389,11 +472,12 @@ class ToolExecutor:
         message: str,
         now_dt: Any,
         context: RunContext,
+        retryable: bool = False,
     ) -> ToolResult:
         tool_error = ToolError(
             error_type=error_type,
             message=message,
-            retryable=False,
+            retryable=retryable,
             details={"correlation_id": call.call_id.hex},
         )
         result = ToolResult(
@@ -497,6 +581,35 @@ class ToolExecutor:
         )
         self._journal.append(draft)
 
+    def _journal_tool_call(
+        self,
+        call: ToolCall,
+        context: RunContext,
+        now_dt: Any,
+        *,
+        mutation_class: str | None,
+        authorization_decision: str,
+    ) -> None:
+        """Journal request data separately from registry-derived truth."""
+        self._journal_event(
+            entry_type="tool_call",
+            run_id=context.run_id,
+            correlation_id=context.correlation_id,
+            time=now_dt,
+            payload={
+                "call_id": call.call_id.hex,
+                "tool_name": call.tool_name,
+                "mutation_class": mutation_class,
+                "requested_mutation_class": call.mutation_class,
+                "authorization_decision": authorization_decision,
+                "scenario_id": context.scenario_id,
+                "arguments": call.arguments,
+                "timeout_seconds": call.timeout_seconds,
+                "idempotency_key": call.idempotency_key,
+                "approval_request_id": call.approval_request_id,
+            },
+        )
+
     def _project_state(self, _summary: dict[str, Any]) -> None:
         """Placeholder for runtime state projection."""
         return
@@ -561,6 +674,51 @@ def _type_matches(value: Any, expected_type: str) -> bool:
     if expected_type == "array" and isinstance(value, (list, tuple)):
         return True
     return bool(expected_type == "null" and value is None)
+
+
+def _environment_error_details(error: EnvironmentError) -> tuple[str, bool]:
+    """Map expected domain failures to safe, actionable tool error categories."""
+    if isinstance(error, OwnershipMismatchError):
+        return "ownership_error", False
+    if isinstance(error, ApprovalMissingError):
+        return "approval_required", False
+    if isinstance(error, ApprovalExpiredError):
+        return "approval_expired", False
+    if isinstance(error, ApprovalScopeMismatchError):
+        return "approval_scope_mismatch", False
+    if isinstance(error, UnknownOfferError):
+        return "unknown_offer", False
+    if isinstance(error, HoldExpiredError):
+        return "offer_unavailable", False
+    if isinstance(error, OfferUnavailableError):
+        return "offer_unavailable", False
+    if isinstance(error, StateTransitionError):
+        return "invalid_state_transition", False
+    if isinstance(error, IdempotencyConflictError):
+        return "idempotency_conflict", False
+    if isinstance(error, TransactionConflictError):
+        return "transaction_conflict", True
+    if isinstance(error, AmbiguousCommitError):
+        return "ambiguous_commit", True
+    if isinstance(error, ResourceNotFoundError):
+        return "invalid_arguments", False
+    return "internal_error", False
+
+
+def _safe_environment_message(error_type: str) -> str:
+    """Return a stable message without leaking raw environment internals."""
+    return {
+        "ownership_error": "Requested resources are outside the booking ownership scope",
+        "approval_required": "Sensitive mutation requires an approved authorization",
+        "approval_expired": "Approval has expired",
+        "approval_scope_mismatch": "Approval does not authorize this mutation payload",
+        "unknown_offer": "Requested offer is not available in the authoritative inventory",
+        "offer_unavailable": "Requested hold or offer is no longer available",
+        "invalid_state_transition": "Requested transaction is invalid for the current state",
+        "idempotency_conflict": "Idempotency key conflicts with a different request",
+        "transaction_conflict": "Transaction conflicts with current environment state",
+        "ambiguous_commit": "Mutation committed but the response was lost; retry with the same idempotency key",
+    }.get(error_type, "Environment rejected the requested operation")
 
 
 __all__ = [

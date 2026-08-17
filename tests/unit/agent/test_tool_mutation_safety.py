@@ -53,7 +53,7 @@ class DummyMutationHandler(ToolHandler):
         name="booking.confirm",
         description="Confirm booking mutation",
         input_schema={"type": "object", "properties": {}},
-        mutation_class="idempotent_mutation",
+        mutation_class="simulated_mutation",
     )
 
     async def execute(

@@ -11,6 +11,22 @@ class StateTransitionError(EnvironmentError):
     """Raised when an invalid state machine transition is attempted."""
 
 
+class OwnershipMismatchError(EnvironmentError):
+    """Raised when related resources do not belong to the same booking scope."""
+
+
+class UnknownOfferError(EnvironmentError):
+    """Raised when a requested synthetic offer is not environment-owned."""
+
+
+class OfferUnavailableError(EnvironmentError):
+    """Raised when an authoritative offer is expired or unavailable."""
+
+
+class TransactionConflictError(EnvironmentError):
+    """Raised when a competing mutation cannot safely be committed."""
+
+
 class ApprovalError(EnvironmentError):
     """Base exception for approval-related failures."""
 
