@@ -17,7 +17,6 @@ from flight_agent_evaluator.environment.errors import (
     IdempotencyConflictError,
     StateTransitionError,
 )
-from flight_agent_evaluator.environment.fixtures import get_default_approval_fixture
 from flight_agent_evaluator.environment.state import (
     validate_booking_transition,
     validate_hold_transition,
@@ -110,18 +109,21 @@ def test_confirm_rebooking_with_approval() -> None:
     )
     hold_id = hold_res["hold_id"]
 
-    # Register matching approval
-    appr = get_default_approval_fixture(
+    approval = env.request_approval(
         booking_reference="AS-1001",
-        mutation_payload={"booking_reference": "AS-1001", "hold_id": hold_id},
+        action_type="confirm_rebooking",
+        offer_id="offer-alt-1",
+        hold_id=hold_id,
+        reason="Passenger disruption.",
+        idempotency_key="key-approval-001",
+        current_time=now,
     )
-    env.approvals.register_request(appr)
 
     # 2. Confirm rebooking
     res = env.confirm_rebooking(
         booking_reference="AS-1001",
         hold_id=hold_id,
-        approval_id=appr.approval_id,
+        approval_id=approval["approval_id"],
         idempotency_key="key-confirm-001",
         current_time=now,
     )
@@ -160,17 +162,21 @@ def test_confirm_rebooking_missing_or_expired_approval() -> None:
         )
 
     # Expired approval ID (set current_time 2 hours later)
-    appr = get_default_approval_fixture(
+    approval = env.request_approval(
         booking_reference="AS-1001",
-        mutation_payload={"booking_reference": "AS-1001", "hold_id": hold_id},
+        action_type="confirm_rebooking",
+        offer_id="offer-alt-1",
+        hold_id=hold_id,
+        reason="Passenger disruption.",
+        idempotency_key="key-approval-expired",
+        current_time=now,
     )
-    env.approvals.register_request(appr)
     future = now + timedelta(hours=2)
     with pytest.raises(ApprovalExpiredError):
         env.confirm_rebooking(
             booking_reference="AS-1001",
             hold_id=hold_id,
-            approval_id=appr.approval_id,
+            approval_id=approval["approval_id"],
             idempotency_key="key-err-2",
             current_time=future,
         )

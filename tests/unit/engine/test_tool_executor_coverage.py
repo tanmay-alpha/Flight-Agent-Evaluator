@@ -12,6 +12,7 @@ from flight_agent_evaluator.contracts.faults import (
     DuplicateEventFault,
 )
 from flight_agent_evaluator.contracts.tools import ToolCall
+from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
@@ -40,6 +41,14 @@ def _make_context(clock=None):
         correlation_id="corr-1",
         scenario_digest="0" * 64,
         trajectory_digest="0" * 64,
+    )
+
+
+def _read_policy(context: RunContext, *tools: str) -> ExecutionToolPolicy:
+    return ExecutionToolPolicy(
+        scenario_id=context.scenario_id,
+        allowed_tool_names=tools,
+        allowed_mutation_classes=("read_only",),
     )
 
 
@@ -82,8 +91,13 @@ def test_tool_executor_time_limit_exceeded():
 
     registry.register(KnownTool())
     clock = DeterministicVirtualClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
-    executor = ToolExecutor(registry=registry, clock=clock, logical_time_limit_ns=100)
     context = _make_context(clock)
+    executor = ToolExecutor(
+        registry=registry,
+        clock=clock,
+        logical_time_limit_ns=100,
+        execution_policy=_read_policy(context, "some_tool"),
+    )
 
     clock.advance(3600)
 
@@ -126,8 +140,12 @@ def test_tool_executor_invalid_arguments_schema():
             return {"status": "ok"}
 
     registry.register(TestTool())
-    executor = ToolExecutor(registry=registry, provider=DummyProvider())  # type: ignore[arg-type]
     context = _make_context()
+    executor = ToolExecutor(
+        registry=registry,
+        provider=DummyProvider(),  # type: ignore[arg-type]
+        execution_policy=_read_policy(context, "test_tool"),
+    )
 
     tc_missing = ToolCall(
         call_id=uuid.uuid4(),
@@ -189,8 +207,12 @@ def test_tool_executor_handler_exceptions():
     registry.register(ValueErrorTool())
     registry.register(UnexpectedErrorTool())
 
-    executor = ToolExecutor(registry=registry, provider=DummyProvider())  # type: ignore[arg-type]
     context = _make_context()
+    executor = ToolExecutor(
+        registry=registry,
+        provider=DummyProvider(),  # type: ignore[arg-type]
+        execution_policy=_read_policy(context, "val_err", "unexp_err"),
+    )
 
     tc_val = ToolCall(
         call_id=uuid.uuid4(),
@@ -250,6 +272,7 @@ def test_tool_executor_fault_execution():
         duplication_count=2,
     )
 
+    context = _make_context(clock)
     executor = ToolExecutor(
         registry=registry,
         faults=(fault_delay, fault_dup),
@@ -257,8 +280,8 @@ def test_tool_executor_fault_execution():
         journal=journal,
         provider=DummyProvider(),  # type: ignore[arg-type]
         logical_time_limit_ns=2_000_000_000_000_000_000,
+        execution_policy=_read_policy(context, "ok_tool"),
     )
-    context = _make_context(clock)
 
     tc = ToolCall(
         call_id=uuid.uuid4(),

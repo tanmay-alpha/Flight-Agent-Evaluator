@@ -222,7 +222,7 @@ def test_model_agent_unknown_tool_and_invalid_arguments():
             {
                 "role": "tool",
                 "tool_call_id": "tc-1",
-                "content": '{"error": "Unknown tool: \'unknown_tool_x\'"}',
+                "content": '{"error": "Unknown or unregistered tool requested"}',
             },
         ],
         tools=openai_tools,
@@ -264,7 +264,7 @@ def test_model_agent_unknown_tool_and_invalid_arguments():
             {
                 "role": "tool",
                 "tool_call_id": "tc-1",
-                "content": '{"error": "Unknown tool: \'unknown_tool_x\'"}',
+                "content": '{"error": "Unknown or unregistered tool requested"}',
             },
             {
                 "role": "assistant",
