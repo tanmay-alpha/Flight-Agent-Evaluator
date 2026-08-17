@@ -10,6 +10,7 @@ from flight_agent_evaluator.environment.contracts import (
     HoldRecord,
     HoldStatus,
     IdempotencyRecord,
+    OfferRecord,
     RebookingTransaction,
     TransactionStatus,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "BookingRecord",
     "BookingStatus",
     "HoldRecord",
+    "OfferRecord",
     "HoldStatus",
     "IdempotencyRecord",
     "RebookingTransaction",

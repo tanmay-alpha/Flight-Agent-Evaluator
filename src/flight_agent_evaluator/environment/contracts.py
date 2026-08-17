@@ -97,6 +97,27 @@ class HoldRecord(ContractModel):
         return current_time >= self.expires_at
 
 
+class OfferRecord(ContractModel):
+    """Authoritative synthetic inventory offer owned by the environment."""
+
+    offer_id: NonEmptyIdentifier
+    flight_number: str = Field(..., min_length=2)
+    origin: IATAAirportCode
+    destination: IATAAirportCode
+    price: Money
+    available: bool = True
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _require_timezone_aware(self) -> OfferRecord:
+        if self.expires_at is not None and self.expires_at.tzinfo is None:
+            raise ValueError("expires_at must be timezone-aware if present.")
+        return self
+
+    def is_available(self, current_time: datetime) -> bool:
+        return self.available and (self.expires_at is None or current_time < self.expires_at)
+
+
 class ApprovalRequest(ContractModel):
     """Request for supervisor/human approval before a sensitive state mutation."""
 
@@ -104,6 +125,7 @@ class ApprovalRequest(ContractModel):
     booking_reference: NonEmptyIdentifier
     action_type: str = Field(..., description="Action type, e.g. 'rebook_flight'.")
     requested_offer_id: NonEmptyIdentifier
+    hold_id: NonEmptyIdentifier | None = None
     payload_hash: SHA256Digest
     reason: str = Field(..., min_length=1)
     requested_at: datetime
@@ -172,6 +194,7 @@ class IdempotencyRecord(ContractModel):
     """Registry record tracking an idempotency key and its cached result."""
 
     key: NonEmptyIdentifier
+    scope: NonEmptyIdentifier = "simulated-airline"
     payload_hash: SHA256Digest
     tool_name: str
     result_payload: dict[str, Any]

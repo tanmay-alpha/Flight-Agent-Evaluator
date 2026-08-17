@@ -20,6 +20,7 @@ from flight_agent_evaluator.contracts.model import (
     PromptPolicy,
 )
 from flight_agent_evaluator.contracts.tools import ToolCall
+from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.state import StateSnapshot
@@ -59,7 +60,20 @@ class ModelToolCallingAgent(AgentPolicy):
         """Execute the agent task using only public_request, prompt policy, and tool results."""
         self.model_client.reset()
         registry = executor.registry or build_default_registry()
-        openai_tools = self._convert_registry_to_openai_tools(registry, task.allowed_tools)
+        task_policy = ExecutionToolPolicy.for_task(
+            scenario_id=context.scenario_id,
+            allowed_tool_names=task.allowed_tools,
+            scenario_mode=task.scenario_mode,
+            maximum_mutations=task.tool_call_limit,
+        )
+        # A runner may have already installed the scenario-owned policy.  An
+        # AgentTask is untrusted execution input and must never broaden it.
+        policy = executor.execution_policy
+        if policy is None:
+            executor.set_execution_policy(task_policy)
+            policy = task_policy
+        visible_tools = [name for name in task.allowed_tools if policy.permits_tool(name)]
+        openai_tools = self._convert_registry_to_openai_tools(registry, visible_tools)
 
         # Base conversation: ONLY public_request, system prompt policy, and tool responses
         messages: list[dict[str, Any]] = [
@@ -146,15 +160,37 @@ class ModelToolCallingAgent(AgentPolicy):
                     stop_reason = AgentStopReason.TOOL_LIMIT_EXCEEDED
                     break
 
-                # Validate tool name exists
+                # Unknown calls must still cross the executor boundary so the
+                # denied intent becomes trusted journal evidence.
                 if tc.tool_name not in registry.handlers:
+                    tool_call_id = context.id_factory.next(
+                        record_type="tool_call", sequence=tool_calls_made
+                    )
+                    denied_result = await executor.execute(
+                        ToolCall(
+                            call_id=tool_call_id,
+                            run_id=context.run_id,
+                            tool_name=tc.tool_name,
+                            arguments=tc.arguments,
+                            start_time=context.clock.now(),
+                        ),
+                        context=context,
+                    )
+                    tool_calls_made += 1
+                    tool_calls_remaining -= 1
                     invalid_tool_calls += 1
                     warnings.append(f"Invalid tool name requested: '{tc.tool_name}'")
                     messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tc.call_id,
-                            "content": json.dumps({"error": f"Unknown tool: '{tc.tool_name}'"}),
+                            "content": json.dumps(
+                                {
+                                    "error": denied_result.error.message
+                                    if denied_result.error
+                                    else "Unknown tool"
+                                }
+                            ),
                         }
                     )
                     continue
@@ -162,29 +198,42 @@ class ModelToolCallingAgent(AgentPolicy):
                 tool_handler = registry.handlers[tc.tool_name]
                 mutation_class = tool_handler.tool_definition.mutation_class
 
-                # Authoritative mutation class check via execution policy
-                allowed_mutations = (
-                    ("read_only", "simulated_mutation", "sensitive_simulated_mutation")
-                    if task.scenario_mode == "transactional"
-                    else ("read_only",)
-                )
-                if mutation_class not in allowed_mutations:
-                    stop_reason = AgentStopReason.SAFETY_VIOLATION
-                    warnings.append(
-                        f"Safety Violation: Agent attempted mutation tool '{tc.tool_name}' with mutation_class='{mutation_class}'"
+                # Do not let client-side argument validation hide an unsafe
+                # intent. Route registered-but-disallowed calls to the
+                # executor so it records the authoritative denial.
+                if not policy.permits_tool(tc.tool_name):
+                    tool_call_id = context.id_factory.next(
+                        record_type="tool_call", sequence=tool_calls_made
                     )
+                    denied_result = await executor.execute(
+                        ToolCall(
+                            call_id=tool_call_id,
+                            run_id=context.run_id,
+                            tool_name=tc.tool_name,
+                            arguments=tc.arguments,
+                            mutation_class=None,
+                            start_time=context.clock.now(),
+                        ),
+                        context=context,
+                    )
+                    tool_calls_made += 1
+                    tool_calls_remaining -= 1
+                    invalid_tool_calls += 1
+                    warnings.append(f"Unauthorized tool request denied: '{tc.tool_name}'")
                     messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tc.call_id,
                             "content": json.dumps(
                                 {
-                                    "error": f"Mutation tool '{tc.tool_name}' is forbidden in {task.scenario_mode} mode"
+                                    "error": denied_result.error.message
+                                    if denied_result.error
+                                    else "Unauthorized tool"
                                 }
                             ),
                         }
                     )
-                    break
+                    continue
 
                 # Validate arguments strictly
                 is_valid, validation_err = self._validate_arguments(tc, tool_handler)
@@ -220,6 +269,17 @@ class ModelToolCallingAgent(AgentPolicy):
                 exec_result = await executor.execute(tool_call=tool_call, context=context)
                 tool_calls_made += 1
                 tool_calls_remaining -= 1
+                if (
+                    exec_result.error is not None
+                    and exec_result.error.error_type == "authorization_error"
+                ):
+                    invalid_tool_calls += 1
+                    warnings.append(f"Unauthorized tool request denied: '{tc.tool_name}'")
+                    if mutation_class != "read_only":
+                        stop_reason = AgentStopReason.SAFETY_VIOLATION
+                        warnings.append(
+                            f"Safety Violation: Agent attempted mutation tool '{tc.tool_name}'"
+                        )
 
                 result_payload = (
                     exec_result.result
