@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from threading import RLock
 from typing import Any
 
 from flight_agent_evaluator.canonical import canonical_hash
@@ -23,15 +24,20 @@ from flight_agent_evaluator.environment.contracts import (
     BookingStatus,
     HoldRecord,
     HoldStatus,
+    OfferRecord,
     RebookingTransaction,
     TransactionStatus,
 )
 from flight_agent_evaluator.environment.errors import (
+    AmbiguousCommitError,
     HoldExpiredError,
+    OfferUnavailableError,
+    OwnershipMismatchError,
     ResourceNotFoundError,
+    TransactionConflictError,
+    UnknownOfferError,
 )
 from flight_agent_evaluator.environment.fixtures import (
-    get_default_approval_fixture,
     get_default_booking_fixture,
     get_default_hold_fixture,
 )
@@ -171,6 +177,7 @@ class SimulatedAirlineEnvironment:
     ) -> None:
         self.bookings: dict[str, BookingRecord] = {}
         self.holds: dict[str, HoldRecord] = {}
+        self.offers: dict[str, OfferRecord] = {}
         self.approvals = ApprovalEngine()
         self.idempotency = IdempotencyKeyRegistry()
         self.transactions: list[RebookingTransaction] = []
@@ -180,14 +187,19 @@ class SimulatedAirlineEnvironment:
         self.config = config
         self._response_lost_triggered = False
         self._seq = 0
+        self._lock = RLock()
 
         # Load default synthetic fixtures
         default_booking = get_default_booking_fixture()
         self.bookings[default_booking.booking_reference] = default_booking
         default_hold = get_default_hold_fixture()
-        self.holds[default_hold.hold_id] = default_hold
-        default_approval = get_default_approval_fixture()
-        self.approvals.register_request(default_approval)
+        self.offers[default_hold.offer_id] = OfferRecord(
+            offer_id=default_hold.offer_id,
+            flight_number=default_hold.flight_number,
+            origin=default_hold.origin,
+            destination=default_hold.destination,
+            price=default_hold.price,
+        )
 
         # Initialize scenario-specific booking reference if custom config provided
         if config and config.booking_reference != "AS-1001":
@@ -197,7 +209,7 @@ class SimulatedAirlineEnvironment:
                 current_flight_number=config.current_flight_number,
                 origin=config.origin,
                 destination=config.destination,
-                scheduled_departure=datetime.now(UTC) + timedelta(days=1),
+                scheduled_departure=datetime(2026, 8, 13, tzinfo=UTC),
                 status=BookingStatus.DISRUPTED,
             )
             self.bookings[config.booking_reference] = sc_booking
@@ -210,6 +222,26 @@ class SimulatedAirlineEnvironment:
         policy = ApprovalDecisionPolicy(default_decision=config.approval_status)
         policy.decisions_by_booking[config.booking_reference] = config.approval_status
         env = cls(approval_policy=policy, config=config)
+        # Scenario definitions are trusted setup input.  Register only the
+        # offers explicitly provisioned there; agent tool arguments cannot add
+        # inventory at runtime.
+        for step in getattr(getattr(scenario, "trajectory", None), "steps", ()):
+            if getattr(step, "tool_name", None) != "booking.hold_alternative":
+                continue
+            arguments = getattr(step, "arguments", {})
+            required = ("offer_id", "flight_number", "origin", "destination", "price_amount")
+            if not all(isinstance(arguments.get(name), (str, int, float)) for name in required):
+                continue
+            env.offers[str(arguments["offer_id"])] = OfferRecord(
+                offer_id=str(arguments["offer_id"]),
+                flight_number=str(arguments["flight_number"]),
+                origin=str(arguments["origin"]),
+                destination=str(arguments["destination"]),
+                price=Money(
+                    amount=float(arguments["price_amount"]),
+                    currency=str(arguments.get("price_currency", "USD")),
+                ),
+            )
         return env
 
     def _next_id(self, prefix: str) -> str:
@@ -225,6 +257,28 @@ class SimulatedAirlineEnvironment:
                 f"Booking reference '{booking_reference}' was not found in environment."
             )
         return booking
+
+    def _get_authoritative_offer(self, offer_id: str, current_time: datetime) -> OfferRecord:
+        offer = self.offers.get(offer_id)
+        if offer is None:
+            raise UnknownOfferError("Requested offer is not present in the synthetic inventory.")
+        if not offer.is_available(current_time):
+            raise OfferUnavailableError("Requested offer is no longer available.")
+        return offer
+
+    @staticmethod
+    def _confirmation_payload(booking_reference: str, hold: HoldRecord) -> dict[str, Any]:
+        return {
+            "action_type": "confirm_rebooking",
+            "booking_reference": booking_reference,
+            "hold_id": hold.hold_id,
+            "offer_id": hold.offer_id,
+            "flight_number": hold.flight_number,
+            "origin": hold.origin,
+            "destination": hold.destination,
+            "price_amount": hold.price.amount,
+            "price_currency": hold.price.currency,
+        }
 
     def place_hold(
         self,
@@ -244,6 +298,34 @@ class SimulatedAirlineEnvironment:
 
         Idempotent: repeating with same key returns cached result.
         """
+        with self._lock:
+            return self._place_hold_locked(
+                booking_reference=booking_reference,
+                offer_id=offer_id,
+                flight_number=flight_number,
+                origin=origin,
+                destination=destination,
+                price_amount=price_amount,
+                price_currency=price_currency,
+                idempotency_key=idempotency_key,
+                current_time=current_time,
+                hold_duration_minutes=hold_duration_minutes,
+            )
+
+    def _place_hold_locked(
+        self,
+        *,
+        booking_reference: str,
+        offer_id: str,
+        flight_number: str,
+        origin: str,
+        destination: str,
+        price_amount: float,
+        price_currency: str,
+        idempotency_key: str,
+        current_time: datetime,
+        hold_duration_minutes: int,
+    ) -> dict[str, Any]:
         payload = {
             "booking_reference": booking_reference,
             "offer_id": offer_id,
@@ -264,31 +346,41 @@ class SimulatedAirlineEnvironment:
         if cached is not None:
             return cached.result_payload
 
-        # Validate booking exists
+        # Validate every trusted relationship before constructing or committing state.
         booking = self.get_booking(booking_reference)
+        offer = self._get_authoritative_offer(offer_id, current_time)
+        if (booking.origin, booking.destination) != (offer.origin, offer.destination):
+            raise UnknownOfferError("Offer does not belong to the booking route.")
+        if (
+            flight_number != offer.flight_number
+            or origin != offer.origin
+            or destination != offer.destination
+            or price_amount != offer.price.amount
+            or price_currency != offer.price.currency
+        ):
+            raise UnknownOfferError("Caller-provided offer metadata does not match inventory.")
+        validate_booking_transition(booking.status, BookingStatus.HOLD_PLACED)
 
-        # Generate hold ID deterministically
+        # All validation has passed; build the complete next state before committing it.
         hold_id = self._next_id("hold")
         if self.config and self.config.hold_expired:
+            placed_at = current_time - timedelta(minutes=hold_duration_minutes + 1)
             expires_at = current_time - timedelta(minutes=1)
         else:
+            placed_at = current_time
             expires_at = current_time + timedelta(minutes=hold_duration_minutes)
         hold = HoldRecord(
             hold_id=hold_id,
             booking_reference=booking_reference,
             offer_id=offer_id,
-            flight_number=flight_number,
-            origin=origin,
-            destination=destination,
-            price=Money(amount=price_amount, currency=price_currency),
-            placed_at=current_time,
+            flight_number=offer.flight_number,
+            origin=offer.origin,
+            destination=offer.destination,
+            price=offer.price,
+            placed_at=placed_at,
             expires_at=expires_at,
             status=HoldStatus.ACTIVE,
         )
-        self.holds[hold_id] = hold
-
-        # Update booking state
-        validate_booking_transition(booking.status, BookingStatus.HOLD_PLACED)
         updated_booking = BookingRecord(
             booking_reference=booking.booking_reference,
             passenger_name=booking.passenger_name,
@@ -300,7 +392,11 @@ class SimulatedAirlineEnvironment:
             active_hold_id=hold_id,
             active_approval_id=booking.active_approval_id,
         )
+        # Atomic in-memory commit while the environment lock is held.
+        self.holds[hold_id] = hold
         self.bookings[booking_reference] = updated_booking
+        if self.config and self.config.alternative_disappears:
+            self.offers[offer_id] = offer.model_copy(update={"available": False})
 
         result = {
             "hold_id": hold_id,
@@ -334,13 +430,45 @@ class SimulatedAirlineEnvironment:
         Decision is determined externally by ApprovalDecisionPolicy (not by agent reason string).
         Idempotent: repeating with same key returns cached result.
         """
-        payload = {
-            "booking_reference": booking_reference,
-            "action_type": action_type,
-            "offer_id": offer_id,
-            "reason": reason,
-        }
+        with self._lock:
+            return self._request_approval_locked(
+                booking_reference=booking_reference,
+                action_type=action_type,
+                offer_id=offer_id,
+                reason=reason,
+                idempotency_key=idempotency_key,
+                current_time=current_time,
+                hold_id=hold_id,
+                approval_duration_minutes=approval_duration_minutes,
+            )
 
+    def _request_approval_locked(
+        self,
+        *,
+        booking_reference: str,
+        action_type: str,
+        offer_id: str,
+        reason: str,
+        idempotency_key: str,
+        current_time: datetime,
+        hold_id: str | None,
+        approval_duration_minutes: int,
+    ) -> dict[str, Any]:
+        booking = self.get_booking(booking_reference)
+        target_hold_id = hold_id or booking.active_hold_id
+        if not target_hold_id:
+            raise OwnershipMismatchError("Approval requires the booking's active hold.")
+        hold = self.holds.get(target_hold_id)
+        if hold is None or hold.booking_reference != booking_reference:
+            raise OwnershipMismatchError("Approval hold does not belong to this booking.")
+        if booking.active_hold_id != hold.hold_id:
+            raise OwnershipMismatchError("Approval hold is not the booking's active hold.")
+        if offer_id != hold.offer_id:
+            raise OwnershipMismatchError("Approval offer does not match the held offer.")
+        sensitive_payload = self._confirmation_payload(booking_reference, hold)
+        if action_type != sensitive_payload["action_type"]:
+            raise OwnershipMismatchError("Unsupported approval action for the held offer.")
+        payload = {"request": sensitive_payload, "reason": reason}
         cached = self.idempotency.check_or_register(
             key=idempotency_key,
             tool_name="approval.request",
@@ -349,28 +477,6 @@ class SimulatedAirlineEnvironment:
         )
         if cached is not None:
             return cached.result_payload
-
-        booking = self.get_booking(booking_reference)
-        target_hold_id = hold_id or booking.active_hold_id or ""
-        hold = self.holds.get(target_hold_id)
-
-        if hold is not None:
-            sensitive_payload: dict[str, Any] = {
-                "action_type": action_type,
-                "booking_reference": booking_reference,
-                "hold_id": target_hold_id,
-                "offer_id": offer_id,
-                "flight_number": hold.flight_number,
-                "price_amount": hold.price.amount,
-                "price_currency": hold.price.currency,
-            }
-        else:
-            sensitive_payload = {
-                "action_type": action_type,
-                "booking_reference": booking_reference,
-                "hold_id": target_hold_id,
-                "offer_id": offer_id,
-            }
 
         approval_id = self._next_id("appr")
         expires_at = current_time + timedelta(minutes=approval_duration_minutes)
@@ -388,6 +494,7 @@ class SimulatedAirlineEnvironment:
             booking_reference=booking_reference,
             action_type=action_type,
             requested_offer_id=offer_id,
+            hold_id=hold.hold_id,
             payload_hash=p_hash,
             reason=reason,
             requested_at=current_time,
@@ -439,29 +546,29 @@ class SimulatedAirlineEnvironment:
         Requires valid, non-expired approval whose payload_hash matches sensitive mutation payload.
         Idempotent: repeating with same key returns cached result.
         """
+        with self._lock:
+            return self._confirm_rebooking_locked(
+                booking_reference=booking_reference,
+                hold_id=hold_id,
+                approval_id=approval_id,
+                idempotency_key=idempotency_key,
+                current_time=current_time,
+            )
+
+    def _confirm_rebooking_locked(
+        self,
+        *,
+        booking_reference: str,
+        hold_id: str,
+        approval_id: str,
+        idempotency_key: str,
+        current_time: datetime,
+    ) -> dict[str, Any]:
         hold = self.holds.get(hold_id)
         if hold is None:
             raise ResourceNotFoundError(f"Hold ID '{hold_id}' was not found.")
 
-        payload_full: dict[str, Any] = {
-            "action_type": "confirm_rebooking",
-            "booking_reference": booking_reference,
-            "hold_id": hold_id,
-            "offer_id": hold.offer_id,
-            "flight_number": hold.flight_number,
-            "price_amount": hold.price.amount,
-            "price_currency": hold.price.currency,
-        }
-        payload_minimal: dict[str, Any] = {
-            "booking_reference": booking_reference,
-            "hold_id": hold_id,
-        }
-        appr_req = self.approvals.get_request(approval_id) if approval_id else None
-        mutation_payload: dict[str, Any]
-        if appr_req and appr_req.payload_hash == canonical_hash(payload_minimal):
-            mutation_payload = payload_minimal
-        else:
-            mutation_payload = payload_full
+        mutation_payload = self._confirmation_payload(booking_reference, hold)
 
         cached = self.idempotency.check_or_register(
             key=idempotency_key,
@@ -472,14 +579,21 @@ class SimulatedAirlineEnvironment:
         if cached is not None:
             return cached.result_payload
 
-        # 1. Enforce approval check first
-        self.approvals.verify_approval_for_mutation(
+        booking = self.get_booking(booking_reference)
+        if hold.booking_reference != booking_reference or booking.active_hold_id != hold_id:
+            raise OwnershipMismatchError("Hold does not belong to the target booking.")
+        self._get_authoritative_offer(hold.offer_id, current_time)
+
+        # Approval and every resource relationship must agree before commit.
+        approval = self.approvals.verify_approval_for_mutation(
             approval_id=approval_id,
             action_type="confirm_rebooking",
             booking_reference=booking_reference,
             mutation_payload=mutation_payload,
             current_time=current_time,
         )
+        if approval.hold_id != hold_id or approval.requested_offer_id != hold.offer_id:
+            raise OwnershipMismatchError("Approval scope does not match the held offer.")
 
         # 2. Enforce hold expiration / active status
         if hold.status != HoldStatus.ACTIVE or hold.is_expired(current_time):
@@ -487,10 +601,14 @@ class SimulatedAirlineEnvironment:
                 f"Hold ID '{hold_id}' has expired or is not active (status: {hold.status.value})."
             )
 
-        # 3. Apply state transitions
-        booking = self.get_booking(booking_reference)
+        # Construct both transition targets before touching shared state.
         validate_booking_transition(booking.status, BookingStatus.REBOOKED)
         validate_hold_transition(hold.status, HoldStatus.CONFIRMED)
+        if any(
+            tx.booking_reference == booking_reference and tx.status == TransactionStatus.COMMITTED
+            for tx in self.transactions
+        ):
+            raise TransactionConflictError("Booking already has a committed rebooking transaction.")
 
         updated_hold = HoldRecord(
             hold_id=hold.hold_id,
@@ -557,7 +675,7 @@ class SimulatedAirlineEnvironment:
             and not self._response_lost_triggered
         ):
             self._response_lost_triggered = True
-            raise TimeoutError("Network timeout: response lost post-commit")
+            raise AmbiguousCommitError("Confirmation committed but simulated response was lost.")
 
         return result
 
@@ -569,6 +687,14 @@ class SimulatedAirlineEnvironment:
         current_time: datetime,
     ) -> dict[str, Any]:
         """Release an active inventory hold."""
+        with self._lock:
+            return self._release_hold_locked(
+                hold_id=hold_id, idempotency_key=idempotency_key, current_time=current_time
+            )
+
+    def _release_hold_locked(
+        self, *, hold_id: str, idempotency_key: str, current_time: datetime
+    ) -> dict[str, Any]:
         payload = {"hold_id": hold_id}
         cached = self.idempotency.check_or_register(
             key=idempotency_key,
@@ -583,23 +709,12 @@ class SimulatedAirlineEnvironment:
         if hold is None:
             raise ResourceNotFoundError(f"Hold ID '{hold_id}' was not found.")
 
-        if hold.status in (HoldStatus.RELEASED, HoldStatus.CONFIRMED):
-            res = {
-                "hold_id": hold_id,
-                "status": "released",
-                "released_at": current_time.isoformat(),
-            }
-            self.idempotency.save_result(
-                key=idempotency_key,
-                tool_name="booking.release_hold",
-                payload=payload,
-                result_payload=res,
-                registered_at=current_time,
-            )
-            return res
-
         validate_hold_transition(hold.status, HoldStatus.RELEASED)
-        self.holds[hold_id] = HoldRecord(
+        booking = self.get_booking(hold.booking_reference)
+        if booking.active_hold_id != hold_id:
+            raise OwnershipMismatchError("Hold is not the booking's active hold.")
+        validate_booking_transition(booking.status, BookingStatus.DISRUPTED)
+        updated_hold = HoldRecord(
             hold_id=hold.hold_id,
             booking_reference=hold.booking_reference,
             offer_id=hold.offer_id,
@@ -611,6 +726,19 @@ class SimulatedAirlineEnvironment:
             expires_at=hold.expires_at,
             status=HoldStatus.RELEASED,
         )
+        updated_booking = BookingRecord(
+            booking_reference=booking.booking_reference,
+            passenger_name=booking.passenger_name,
+            current_flight_number=booking.current_flight_number,
+            origin=booking.origin,
+            destination=booking.destination,
+            scheduled_departure=booking.scheduled_departure,
+            status=BookingStatus.DISRUPTED,
+            active_hold_id=None,
+            active_approval_id=None,
+        )
+        self.holds[hold_id] = updated_hold
+        self.bookings[booking.booking_reference] = updated_booking
 
         result = {"hold_id": hold_id, "status": "released"}
         self.idempotency.save_result(
@@ -631,6 +759,22 @@ class SimulatedAirlineEnvironment:
         current_time: datetime,
     ) -> dict[str, Any]:
         """Send a simulated passenger notification with idempotency and state logging."""
+        with self._lock:
+            return self._send_notification_locked(
+                passenger_name=passenger_name,
+                message=message,
+                idempotency_key=idempotency_key,
+                current_time=current_time,
+            )
+
+    def _send_notification_locked(
+        self,
+        *,
+        passenger_name: str,
+        message: str,
+        idempotency_key: str,
+        current_time: datetime,
+    ) -> dict[str, Any]:
         payload = {"passenger_name": passenger_name, "message": message}
         cached = self.idempotency.check_or_register(
             key=idempotency_key,

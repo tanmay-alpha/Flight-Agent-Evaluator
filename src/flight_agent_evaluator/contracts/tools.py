@@ -45,7 +45,9 @@ class ToolCall(ContractModel):
     run_id: uuid.UUID = Field(description="ID of the enclosing agent run")
     tool_name: ToolName  # type: ignore[valid-type]
     arguments: dict[str, Any] = Field(description="Structured JSON arguments")  # type: ignore[valid-type]
-    mutation_class: ToolMutationClass = "read_only"
+    # This is untrusted request metadata.  The executor resolves and journals
+    # the authoritative value from ToolRegistry/ToolDefinition.
+    mutation_class: ToolMutationClass | None = None
     start_time: datetime
     timeout_seconds: NonNegativeInt | None = Field(default=None)  # type: ignore[valid-type]
     idempotency_key: SHA256Digest | None = Field(default=None)  # type: ignore[valid-type]
@@ -64,6 +66,18 @@ class ToolError(ContractModel):
         "timeout",
         "cancelled",
         "invalid_arguments",
+        "authorization_error",
+        "ownership_error",
+        "approval_required",
+        "approval_expired",
+        "approval_scope_mismatch",
+        "unknown_offer",
+        "offer_unavailable",
+        "invalid_state_transition",
+        "idempotency_conflict",
+        "duplicate_side_effect",
+        "transaction_conflict",
+        "ambiguous_commit",
         "provider_error",
         "internal_error",
     ]
