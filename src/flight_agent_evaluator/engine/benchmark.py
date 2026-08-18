@@ -70,6 +70,60 @@ class BenchmarkRunner:
         self.evaluator = TrajectoryEvaluator()
         self.diagnostic_engine = FailureDiagnosticEngine()
 
+    async def run_case(
+        self,
+        case: Any,
+        agent: AgentPolicy,
+        environment: SimulatedAirlineEnvironment | None = None,
+        repetition_index: int = 0,
+    ) -> Any:
+        """Run an authoritative, cryptographically bound BenchmarkCase against an agent policy."""
+        import time
+
+        from flight_agent_evaluator.benchmarks.loader import BenchmarkCase
+        from flight_agent_evaluator.benchmarks.results import BenchmarkCaseResult
+
+        if not isinstance(case, BenchmarkCase):
+            raise TypeError(
+                f"run_case requires a BenchmarkCase instance, got {type(case).__name__}."
+            )
+
+        t0 = time.perf_counter()
+        scenario = case.scenario
+        expectation = case.expectation
+
+        mv = await self.run_scenario(
+            scenario=scenario,
+            agent=agent,
+            expectation=expectation,
+            environment=environment,
+            authoritative=True,
+        )
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+        case_res = BenchmarkCaseResult(
+            benchmark_id="benchmark-v1",
+            benchmark_version="1.0.0",
+            scenario_id=case.manifest_entry.scenario_id,
+            scenario_version=case.manifest_entry.scenario_version,
+            scenario_resource_digest=case.scenario_raw_sha256,
+            expectation_resource_digest=case.expectation_raw_sha256,
+            agent_id=getattr(agent, "agent_id", str(agent)),
+            agent_version="1.0.0",
+            seed=scenario.seed,
+            repetition_index=repetition_index,
+            task_success=mv.task_success,
+            safety_pass=mv.safety_pass,
+            evaluator_status="passed" if mv.task_success else "failed",
+            overall_score=mv.overall_score,
+            score_vector=mv.score_vector,
+            failure_codes=mv.failure_codes,
+            run_id=f"run_{case.manifest_entry.scenario_id}_{repetition_index}",
+            wall_time_ms=elapsed_ms,
+        )
+        computed_digest = case_res.compute_semantic_result_digest()
+        return case_res.model_copy(update={"semantic_result_digest": computed_digest})
+
     async def run_scenario(
         self,
         scenario: BenchmarkScenario,
@@ -77,8 +131,14 @@ class BenchmarkRunner:
         expectation: TrajectoryExpectation | None = None,
         environment: SimulatedAirlineEnvironment | None = None,
         output_dir: Path | None = None,  # noqa: ARG002
+        authoritative: bool = False,
     ) -> BenchmarkMetricVector:
         """Run a single benchmark scenario against an agent policy."""
+        if authoritative and expectation is None:
+            raise ValueError(
+                f"Authoritative benchmark run for scenario '{scenario.scenario_id.id}' requires an explicit authored expectation."
+            )
+
         # Ensure scenario mode matches scenario configuration
         scenario_mode = getattr(scenario, "scenario_mode", "read_only")
 
@@ -197,7 +257,7 @@ class BenchmarkRunner:
         )
 
         # Trajectory evaluation
-        exp = expectation or self._build_default_expectation(scenario)
+        exp = expectation or self._build_development_expectation(scenario)
         scorecard = self.evaluator.evaluate(
             scenario=scenario,
             expectation=exp,
@@ -234,7 +294,7 @@ class BenchmarkRunner:
 
         return BenchmarkMetricVector(
             scenario_id=scenario.scenario_id.id,
-            agent_id=agent.agent_id,
+            agent_id=getattr(agent, "agent_id", str(agent)),
             task_success=task_success,
             safety_pass=safety_pass,
             overall_score=scorecard.overall_score,
@@ -254,7 +314,8 @@ class BenchmarkRunner:
             total_tokens=agent_result.usage.total_tokens,
         )
 
-    def _build_default_expectation(self, scenario: BenchmarkScenario) -> TrajectoryExpectation:
+    def _build_development_expectation(self, scenario: BenchmarkScenario) -> TrajectoryExpectation:
+        """Construct non-authoritative fallback expectation for development/unit testing only."""
         from flight_agent_evaluator.contracts.trajectory_expectation import (
             ActionSelector,
             ExpectedAction,
@@ -287,11 +348,15 @@ class BenchmarkRunner:
             valid_paths=[
                 ValidPath(
                     path_id="path-default",
-                    description="Default valid path",
+                    description="Default valid path (non-authoritative development placeholder)",
                     expected_actions=nodes,
                 )
             ],
         )
+
+    def _build_default_expectation(self, scenario: BenchmarkScenario) -> TrajectoryExpectation:
+        """Deprecated: use _build_development_expectation."""
+        return self._build_development_expectation(scenario)
 
     async def run_suite(
         self,

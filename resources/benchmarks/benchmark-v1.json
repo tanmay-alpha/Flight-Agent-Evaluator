@@ -10,196 +10,381 @@
   "judge_validation_status": "human_calibration_pending",
   "scenarios": [
     {
-      "id": "jfk-lhr-delay",
-      "version": 1,
-      "path": "resources/scenarios/jfk-lhr-delay.json",
+      "scenario_id": "jfk-lhr-delay",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/jfk-lhr-delay.json",
+      "scenario_sha256": "6b8291146ed529329bc8eb4fac13886e9ce202d336d6caca3c9f9ae8e694a66a",
+      "expectation_path": "resources/expectations/jfk-lhr-delay.json",
+      "expectation_sha256": "15c99ed1764ad198684472c4d4fa11c513b297cc1a55e89d7e1f567742f5e3c5",
       "family": "read_only",
       "difficulty": "medium",
-      "tags": ["disruption", "delay"]
+      "tags": [
+        "disruption",
+        "delay"
+      ]
     },
     {
-      "id": "lax-sfo-ontime",
-      "version": 1,
-      "path": "resources/scenarios/lax-sfo-ontime.json",
+      "scenario_id": "lax-sfo-ontime",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/lax-sfo-ontime.json",
+      "scenario_sha256": "68248e6ed50945c42e8bd1ee8d55abcb0cca1c185130e1d379e9fb24384afcf2",
+      "expectation_path": "resources/expectations/lax-sfo-ontime.json",
+      "expectation_sha256": "0dd1372a3adf28c35bd81f036837a2af5dc279460bee8859f1e422df8020761f",
       "family": "read_only",
       "difficulty": "easy",
-      "tags": ["ontime", "baseline"]
+      "tags": [
+        "ontime",
+        "baseline"
+      ]
     },
     {
-      "id": "atl-mia-wrong-arguments",
-      "version": 1,
-      "path": "resources/scenarios/atl-mia-wrong-arguments.json",
+      "scenario_id": "atl-mia-wrong-arguments",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/atl-mia-wrong-arguments.json",
+      "scenario_sha256": "7abc71f93e21a9f05a2a7f39a7f8daa842f849347bf1af31e00db1c917fc2aaa",
+      "expectation_path": "resources/expectations/atl-mia-wrong-arguments.json",
+      "expectation_sha256": "cba247c21b05086b5808a75e4219f76c5928a37d29d847d7f46926db48fc176a",
       "family": "read_only",
       "difficulty": "easy",
-      "tags": ["validation", "arguments"]
+      "tags": [
+        "validation",
+        "arguments"
+      ]
     },
     {
-      "id": "bwi-mco-forbidden-mutation",
-      "version": 1,
-      "path": "resources/scenarios/bwi-mco-forbidden-mutation.json",
+      "scenario_id": "bwi-mco-forbidden-mutation",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/bwi-mco-forbidden-mutation.json",
+      "scenario_sha256": "c402bd6e1873fadba640d598d033467f48e90df517c61f86b1cdabf7302a04ba",
+      "expectation_path": "resources/expectations/bwi-mco-forbidden-mutation.json",
+      "expectation_sha256": "b8677cceb0b3170c36e0d585f1c52baa2311a7bd7a44a7ba5c6f1429ddad8576",
       "family": "read_only",
       "difficulty": "medium",
-      "tags": ["safety", "forbidden-mutation"]
+      "tags": [
+        "safety",
+        "forbidden-mutation"
+      ]
     },
     {
-      "id": "clt-phx-retry-dependency",
-      "version": 1,
-      "path": "resources/scenarios/clt-phx-retry-dependency.json",
+      "scenario_id": "clt-phx-retry-dependency",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/clt-phx-retry-dependency.json",
+      "scenario_sha256": "ad239bdd96ef15faea1ac591c3d0f2b897ab047f1057d7102dc8fcfeda18f17f",
+      "expectation_path": "resources/expectations/clt-phx-retry-dependency.json",
+      "expectation_sha256": "7a4ff7ecc5ec9099a16f7c2c54f3b21378738fd544242cb51f425a82c1122213",
       "family": "read_only",
       "difficulty": "medium",
-      "tags": ["retry", "dependency"]
+      "tags": [
+        "retry",
+        "dependency"
+      ]
     },
     {
-      "id": "dfw-den-no-alternatives",
-      "version": 1,
-      "path": "resources/scenarios/dfw-den-no-alternatives.json",
+      "scenario_id": "dfw-den-no-alternatives",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/dfw-den-no-alternatives.json",
+      "scenario_sha256": "be171c0dd96248005ca0b519a54dd43016de9d86deb0619c018428433b3585d5",
+      "expectation_path": "resources/expectations/dfw-den-no-alternatives.json",
+      "expectation_sha256": "70dddc888f1111d0aca9af3a0b76a79d0a61e261cf8d838305382bc1b9e1bd5e",
       "family": "read_only",
       "difficulty": "medium",
-      "tags": ["search", "empty-results"]
+      "tags": [
+        "search",
+        "empty-results"
+      ]
     },
     {
-      "id": "iad-ord-redundant-lookup",
-      "version": 1,
-      "path": "resources/scenarios/iad-ord-redundant-lookup.json",
+      "scenario_id": "iad-ord-redundant-lookup",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/iad-ord-redundant-lookup.json",
+      "scenario_sha256": "8d49dd10589fe0710cbd47de75c650092442e6cdad312593dcc144eb3f884272",
+      "expectation_path": "resources/expectations/iad-ord-redundant-lookup.json",
+      "expectation_sha256": "4b4f736bb8158b446e22f3bcbbf9254b66458ed4e1b82d62ae3aba4e886f4dc5",
       "family": "read_only",
       "difficulty": "easy",
-      "tags": ["efficiency", "redundancy"]
+      "tags": [
+        "efficiency",
+        "redundancy"
+      ]
     },
     {
-      "id": "ord-sea-dual-order",
-      "version": 1,
-      "path": "resources/scenarios/ord-sea-dual-order.json",
+      "scenario_id": "ord-sea-dual-order",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/ord-sea-dual-order.json",
+      "scenario_sha256": "2694ce7ca67df8d7feeadf4645ae489ac7530a671db8c40eadb0923bba3fb599",
+      "expectation_path": "resources/expectations/ord-sea-dual-order.json",
+      "expectation_sha256": "efe3ddb5b6095d199c225e8a825709fd83d0b2522de821914b6d86fa6ce83559",
       "family": "read_only",
       "difficulty": "medium",
-      "tags": ["trajectory", "ordering"]
+      "tags": [
+        "trajectory",
+        "ordering"
+      ]
     },
     {
-      "id": "prompt-injection-untrusted-output",
-      "version": 1,
-      "path": "resources/scenarios/prompt-injection-untrusted-output.json",
+      "scenario_id": "prompt-injection-untrusted-output",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/prompt-injection-untrusted-output.json",
+      "scenario_sha256": "b61bca7779fd985df53378432a793e5673a6f6932acc38cfdcb5e69f51b97983",
+      "expectation_path": "resources/expectations/prompt-injection-untrusted-output.json",
+      "expectation_sha256": "88125d60252d47a46596d6cf49432ae74d7658f95b4f972213933e5f3d5d9b4c",
       "family": "read_only",
       "difficulty": "hard",
-      "tags": ["security", "prompt-injection"]
+      "tags": [
+        "security",
+        "prompt-injection"
+      ]
     },
     {
-      "id": "sfo-bos-optional-lookup",
-      "version": 1,
-      "path": "resources/scenarios/sfo-bos-optional-lookup.json",
+      "scenario_id": "sfo-bos-optional-lookup",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/sfo-bos-optional-lookup.json",
+      "scenario_sha256": "303ec1a09cfb9a437874f4583baace6f8a9cc0808e936d23a5c01ddd2102b273",
+      "expectation_path": "resources/expectations/sfo-bos-optional-lookup.json",
+      "expectation_sha256": "2ff838d2bed5769ce94c8fec1184b81727e583947ae98d5b09a8d1df98ca2d06",
       "family": "read_only",
       "difficulty": "easy",
-      "tags": ["optional-step"]
+      "tags": [
+        "optional-step"
+      ]
     },
     {
-      "id": "unknown-flight-lookup",
-      "version": 1,
-      "path": "resources/scenarios/unknown-flight-lookup.json",
+      "scenario_id": "unknown-flight-lookup",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/unknown-flight-lookup.json",
+      "scenario_sha256": "7d61e912a18e8556f83a8a35d94612f94a624f0a433c567da07e8edfa562e484",
+      "expectation_path": "resources/expectations/unknown-flight-lookup.json",
+      "expectation_sha256": "fd2452df73ded2c249f1fe8daf1be23225e4b9bf507330a9ce5bd52faa3ded3e",
       "family": "read_only",
       "difficulty": "easy",
-      "tags": ["error-handling"]
+      "tags": [
+        "error-handling"
+      ]
     },
     {
-      "id": "jfk-lhr-timeout-recovery",
-      "version": 1,
-      "path": "resources/scenarios/jfk-lhr-timeout-recovery.json",
+      "scenario_id": "jfk-lhr-timeout-recovery",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/jfk-lhr-timeout-recovery.json",
+      "scenario_sha256": "89bc5614a83ae5dd2edb62b80c53b98e343cbc34339c979bf299a2791196b128",
+      "expectation_path": "resources/expectations/jfk-lhr-timeout-recovery.json",
+      "expectation_sha256": "47d54ff290a945518bb8dd9048009390dabebabcc63910af5d4acbe35a6aa1ac",
       "family": "read_only",
       "difficulty": "hard",
-      "tags": ["fault-injection", "timeout"]
+      "tags": [
+        "fault-injection",
+        "timeout"
+      ]
     },
     {
-      "id": "approval-granted",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/approval-granted.json",
+      "scenario_id": "approval-granted",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/approval-granted.json",
+      "scenario_sha256": "bd8cccba516e7d7d5ad6c0a3e09dbc5b4be7872c26d09e6da49fd1952954aded",
+      "expectation_path": "resources/expectations/stage-5/approval-granted.json",
+      "expectation_sha256": "2a9106b68c6b4043863ee357d72b5b1dec7b8e7a210b84ef5a9a1151acd1d268",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "approval"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "approval"
+      ]
     },
     {
-      "id": "approval-denied",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/approval-denied.json",
+      "scenario_id": "approval-denied",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/approval-denied.json",
+      "scenario_sha256": "cedc9ce69123112b43151d2807a9dde7ac91bf58df0cfb7a001fed62ced6a0f1",
+      "expectation_path": "resources/expectations/stage-5/approval-denied.json",
+      "expectation_sha256": "1ce233d608fc8d062531b08abf6440a8dead438a858a168f51bf0552b0ecafd0",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "approval-denied"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "approval-denied"
+      ]
     },
     {
-      "id": "approval-expires",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/approval-expires.json",
+      "scenario_id": "approval-expires",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/approval-expires.json",
+      "scenario_sha256": "b2373011bc0bbbf596339e5fd46bc009f20e854d47a1deffbd03507402d969b0",
+      "expectation_path": "resources/expectations/stage-5/approval-expires.json",
+      "expectation_sha256": "f3cb6c24be55a966d778bead5ec499af4a47133e5937eff3180f2247a0de41c8",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "approval-expires"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "approval-expires"
+      ]
     },
     {
-      "id": "mutation-without-approval",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/mutation-without-approval.json",
+      "scenario_id": "mutation-without-approval",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/mutation-without-approval.json",
+      "scenario_sha256": "859f3be8e0703a142a441faac55276dd7f74ff8d1fdbe2202ec8a79dc5d4d201",
+      "expectation_path": "resources/expectations/stage-5/mutation-without-approval.json",
+      "expectation_sha256": "78dece2832b2d9d46574d548a7d78f4643964f7aeac04aa70c8c1efeab8c4f48",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "safety"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "safety"
+      ]
     },
     {
-      "id": "payload-changes-after-approval",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/payload-changes-after-approval.json",
+      "scenario_id": "payload-changes-after-approval",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/payload-changes-after-approval.json",
+      "scenario_sha256": "2dad31ac16c17efaee4a3a2f0f5e0e8e712472ededa53d542f8e614dfae98ccc",
+      "expectation_path": "resources/expectations/stage-5/payload-changes-after-approval.json",
+      "expectation_sha256": "c771917a431a00066969302d8df24dfd4ea31fcba61b0d046d8b1ba17eef5bea",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "payload-hash"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "payload-hash"
+      ]
     },
     {
-      "id": "idempotent-retry-after-timeout",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/idempotent-retry-after-timeout.json",
+      "scenario_id": "idempotent-retry-after-timeout",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/idempotent-retry-after-timeout.json",
+      "scenario_sha256": "3152dd751c792d4fbd23d7663570753b2dc71d17ce631dc612825452dba05b2c",
+      "expectation_path": "resources/expectations/stage-5/idempotent-retry-after-timeout.json",
+      "expectation_sha256": "b7c3054f7840201fa38d00dc9a3115ad57b585892e5f52fc07fe53f1b23907a7",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "idempotency"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "idempotency"
+      ]
     },
     {
-      "id": "duplicate-rebooking-attempt",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/duplicate-rebooking-attempt.json",
+      "scenario_id": "duplicate-rebooking-attempt",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/duplicate-rebooking-attempt.json",
+      "scenario_sha256": "47f7444e87d584e0bbddf93894e0f1cd1bf310f7d82ff21c93261a8eeca8221b",
+      "expectation_path": "resources/expectations/stage-5/duplicate-rebooking-attempt.json",
+      "expectation_sha256": "96ec764cf26c74f627650ebab7c551098c80a38a3c57ff59d53c4a959be7f36f",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "duplicate-rebooking"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "duplicate-rebooking"
+      ]
     },
     {
-      "id": "hold-expires",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/hold-expires.json",
+      "scenario_id": "hold-expires",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/hold-expires.json",
+      "scenario_sha256": "ccc444fc0b28824bf7a424f275733ae666536851283e390065cf338277f8333e",
+      "expectation_path": "resources/expectations/stage-5/hold-expires.json",
+      "expectation_sha256": "96df2652c6cb7f779ea4b6ef27f084cd8b3f0c50daf5d502aed1ffd67f218e79",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "hold-expires"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "hold-expires"
+      ]
     },
     {
-      "id": "mutation-success-response-lost",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/mutation-success-response-lost.json",
+      "scenario_id": "mutation-success-response-lost",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/mutation-success-response-lost.json",
+      "scenario_sha256": "e492a9e37a16d868b72e6e740c2e8fa019238572f2bca2587bf48616a3782ce6",
+      "expectation_path": "resources/expectations/stage-5/mutation-success-response-lost.json",
+      "expectation_sha256": "c5f8d08dab85aff172ba0c16a85ec4b449db8b2bdb01b4469914b857ebc1713e",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "ambiguous-commit"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "ambiguous-commit"
+      ]
     },
     {
-      "id": "alternative-disappears-before-confirm",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/alternative-disappears-before-confirm.json",
+      "scenario_id": "alternative-disappears-before-confirm",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/alternative-disappears-before-confirm.json",
+      "scenario_sha256": "bd5f693b0efe8ccff99af9bf7c7f4e1542ba37427c07ac9470bb8205bd1fc4c0",
+      "expectation_path": "resources/expectations/stage-5/alternative-disappears-before-confirm.json",
+      "expectation_sha256": "daba5751e0d3c597c497aa4f4fa074065620a98e3c41a35c3a66045f25b28108",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "inventory-loss"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "inventory-loss"
+      ]
     },
     {
-      "id": "approval-wrong-itinerary",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/approval-wrong-itinerary.json",
+      "scenario_id": "approval-wrong-itinerary",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/approval-wrong-itinerary.json",
+      "scenario_sha256": "3de02caf0a36daae0bce29ed8503e35ce93959d105b871547a03aa4cd0aa170f",
+      "expectation_path": "resources/expectations/stage-5/approval-wrong-itinerary.json",
+      "expectation_sha256": "411c717f05ab4f627538246d675ac77618bc8beaca49e151a235fcab921acfb0",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "scope-mismatch"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "scope-mismatch"
+      ]
     },
     {
-      "id": "constraint-changes-after-approval",
-      "version": 1,
-      "path": "resources/scenarios/stage-5/constraint-changes-after-approval.json",
+      "scenario_id": "constraint-changes-after-approval",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/constraint-changes-after-approval.json",
+      "scenario_sha256": "b603b6256e1fef0bb83428a8f192e794b1f421d045b966d9f8ccbde113f608f0",
+      "expectation_path": "resources/expectations/stage-5/constraint-changes-after-approval.json",
+      "expectation_sha256": "d5de2085e6c193e5f0af4fab01306efa9ed43ecc59725fdfd48fc5ffc9be2b4a",
       "family": "transactional",
       "difficulty": "hard",
-      "tags": ["stage-5", "transaction", "stale-approval"]
+      "tags": [
+        "stage-5",
+        "transaction",
+        "stale-approval"
+      ]
     }
-  ]
+  ],
+  "agents": [
+    {
+      "agent_id": "scripted-oracle",
+      "agent_version": "1.0.0",
+      "implementation": "flight_agent_evaluator.agent.baselines.ScriptedOracleAgent",
+      "configuration_digest": null
+    },
+    {
+      "agent_id": "naive-baseline",
+      "agent_version": "1.0.0",
+      "implementation": "flight_agent_evaluator.agent.baselines.NaiveBaselineAgent",
+      "configuration_digest": null
+    },
+    {
+      "agent_id": "random-baseline",
+      "agent_version": "1.0.0",
+      "implementation": "flight_agent_evaluator.agent.baselines.RandomBaselineAgent",
+      "configuration_digest": null
+    }
+  ],
+  "run_policy": {
+    "repetitions": 1,
+    "seeds": [
+      42
+    ],
+    "network_allowed": false,
+    "judge_policy": "offline_rubric",
+    "replay_policy": "deterministic",
+    "failure_policy": "fail_closed"
+  },
+  "manifest_digest": "3a02e537a35257c6148a0891d62cd7dafc41ea619a8d87dacf5edf5d7149e04d"
 }

@@ -5,7 +5,7 @@
     {
       "path_id": "path_ontime_status",
       "name": "On-Time Status Verification",
-      "description": "Checks status of AA100 and confirms on-time operation.",
+      "description": "Checks status of AS204 and confirms on-time operation.",
       "expected_actions": [
         {
           "node_id": "node_status_lookup",
@@ -16,7 +16,7 @@
               {
                 "field_pointer": "/flight_id",
                 "operator": "equals",
-                "value": "AA100"
+                "value": "AS204"
               }
             ]
           },

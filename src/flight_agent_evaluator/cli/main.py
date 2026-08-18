@@ -198,39 +198,50 @@ def cmd_agent_run(args: argparse.Namespace) -> int:
 
 
 def cmd_benchmark_run(args: argparse.Namespace) -> int:
-    """Run a benchmark suite across multiple scenarios and agents."""
-    scenarios_dir = Path(getattr(args, "scenarios", "resources/scenarios"))
-    loader = ScenarioLoader()
+    """Run an authoritative benchmark suite using CanonicalBenchmarkEngine."""
+    from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
 
-    scenarios = []
-    if scenarios_dir.is_dir():
-        for p in sorted(scenarios_dir.glob("*.json")):
-            try:
-                scenarios.append(loader.load_from_path(p).scenario)
-            except Exception as exc:
-                logger.warning("Skipping invalid scenario file %s: %s", p, exc)
+    manifest_arg = getattr(args, "manifest", None)
+    scenarios_arg = getattr(args, "scenarios", None)
 
-    if not scenarios:
-        print(f"No valid benchmark scenarios found in {scenarios_dir}", file=sys.stderr)
-        return 1
+    manifest_path = "resources/benchmarks/benchmark-v1.json"
+    if manifest_arg:
+        manifest_path = str(manifest_arg)
+    elif scenarios_arg and str(scenarios_arg).endswith(".json"):
+        manifest_path = str(scenarios_arg)
 
-    agents: list[AgentPolicy] = [ScriptedOracleAgent(), NaiveBaselineAgent()]
-    bm_runner = BenchmarkRunner(scenario_loader=loader)
+    agents_arg = getattr(args, "agents", None)
+    agents_list = (
+        [a.strip() for a in agents_arg.split(",")]
+        if agents_arg
+        else ["scripted-oracle", "naive-baseline"]
+    )
+
+    output_dir = getattr(args, "output", None)
+    repetitions = getattr(args, "repetitions", None)
 
     try:
-        suite_result = asyncio.run(bm_runner.run_suite(scenarios, agents))
+        engine = CanonicalBenchmarkEngine()
+        artifact = engine.run_benchmark(
+            manifest_path=manifest_path,
+            agent_ids=agents_list,
+            output_dir=output_dir,
+            repetitions=repetitions,
+        )
     except Exception as exc:
         print(f"Benchmark run error: {_sanitise_error(exc)}", file=sys.stderr)
         return 1
 
     if getattr(args, "json", False):
-        print(json.dumps(suite_result.model_dump(mode="json")))
+        print(artifact.model_dump_json(indent=2))
     else:
         print(
-            f"Benchmark Suite Summary ({suite_result.total_scenarios} scenarios, {suite_result.total_runs} runs):"
+            f"Benchmark Suite Summary ({artifact.scenario_count} scenarios, {artifact.total_runs} runs):"
         )
-        print(f"  Task Success Rate:   {suite_result.overall_task_success_rate * 100:.1f}%")
-        print(f"  Safety Pass Rate:    {suite_result.overall_safety_pass_rate * 100:.1f}%")
+        print(f"  Task Success Rate:   {artifact.metrics.task_success_rate * 100:.1f}%")
+        print(f"  Safety Pass Rate:    {artifact.metrics.safety_pass_rate * 100:.1f}%")
+        if artifact.metrics.evaluator_error_rate > 0:
+            print(f"  Evaluator Errors:    {artifact.metrics.evaluator_error_rate * 100:.1f}%")
 
     return 0
 
@@ -593,44 +604,44 @@ def cmd_trajectory_diagnose(args: argparse.Namespace) -> int:
 
 
 def cmd_benchmark_validate(args: argparse.Namespace) -> int:
-    """Validate all benchmark scenarios and their expectation graphs."""
-    scenarios_dir = Path(args.scenarios)
-    if not scenarios_dir.is_dir():
-        print(f"Error: Scenarios directory not found: {scenarios_dir}", file=sys.stderr)
-        return 1
+    """Validate all benchmark scenarios and their expectation graphs against manifest."""
+    from flight_agent_evaluator.benchmarks.validator import BenchmarkCorpusValidator
 
-    scenario_files = list(scenarios_dir.glob("*.json"))
-    if not scenario_files:
-        print(f"No scenario JSON files found in {scenarios_dir}", file=sys.stderr)
-        return 1
+    manifest_arg = (
+        getattr(args, "manifest", None)
+        or getattr(args, "manifest_pos", None)
+        or getattr(args, "scenarios", None)
+    )
+    if manifest_arg and manifest_arg not in (
+        "resources/scenarios",
+        "resources/benchmarks/benchmark-v1.json",
+    ):
+        manifest_path = str(manifest_arg)
+    else:
+        manifest_path = "resources/benchmarks/benchmark-v1.json"
 
-    loader = ScenarioLoader()
-    valid_count = 0
-
-    for sc_file in scenario_files:
-        try:
-            loaded = loader.load_from_path(sc_file)
-            scenario_id = loaded.scenario.scenario_id.id
-            exp_file = sc_file.parent.parent / "expectations" / f"{scenario_id}.json"
-            if exp_file.is_file():
-                exp_data = json.loads(exp_file.read_text(encoding="utf-8"))
-                expectation = TrajectoryExpectation.model_validate(exp_data)
-                errors = validate_trajectory_expectation(expectation)
-                if errors:
-                    print(f"Expectation errors in {exp_file.name}: {errors}", file=sys.stderr)
-                    return 1
-            valid_count += 1
-        except Exception as exc:
-            print(f"Validation failed for {sc_file.name}: {_sanitise_error(exc)}", file=sys.stderr)
-            return 1
+    validator = BenchmarkCorpusValidator()
+    report = validator.validate_manifest_file(manifest_path)
 
     if getattr(args, "json", False):
-        print(json.dumps({"valid": True, "count": valid_count}))
+        print(json.dumps(report.to_dict(), indent=2))
     else:
-        print(
-            f"All benchmark scenarios & expectations are valid ({valid_count} scenarios checked)."
-        )
-    return 0
+        if report.valid:
+            print(
+                f"All benchmark scenarios & expectations are valid ({report.total_scenarios} scenarios checked, digest: {report.manifest_digest[:16]}...)."
+            )
+        else:
+            print(
+                f"Benchmark corpus validation failed ({len(report.errors)} errors):",
+                file=sys.stderr,
+            )
+            for err in report.errors:
+                print(
+                    f"  - [{err.code}] {err.scenario_id or err.resource}: {err.message}",
+                    file=sys.stderr,
+                )
+
+    return 0 if report.valid else 1
 
 
 def cmd_annotation_validate(args: argparse.Namespace) -> int:
@@ -766,21 +777,46 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     bm_p = subparsers.add_parser("benchmark", help="Benchmark execution.")
     bm_sub = bm_p.add_subparsers(dest="benchmark_command", required=True)
     bm_run_p = bm_sub.add_parser("run", help="Run benchmark suite across scenarios.")
-    bm_run_p.add_argument("--scenarios", default="resources/scenarios")
-    bm_run_p.add_argument("--output", "-o", help="Output directory.")
+    bm_run_p.add_argument(
+        "--manifest",
+        default="resources/benchmarks/benchmark-v1.json",
+        help="Path to benchmark manifest JSON.",
+    )
+    bm_run_p.add_argument(
+        "--agents",
+        default="scripted-oracle,naive-baseline",
+        help="Comma-separated agent IDs to benchmark.",
+    )
+    bm_run_p.add_argument(
+        "--repetitions", type=int, default=1, help="Number of repetitions per case."
+    )
+    bm_run_p.add_argument("--scenarios", default=None, help="Deprecated alias for scenarios path.")
+    bm_run_p.add_argument("--output", "-o", help="Output directory for persistent artifacts.")
     bm_run_p.set_defaults(func=cmd_benchmark_run)
 
     bm_val_p = bm_sub.add_parser(
-        "validate", help="Validate benchmark scenarios and expectation graphs."
+        "validate", help="Validate benchmark scenarios and expectation graphs against manifest."
     )
-    bm_val_p.add_argument("scenarios", nargs="?", default="resources/scenarios")
+    bm_val_p.add_argument(
+        "manifest_pos",
+        nargs="?",
+        default="resources/benchmarks/benchmark-v1.json",
+        help="Path to benchmark manifest JSON.",
+    )
+    bm_val_p.add_argument("--manifest", default=None, help="Path to benchmark manifest JSON.")
+    bm_val_p.add_argument("--scenarios", default=None, help="Deprecated alias for scenarios path.")
     bm_val_p.set_defaults(func=cmd_benchmark_validate)
 
     bm_ab_p = bm_sub.add_parser("ablation", help="Run evaluator ablation study.")
     bm_ab_p.set_defaults(func=cmd_ablation_run)
 
-    bm_rep_p = bm_sub.add_parser("report", help="Generate benchmark summary report.")
-    bm_rep_p.add_argument("summary_file", nargs="?", default="benchmark_summary.json")
+    bm_rep_p = bm_sub.add_parser(
+        "report", help="Generate benchmark summary report from stored artifacts."
+    )
+    bm_rep_p.add_argument(
+        "summary_file", nargs="?", default=None, help="Path to summary.json or run.json."
+    )
+    bm_rep_p.add_argument("--results", default=None, help="Path to result artifact or directory.")
     bm_rep_p.set_defaults(func=cmd_benchmark_report)
 
     bm_ver_p = bm_sub.add_parser(
@@ -923,9 +959,72 @@ def cmd_bm_suite_run(args: argparse.Namespace) -> int:
 
 
 def cmd_benchmark_report(args: argparse.Namespace) -> int:
-    """CLI handler for benchmark report."""
-    sys.stdout.write(f"Benchmark report generated for {args.summary_file}\n")
-    return 0
+    """CLI handler for rendering report from stored benchmark results."""
+    from flight_agent_evaluator.benchmarks.results import (
+        BenchmarkAggregateMetrics,
+        BenchmarkRunArtifact,
+    )
+
+    target_path_str = getattr(args, "results", None) or getattr(args, "summary_file", None)
+    if not target_path_str:
+        target_path_str = "summary.json"
+
+    p = Path(target_path_str)
+    if p.is_dir():
+        if (p / "summary.json").is_file():
+            p = p / "summary.json"
+        elif (p / "run.json").is_file():
+            p = p / "run.json"
+
+    if not p.is_file():
+        print(f"Error: Benchmark result artifact not found at '{p}'", file=sys.stderr)
+        return 1
+
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if "metrics" in data and "case_results" in data:
+            artifact = BenchmarkRunArtifact.model_validate(data)
+            metrics = artifact.metrics
+            manifest_dig = artifact.manifest_digest
+            sc_count = artifact.scenario_count
+            total_runs = artifact.total_runs
+        else:
+            metrics = BenchmarkAggregateMetrics.model_validate(data)
+            manifest_dig = "N/A"
+            sc_count = metrics.total_cases
+            total_runs = metrics.total_runs
+
+        sys.stdout.write(
+            "================================================================================\n"
+        )
+        sys.stdout.write("                      BENCHMARK EXECUTION REPORT\n")
+        sys.stdout.write(
+            "================================================================================\n"
+        )
+        sys.stdout.write(f"Manifest Digest:      {manifest_dig}\n")
+        sys.stdout.write(f"Scenarios:            {sc_count}\n")
+        sys.stdout.write(f"Total Runs:           {total_runs}\n")
+        sys.stdout.write(f"Task Success Rate:    {metrics.task_success_rate * 100:.1f}%\n")
+        sys.stdout.write(f"Safety Pass Rate:     {metrics.safety_pass_rate * 100:.1f}%\n")
+        sys.stdout.write(f"Evaluator Error Rate: {metrics.evaluator_error_rate * 100:.1f}%\n")
+        sys.stdout.write(f"Average Score:        {metrics.average_overall_score:.3f} / 1.000\n")
+        if metrics.agent_pass_rates:
+            sys.stdout.write(
+                "--------------------------------------------------------------------------------\n"
+            )
+            sys.stdout.write("AGENT PASS RATES:\n")
+            for aid, pr in metrics.agent_pass_rates.items():
+                avg_s = metrics.agent_average_scores.get(aid, 0.0)
+                sys.stdout.write(
+                    f"  - {aid:<20}: pass_rate={pr * 100:.1f}%, avg_score={avg_s:.3f}\n"
+                )
+        sys.stdout.write(
+            "================================================================================\n"
+        )
+        return 0
+    except Exception as exc:
+        print(f"Error loading benchmark report: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
 
 
 def cmd_verify_release(args: argparse.Namespace) -> int:  # noqa: ARG001
