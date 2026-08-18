@@ -68,7 +68,7 @@ def test_cli_trajectory_score_and_explain(tmp_path, capsys):
         call_id=uuid.uuid4(),
         run_id=uuid.UUID(run_id),
         tool_name="flight.get_status",
-        arguments={"flight_id": "AA100", "operating_day": "2026-07-28"},
+        arguments={"flight_id": "AS204", "operating_day": "2026-07-28"},
         mutation_class="read_only",
         start_time=t0,
     )
