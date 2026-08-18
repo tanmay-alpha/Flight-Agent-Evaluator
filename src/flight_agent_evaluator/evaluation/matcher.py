@@ -141,16 +141,36 @@ def evaluate_argument_constraint(
 # ---------------------------------------------------------------------------
 
 
+def _qualifies_result_status(expected_status: str, act: ObservedToolAction) -> bool:
+    """Evaluate whether an observed tool action satisfies the expected result status."""
+    if expected_status == "success":
+        return act.is_successful
+    if expected_status == "error":
+        return not act.is_successful
+    return True  # "any"
+
+
+# ---------------------------------------------------------------------------
+# Alignment Output Data Models
+# ---------------------------------------------------------------------------
+
+
 class PathAlignmentResult(BaseModel):
     """Result of aligning an ObservedTrajectory against a ValidPath."""
 
     path_id: str = Field(..., description="Target path identifier.")
-    matched_node_count: int = Field(default=0, description="Count of expected nodes matched.")
+    matched_node_count: int = Field(default=0, description="Count of expected nodes satisfied.")
+    satisfied_node_ids: list[str] = Field(
+        default_factory=list, description="Node IDs successfully satisfied."
+    )
     mapping: dict[str, ObservedToolAction] = Field(
-        default_factory=dict, description="Map of node_id -> matched ObservedToolAction."
+        default_factory=dict, description="Map of node_id -> primary matched ObservedToolAction."
+    )
+    node_actions: dict[str, list[ObservedToolAction]] = Field(
+        default_factory=dict, description="Map of node_id -> all qualifying matching actions."
     )
     unmatched_node_ids: list[str] = Field(
-        default_factory=list, description="Expected required node IDs not matched."
+        default_factory=list, description="Expected required node IDs not satisfied."
     )
     unmatched_action_call_ids: list[str] = Field(
         default_factory=list, description="Observed tool call IDs not matched to any node."
@@ -164,11 +184,20 @@ class PathAlignmentResult(BaseModel):
     dependency_satisfied: bool = Field(
         default=True, description="True if all dependency constraints passed."
     )
+    occurrence_satisfied: bool = Field(
+        default=True, description="True if all occurrence constraints were met."
+    )
     precedence_violations: list[str] = Field(
         default_factory=list, description="Descriptions of violated ordering rules."
     )
     dependency_violations: list[str] = Field(
         default_factory=list, description="Descriptions of missing dependency nodes."
+    )
+    occurrence_violations: list[str] = Field(
+        default_factory=list, description="Descriptions of violated occurrence bounds."
+    )
+    result_status_violations: list[str] = Field(
+        default_factory=list, description="Descriptions of failed/unexpected result statuses."
     )
     complexity_exceeded: bool = Field(
         default=False, description="True if branch-and-bound search state limit was hit."
@@ -215,25 +244,41 @@ class DeterministicBoundedMatcher:
         node_list = list(expected_nodes)
 
         def compute_objective_tuple(current_map: dict[str, ObservedToolAction]) -> tuple[int, ...]:
-            matched_req = sum(1 for n in expected_nodes if n.required and n.node_id in current_map)
-            matched_opt = sum(
-                1 for n in expected_nodes if not n.required and n.node_id in current_map
-            )
-
+            satisfied_req = 0
+            satisfied_opt = 0
             passed_args = 0
+
             for n in expected_nodes:
                 if n.node_id in current_map:
                     act = current_map[n.node_id]
+                    res_ok = _qualifies_result_status(n.expected_result_status, act)
+                    args_ok = True
                     for arg_c in n.selector.argument_constraints:
                         if evaluate_argument_constraint(
                             arg_c, act.arguments, aligned_mapping=current_map
                         ):
                             passed_args += 1
+                        else:
+                            args_ok = False
+
+                    if res_ok and args_ok:
+                        if n.required:
+                            satisfied_req += 1
+                        else:
+                            satisfied_opt += 1
 
             satisfied_deps = 0
             for dep in path.dependency_constraints:
                 if dep.dependent_node_id in current_map and dep.required_node_id in current_map:
-                    satisfied_deps += 1
+                    req_act = current_map[dep.required_node_id]
+                    req_node = next(
+                        (node for node in expected_nodes if node.node_id == dep.required_node_id),
+                        None,
+                    )
+                    if req_node and _qualifies_result_status(
+                        req_node.expected_result_status, req_act
+                    ):
+                        satisfied_deps += 1
 
             satisfied_precs = 0
             for prec in path.precedence_constraints:
@@ -249,11 +294,11 @@ class DeterministicBoundedMatcher:
             seq_sum = sum(act.sequence_number for act in current_map.values())
 
             return (
-                matched_req,
+                satisfied_req,
                 passed_args,
                 satisfied_deps,
                 satisfied_precs,
-                matched_opt,
+                satisfied_opt,
                 -unmatched_calls,
                 -seq_sum,
             )
@@ -300,21 +345,95 @@ class DeterministicBoundedMatcher:
         unmatched_call_ids = [
             act.call_id for act in observed_actions if act.call_id not in matched_call_ids
         ]
-        unmatched_node_ids = [
-            n.node_id for n in expected_nodes if n.required and n.node_id not in best_mapping
-        ]
 
         total_args = 0
         passed_args = 0
+        node_actions: dict[str, list[ObservedToolAction]] = {}
+        satisfied_node_ids: list[str] = []
+        result_status_violations: list[str] = []
+        occurrence_violations: list[str] = []
+        occurrence_satisfied = True
+
         for node in expected_nodes:
+            # Find all matching qualifying actions for occurrence checking
+            matching_calls: list[ObservedToolAction] = []
+            for act in observed_actions:
+                if node.selector.tool_name and not fnmatch.fnmatch(
+                    act.tool_name, node.selector.tool_name
+                ):
+                    continue
+                if (
+                    node.selector.mutation_class
+                    and act.mutation_class != node.selector.mutation_class
+                ):
+                    continue
+                # Check arguments
+                args_valid = True
+                for arg_c in node.selector.argument_constraints:
+                    if not evaluate_argument_constraint(
+                        arg_c, act.arguments, aligned_mapping=best_mapping
+                    ):
+                        args_valid = False
+                        break
+                if not args_valid:
+                    continue
+                # Check result status
+                if not _qualifies_result_status(node.expected_result_status, act):
+                    continue
+                matching_calls.append(act)
+
+            node_actions[node.node_id] = matching_calls
+            count = len(matching_calls)
+            min_o = node.occurrence.min_occurs
+            max_o = node.occurrence.max_occurs
+
             if node.node_id in best_mapping:
                 act = best_mapping[node.node_id]
+                res_ok = _qualifies_result_status(node.expected_result_status, act)
+                if not res_ok:
+                    result_status_violations.append(
+                        f"Result status violation: Node '{node.node_id}' expected status '{node.expected_result_status}', "
+                        f"but tool call '{act.tool_name}' (call_id {act.call_id}) had status '{act.status}'."
+                    )
+
+                node_args_passed = True
                 for arg_c in node.selector.argument_constraints:
                     total_args += 1
                     if evaluate_argument_constraint(
                         arg_c, act.arguments, aligned_mapping=best_mapping
                     ):
                         passed_args += 1
+                    else:
+                        node_args_passed = False
+
+                # Occurrence check
+                if count < min_o:
+                    occurrence_satisfied = False
+                    occurrence_violations.append(
+                        f"Occurrence violation: Node '{node.node_id}' requires minimum {min_o} occurrences, observed {count}."
+                    )
+                if max_o is not None and count > max_o:
+                    occurrence_satisfied = False
+                    occurrence_violations.append(
+                        f"Occurrence violation: Node '{node.node_id}' permits maximum {max_o} occurrences, observed {count}."
+                    )
+
+                if (
+                    res_ok
+                    and node_args_passed
+                    and min_o <= count <= (max_o if max_o is not None else 999999)
+                ):
+                    satisfied_node_ids.append(node.node_id)
+            else:
+                if node.required and min_o > 0:
+                    occurrence_satisfied = False
+                    occurrence_violations.append(
+                        f"Occurrence violation: Required node '{node.node_id}' was not observed (requires min {min_o})."
+                    )
+
+        unmatched_node_ids = [
+            n.node_id for n in expected_nodes if n.required and n.node_id not in satisfied_node_ids
+        ]
 
         arg_correctness = (passed_args / total_args) if total_args > 0 else 1.0
 
@@ -330,27 +449,45 @@ class DeterministicBoundedMatcher:
                     prec_violations.append(
                         f"Precedence violation: Node '{prec.before_node_id}' (seq {seq_before}) did not precede '{prec.after_node_id}' (seq {seq_after})."
                     )
+            elif prec.after_node_id in best_mapping and prec.before_node_id not in best_mapping:
+                before_node = next(
+                    (n for n in expected_nodes if n.node_id == prec.before_node_id), None
+                )
+                if before_node and before_node.required:
+                    precedence_satisfied = False
+                    prec_violations.append(
+                        f"Precedence violation: Node '{prec.after_node_id}' executed without prior execution of required predecessor '{prec.before_node_id}'."
+                    )
 
         # Check dependency rules
         dependency_satisfied = True
         dep_violations: list[str] = []
         for dep in path.dependency_constraints:
-            if dep.dependent_node_id in best_mapping and dep.required_node_id not in best_mapping:
+            if (
+                dep.dependent_node_id in best_mapping
+                and dep.required_node_id not in satisfied_node_ids
+            ):
                 dependency_satisfied = False
                 dep_violations.append(
-                    f"Dependency violation: Node '{dep.dependent_node_id}' executed without required node '{dep.required_node_id}'."
+                    f"Dependency violation: node '{dep.dependent_node_id}' depends on required node '{dep.required_node_id}', "
+                    f"which was not successfully satisfied."
                 )
 
         return PathAlignmentResult(
             path_id=path.path_id,
-            matched_node_count=len(best_mapping),
+            matched_node_count=len(satisfied_node_ids),
+            satisfied_node_ids=satisfied_node_ids,
             mapping=best_mapping,
+            node_actions=node_actions,
             unmatched_node_ids=unmatched_node_ids,
             unmatched_action_call_ids=unmatched_call_ids,
             argument_correctness_score=arg_correctness,
             precedence_satisfied=precedence_satisfied,
             dependency_satisfied=dependency_satisfied,
+            occurrence_satisfied=occurrence_satisfied,
             precedence_violations=prec_violations,
             dependency_violations=dep_violations,
+            occurrence_violations=occurrence_violations,
+            result_status_violations=result_status_violations,
             complexity_exceeded=complexity_exceeded,
         )

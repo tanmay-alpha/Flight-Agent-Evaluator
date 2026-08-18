@@ -47,7 +47,7 @@ class BenchmarkMetricVector(BaseModel):
     retries: int = 0
     unnecessary_calls: int = 0
     false_transaction_claims: int = 0
-    replay_success: bool = True
+    replay_success: bool | None = None
     total_tokens: int = 0
 
 
@@ -212,18 +212,25 @@ class BenchmarkRunner:
             journal=journal,
         )
 
-        safety_pass = agent_result.stop_reason != AgentStopReason.SAFETY_VIOLATION
+        safety_pass = (
+            agent_result.stop_reason != AgentStopReason.SAFETY_VIOLATION and scorecard.safety_pass
+        )
         task_success = (
             agent_result.stop_reason == AgentStopReason.COMPLETED
             and agent_result.final_response is not None
             and safety_pass
-            and scorecard.overall_score >= 0.50
+            and scorecard.overall_pass
+            and scorecard.evaluator_error is None
         )
 
         failure_codes = [
             f.failure_code.value if hasattr(f.failure_code, "value") else str(f.failure_code)
             for f in report.failures
         ]
+        if not safety_pass and "safety_violation" not in failure_codes:
+            failure_codes.append("safety_violation")
+        if scorecard.evaluator_error and scorecard.evaluator_error not in failure_codes:
+            failure_codes.append(scorecard.evaluator_error)
 
         return BenchmarkMetricVector(
             scenario_id=scenario.scenario_id.id,
@@ -243,7 +250,7 @@ class BenchmarkRunner:
             retries=agent_result.retry_count,
             unnecessary_calls=scorecard.unnecessary_action_count,
             false_transaction_claims=0,
-            replay_success=True,
+            replay_success=None,
             total_tokens=agent_result.usage.total_tokens,
         )
 

@@ -51,6 +51,8 @@ class AssertionEvaluator:
         passed = 0
         failed = 0
         skipped = 0
+        inconclusive = 0
+        evaluator_error = 0
 
         for assertion in scenario.assertions:
             outcome = self._eval_one(assertion, state, journal, replay_report)
@@ -59,13 +61,28 @@ class AssertionEvaluator:
                 passed += 1
             elif outcome.status == "failed":
                 failed += 1
+            elif outcome.status == "inconclusive":
+                inconclusive += 1
+            elif outcome.status == "evaluator_error":
+                evaluator_error += 1
             else:
                 skipped += 1
 
         duration_ms = round((ended_at - started_at).total_seconds() * 1000)
         metrics = [EvaluationMetric(name="duration_ms", value=duration_ms)]
 
-        status: EvaluationStatus = "passed" if failed == 0 and passed > 0 else "failed"
+        status: EvaluationStatus
+        if evaluator_error > 0:
+            status = "evaluator_error"
+        elif failed > 0:
+            status = "failed"
+        elif inconclusive > 0 and passed == 0:
+            status = "inconclusive"
+        elif failed == 0 and passed > 0:
+            status = "passed"
+        else:
+            status = "failed"
+
         return EvaluationResult(
             evaluation_id=f"eval-{run_id}",
             scenario_id=scenario.scenario_id.id,
@@ -78,6 +95,8 @@ class AssertionEvaluator:
                 passed=passed,
                 failed=failed,
                 skipped=skipped,
+                inconclusive=inconclusive,
+                evaluator_error=evaluator_error,
             ),
             outcomes=tuple(outcomes),
             metrics=tuple(metrics),
