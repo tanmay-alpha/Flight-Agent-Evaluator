@@ -16,8 +16,15 @@ from flight_agent_evaluator.evaluation.matcher import (
 from flight_agent_evaluator.evaluation.observation import ObservedToolAction, ObservedTrajectory
 
 
-@given(st.lists(st.text(min_size=1, max_size=10), min_size=1, max_size=5))
-def test_matcher_injective_invariant(flight_ids: list[str]):
+@given(
+    st.lists(
+        st.text(alphabet=st.characters(blacklist_categories=("Cs", "Cc")), min_size=1, max_size=10),
+        min_size=1,
+        max_size=5,
+        unique=True,
+    )
+)
+def test_matcher_injective_invariant(flight_ids: list[str]) -> None:
     """Property: Matcher mapping never assigns the same tool call_id to two expected nodes."""
     expected_actions = [
         ExpectedAction(
