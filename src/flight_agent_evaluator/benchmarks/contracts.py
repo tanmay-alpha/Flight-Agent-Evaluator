@@ -11,15 +11,16 @@ from flight_agent_evaluator.contracts.base import ContractModel
 
 
 class ModelFamily(str, Enum):  # noqa: UP042
-    """Supported model families for multi-model benchmarking."""
+    """Supported model families and baseline identifiers for benchmarking."""
 
+    BASELINE_SCRIPTED = "baseline-scripted"
+    BASELINE_RANDOM = "baseline-random"
+    BASELINE_NAIVE = "baseline-naive"
     GPT_4O = "gpt-4o"
     GPT_4O_MINI = "gpt-4o-mini"
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet"
     GEMINI_1_5_PRO = "gemini-1-5-pro"
     LLAMA_3_3_70B = "llama-3-3-70b"
-    BASELINE_SCRIPTED = "baseline-scripted"
-    BASELINE_RANDOM = "baseline-random"
 
 
 class AblationConfig(ContractModel):

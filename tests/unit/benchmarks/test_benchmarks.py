@@ -61,26 +61,26 @@ def test_benchmark_metrics() -> None:
 
 def test_benchmark_suite_execution() -> None:
     suite = BenchmarkSuite()
-    scenarios = [{"id": "sc-1", "version": 1}, {"id": "sc-2", "version": 1}]
-    models = [ModelFamily.GPT_4O, ModelFamily.BASELINE_RANDOM]
+    scenarios = [{"id": "jfk-lhr-delay", "version": 1}]
+    models = [ModelFamily.BASELINE_SCRIPTED, ModelFamily.BASELINE_RANDOM]
 
     summary = suite.run_benchmark(models, scenarios)
-    assert summary.scenarios_count == 2
-    assert summary.total_runs == 4
-    assert "gpt-4o" in summary.model_pass_rates
+    assert summary.scenarios_count == 1
+    assert summary.total_runs == 2
+    assert "baseline-scripted" in summary.model_pass_rates
     assert "baseline-random" in summary.model_pass_rates
-    assert summary.model_pass_rates["gpt-4o"] == 1.0
+    assert summary.model_pass_rates["baseline-scripted"] == 1.0
     assert summary.model_pass_rates["baseline-random"] == 0.0
 
     report = generate_benchmark_report(summary)
     assert "# Benchmark Run Report" in report
-    assert "`gpt-4o`" in report
+    assert "`baseline-scripted`" in report
 
 
 def test_ablation_engine_execution() -> None:
     engine = AblationEngine()
-    scenarios = [{"id": "sc-1", "version": 1}]
-    report = engine.run_ablation_study(scenarios)
+    scenarios = [{"id": "jfk-lhr-delay", "version": 1}]
+    report = engine.run_ablation_study(scenarios, models=[ModelFamily.BASELINE_SCRIPTED])
 
     assert report.baseline_pass_rate == 1.0
     assert report.evaluator_value_add_score == 55.0

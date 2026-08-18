@@ -414,16 +414,14 @@ def gate_stage5_smoke() -> bool:
 def gate_benchmark_manifest() -> bool:
     """Verify official BenchmarkManifest (resources/benchmarks/benchmark-v1.json)."""
     code = (
-        "import json, pathlib, hashlib\n"
+        "import json, pathlib\n"
+        "from flight_agent_evaluator.benchmarks.validator import BenchmarkCorpusValidator\n"
         "manifest_path = pathlib.Path('resources/benchmarks/benchmark-v1.json')\n"
         "assert manifest_path.is_file(), 'benchmark-v1.json not found'\n"
-        "data = json.loads(manifest_path.read_text(encoding='utf-8'))\n"
-        "assert data['benchmark_id'] == 'benchmark-v1'\n"
-        "scenarios = data.get('scenarios', [])\n"
-        "assert len(scenarios) == 24, f'Expected 24 benchmark scenarios, found {len(scenarios)}'\n"
-        "for sc_info in scenarios:\n"
-        "    sc_path = pathlib.Path(sc_info['path'])\n"
-        "    assert sc_path.is_file(), f'Scenario file missing: {sc_path}'\n"
+        "validator = BenchmarkCorpusValidator()\n"
+        "report = validator.validate_manifest_file(manifest_path)\n"
+        "assert report.valid, f'Benchmark manifest validation failed: {report.errors}'\n"
+        "assert report.total_scenarios == 24, f'Expected 24 benchmark scenarios, found {report.total_scenarios}'\n"
         "print('Benchmark manifest validation gate: OK')\n"
     )
     return _run("benchmark manifest validation gate", ["uv", "run", "python", "-c", code])
