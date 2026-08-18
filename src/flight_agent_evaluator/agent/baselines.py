@@ -153,6 +153,7 @@ class NaiveBaselineAgent:
         tool_calls_made = 0
         retry_count = 0
         flight_number = self._extract_flight_number(task.public_request) or "AS142"
+        date = self._extract_date(task.public_request) or "2026-07-28"
 
         # 1. Query status
         status_call_id = context.id_factory.next(record_type="tool_call", sequence=tool_calls_made)
@@ -160,7 +161,7 @@ class NaiveBaselineAgent:
             call_id=status_call_id,
             run_id=context.run_id,
             tool_name="flight.get_status",
-            arguments={"flight_number": flight_number},
+            arguments={"flight_id": flight_number, "operating_day": date},
             mutation_class="read_only",
             start_time=context.clock.now(),
         )
@@ -177,7 +178,7 @@ class NaiveBaselineAgent:
                 call_id=status_call_id_2,
                 run_id=context.run_id,
                 tool_name="flight.get_status",
-                arguments={"flight_number": flight_number},
+                arguments={"flight_id": flight_number, "operating_day": date},
                 mutation_class="read_only",
                 start_time=context.clock.now(),
             )
@@ -187,13 +188,29 @@ class NaiveBaselineAgent:
         status_str = "unknown"
         origin = "JFK"
         destination = "LHR"
-        date = "2026-08-01"
 
         if res.status == "success" and isinstance(res.result, dict):
-            status_str = str(res.result.get("status", "unknown")).lower()
-            origin = res.result.get("origin", origin)
-            destination = res.result.get("destination", destination)
-            date = res.result.get("scheduled_departure", date)[:10]
+            status_obj = res.result.get("status")
+            if isinstance(status_obj, dict):
+                status_str = str(
+                    status_obj.get("operational_status") or status_obj.get("status") or "unknown"
+                ).lower()
+            elif isinstance(status_obj, str):
+                status_str = status_obj.lower()
+
+            segment_obj = res.result.get("segment")
+            if isinstance(segment_obj, dict):
+                origin = segment_obj.get("origin_iata", origin)
+                destination = segment_obj.get("destination_iata", destination)
+                dep_val = segment_obj.get("departure")
+                if isinstance(dep_val, str) and len(dep_val) >= 10:
+                    date = dep_val[:10]
+            else:
+                origin = res.result.get("origin", origin)
+                destination = res.result.get("destination", destination)
+                dep_val = res.result.get("scheduled_departure")
+                if isinstance(dep_val, str) and len(dep_val) >= 10:
+                    date = dep_val[:10]
 
         # 2. If delayed or cancelled, search alternatives
         alternatives: list[Any] = []
@@ -201,14 +218,19 @@ class NaiveBaselineAgent:
             search_call_id = context.id_factory.next(
                 record_type="tool_call", sequence=tool_calls_made
             )
+            search_tool = (
+                "flight.search_flights"
+                if executor.registry and "flight.search_flights" in executor.registry.handlers
+                else "flight.search"
+            )
             search_call = ToolCall(
                 call_id=search_call_id,
                 run_id=context.run_id,
-                tool_name="flight.search",
+                tool_name=search_tool,
                 arguments={
                     "origin": origin,
                     "destination": destination,
-                    "date": date,
+                    "departure_date": date,
                 },
                 mutation_class="read_only",
                 start_time=context.clock.now(),
@@ -216,13 +238,15 @@ class NaiveBaselineAgent:
             s_res = await executor.execute(tool_call=search_call, context=context)
             tool_calls_made += 1
             if s_res.status == "success" and isinstance(s_res.result, dict):
-                alternatives = s_res.result.get("flights", [])
+                alternatives = s_res.result.get("offers") or s_res.result.get("flights", [])
 
         # Formulate simple response
         alt_summary = f" Found {len(alternatives)} alternative flight(s)." if alternatives else ""
         final_text = f"Flight {flight_number} status is {status_str}.{alt_summary}"
 
         return AgentRunResult(
+            task_id=task.task_id,
+            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
@@ -236,6 +260,14 @@ class NaiveBaselineAgent:
         import re
 
         match = re.search(r"\b([A-Z]{2}\d{3,4})\b", text)
+        if match:
+            return match.group(1)
+        return None
+
+    def _extract_date(self, text: str) -> str | None:
+        import re
+
+        match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", text)
         if match:
             return match.group(1)
         return None

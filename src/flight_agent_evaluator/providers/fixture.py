@@ -33,7 +33,6 @@ from flight_agent_evaluator.contracts.common import SHA256Digest
 from flight_agent_evaluator.providers.errors import (
     ProviderDataNotFoundError,
     ProviderInvalidResponseError,
-    ProviderUnavailableError,
 )
 
 # ---------------------------------------------------------------------------
@@ -49,6 +48,7 @@ FIXTURE_URI_PREFIX: str = "fixture://flight_agent_evaluator/resources/fixtures/"
 # Known synthetic fixtures and their identities.
 KNOWN_FLIGHT_STATUS_FIXTURES: dict[str, dict[str, str]] = {
     "AS142": {"carrier": "AS", "date": "2026-07-28", "origin": "JFK", "destination": "LHR"},
+    "AS505": {"carrier": "AS", "date": "2026-07-28", "origin": "JFK", "destination": "LHR"},
 }
 KNOWN_SEARCH_FIXTURES: dict[str, dict[str, str]] = {
     "JFK-LAX-2026-07-28": {"origin": "JFK", "destination": "LAX", "date": "2026-07-28"},
@@ -384,16 +384,8 @@ class FixtureFlightProvider:
             )
 
         # Strict lookup: match by flight number.
-        fixture_key = "AS142"
-        fixture_identity = KNOWN_FLIGHT_STATUS_FIXTURES.get(fixture_key)
+        fixture_identity = KNOWN_FLIGHT_STATUS_FIXTURES.get(effective_fn)
         if fixture_identity is None:
-            raise ProviderUnavailableError(
-                provider=PROVIDER_NAME,
-                safe_message="Flight status fixture unavailable",
-            )
-
-        # Check flight number matches.
-        if effective_fn != fixture_key:
             raise ProviderDataNotFoundError(
                 provider=PROVIDER_NAME,
                 safe_message=f"No fixture for flight {effective_fn!r}",
@@ -405,14 +397,14 @@ class FixtureFlightProvider:
             if query_date_str != fixture_identity["date"]:
                 raise ProviderDataNotFoundError(
                     provider=PROVIDER_NAME,
-                    safe_message=f"No fixture for AS142 on {query_date_str}",
+                    safe_message=f"No fixture for {effective_fn} on {query_date_str}",
                 )
 
         # Check route if origin/destination provided.
         if query.origin_iata is not None and query.origin_iata != fixture_identity["origin"]:
             raise ProviderDataNotFoundError(
                 provider=PROVIDER_NAME,
-                safe_message=f"No fixture for AS142 from {query.origin_iata}",
+                safe_message=f"No fixture for {effective_fn} from {query.origin_iata}",
             )
         if (
             query.destination_iata is not None
@@ -420,7 +412,7 @@ class FixtureFlightProvider:
         ):
             raise ProviderDataNotFoundError(
                 provider=PROVIDER_NAME,
-                safe_message=f"No fixture for AS142 to {query.destination_iata}",
+                safe_message=f"No fixture for {effective_fn} to {query.destination_iata}",
             )
 
         # Load fixture and validate against strict wire model.
@@ -435,7 +427,12 @@ class FixtureFlightProvider:
 
         origin = _parse_airport(wire.origin)
         destination = _parse_airport(wire.destination)
-        identity = _parse_identity(wire.flight_identity)
+        identity = FlightIdentity(
+            flight_number=effective_fn,
+            marketing_airline_iata=fixture_identity["carrier"],
+            operating_airline_iata=fixture_identity["carrier"],
+            is_codeshare=False,
+        )
 
         segment = FlightSegment(
             origin_iata=origin.iata_code,

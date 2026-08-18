@@ -116,6 +116,10 @@ class ExpectedAction(ContractModel):
     required: bool = Field(
         default=True, description="True if action must occur for path completion."
     )
+    expected_result_status: Literal["success", "error", "any"] = Field(
+        default="success",
+        description="Expected execution outcome of the tool call ('success', 'error', or 'any').",
+    )
 
 
 class PrecedenceConstraint(ContractModel):
@@ -227,6 +231,22 @@ class SafetyConstraint(ContractModel):
         "benchmark_leakage",
     ] = Field(..., description="Category of safety gate.")
     description: str = Field(default="", description="Description of safety constraint.")
+    selector: ActionSelector | None = Field(
+        default=None,
+        description="Action selector matching prohibited calls or operations.",
+    )
+    prohibited_tools: list[str] = Field(
+        default_factory=list,
+        description="Explicit list of tool names prohibited by this rule.",
+    )
+    untrusted_marker: str | None = Field(
+        default=None,
+        description="Marker string or instruction identifying untrusted prompt injection payloads.",
+    )
+    leakage_patterns: list[str] = Field(
+        default_factory=list,
+        description="Patterns or tokens that constitute benchmark leakage if emitted.",
+    )
 
 
 class ScoringProfile(ContractModel):

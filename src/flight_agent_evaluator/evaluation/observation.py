@@ -23,10 +23,18 @@ class ObservedToolAction(BaseModel):
     mutation_class: str = Field(default="read_only", description="Authoritative mutation class.")
     start_time: str = Field(..., description="ISO-8601 start timestamp.")
     end_time: str | None = Field(default=None, description="ISO-8601 end timestamp.")
+    status: str = Field(
+        default="success", description="Execution outcome ('success', 'failure', 'timeout', etc.)."
+    )
     result: dict[str, Any] | None = Field(default=None, description="Returned result dictionary.")
     error: dict[str, Any] | None = Field(default=None, description="Returned error dictionary.")
     is_retry: bool = Field(default=False, description="True if action is a retry of a failed call.")
     retry_count: int = Field(default=0, description="Retry attempt index.")
+
+    @property
+    def is_successful(self) -> bool:
+        """True if the tool call completed successfully without error."""
+        return self.status == "success" and self.error is None
 
 
 class ObservedTrajectory(BaseModel):
@@ -98,10 +106,22 @@ def extract_observed_trajectory(
                 act.end_time = str(payload.get("end_time", ""))
                 res = payload.get("result")
                 err = payload.get("error")
+                status = payload.get("status")
+                if status is not None:
+                    act.status = str(status)
+                elif err is not None:
+                    act.status = "failure"
+                else:
+                    act.status = "success"
+
                 if isinstance(res, dict):
                     act.result = res
+                elif res is not None:
+                    act.result = {"value": res}
                 if isinstance(err, dict):
                     act.error = err
+                elif err is not None:
+                    act.error = {"message": str(err)}
 
         elif event_type == "domain_event":
             domain_events.append(payload)
