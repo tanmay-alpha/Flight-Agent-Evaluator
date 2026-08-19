@@ -200,25 +200,23 @@ class ScenarioLoader:
         )
 
     def _check_path_safety(self, path: Path) -> None:
-        if not path.exists():
-            raise ScenarioLoaderError(f"Scenario file not found: {path}")
-        try:
-            resolved_path = path.resolve(strict=True)
-        except (OSError, RuntimeError) as exc:
-            raise ScenarioLoaderError(f"Failed to resolve path: {exc}") from exc
         root = self._allowed_root
         if root is not None:
             # Only enforce path containment when an explicit allowed root is configured.
             try:
-                root_resolved = root.resolve(strict=True)
+                root_resolved = root.resolve(strict=False)
+                resolved_path = path.resolve(strict=False)
             except (OSError, RuntimeError) as exc:
-                raise ScenarioLoaderError(f"Failed to resolve allowed root: {exc}") from exc
+                raise ScenarioLoaderError(f"Failed to resolve path: {exc}") from exc
             try:
                 resolved_path.relative_to(root_resolved)
             except ValueError as exc:
                 raise ScenarioLoaderError(
                     f"Scenario file is outside the allowed root: {path}"
                 ) from exc
+
+        if not path.exists():
+            raise ScenarioLoaderError(f"Scenario file not found: {path}")
 
 
 __all__ = [

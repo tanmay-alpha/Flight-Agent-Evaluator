@@ -25,7 +25,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from flight_agent_evaluator.contracts.base import ContractModel
 from flight_agent_evaluator.contracts.common import SHA256Digest
@@ -195,16 +195,55 @@ class JudgeEvidencePackage(ContractModel):
             )
         return self
 
-    def digest(self) -> str:
-        """Return a SHA-256 digest of the canonical package for request fingerprinting."""
+    def semantic_digest(self) -> str:
+        """Return a deterministic SHA-256 digest of all semantic evidence content."""
         data = {
-            "package_id": self.package_id,
+            "schema_version": self.schema_version,
             "scenario_id": self.scenario_id,
-            "run_id": self.run_id,
             "public_task": self.public_task,
+            "trusted_observations": [
+                {
+                    "evidence_id": obs.evidence_id,
+                    "source": obs.source,
+                    "description": obs.description,
+                    "value": obs.value,
+                }
+                for obs in sorted(self.trusted_observations, key=lambda o: o.evidence_id)
+            ],
             "final_response": self.final_response,
+            "tool_call_summary": self.tool_call_summary,
         }
-        payload = json.dumps(data, sort_keys=True, separators=(",", ":"))
+        payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def digest(self) -> str:
+        """Alias for semantic_digest()."""
+        return self.semantic_digest()
+
+
+# ---------------------------------------------------------------------------
+# Judge Request Fingerprint
+# ---------------------------------------------------------------------------
+
+
+class JudgeRequestFingerprintV1(ContractModel):
+    """Deterministic request fingerprint binding evidence, rubric, and judge configuration."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    evidence_package_semantic_digest: str
+    rubric_version: str = "judge-rubric-v1"
+    rubric_digest: str = ""
+    prompt_policy_id: str = "standard"
+    prompt_policy_version: str = "1.0.0"
+    prompt_digest: str = ""
+    output_schema_digest: str = ""
+    judge_model_id: str = "gpt-4o"
+    judge_configuration_digest: str = ""
+
+    def canonical_fingerprint(self) -> str:
+        data = self.model_dump(mode="json")
+        payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -325,6 +364,26 @@ class JudgeResult(ContractModel):
             )
         return self
 
+    def canonical_digest(self) -> str:
+        """Deterministic canonical digest of the judge result."""
+        data = {
+            "schema_version": self.schema_version,
+            "package_digest": self.package_digest,
+            "overall_score": self.overall_score,
+            "criteria_results": [
+                {
+                    "criterion": r.criterion.value,
+                    "score": r.score,
+                    "evidence_ids": sorted(r.evidence_ids),
+                    "rationale": r.rationale,
+                    "confidence": r.confidence,
+                }
+                for r in sorted(self.criteria_results, key=lambda c: c.criterion.value)
+            ],
+        }
+        payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     @property
     def is_valid(self) -> bool:
         """Return True if no invalid evidence IDs were found."""
@@ -353,19 +412,29 @@ class JudgeExchange(ContractModel):
         default_factory=lambda: str(uuid.uuid4()),
         description="Unique exchange identifier.",
     )
-    package_digest: SHA256Digest = Field(
-        ..., description="SHA-256 digest of the evidence package (request fingerprint)."
+    request_fingerprint: str = Field(
+        default="", description="Request fingerprint binding evidence, rubric, and model config."
+    )
+    package_digest: SHA256Digest = Field(..., description="SHA-256 digest of the evidence package.")
+    rubric_version: str = Field(
+        default="judge-rubric-v1", description="Rubric version used during recording."
+    )
+    rubric_digest: str = Field(
+        default="", description="SHA-256 digest of the rubric used during recording."
     )
     request_messages: list[dict[str, Any]] = Field(
         ..., description="Messages sent to the judge model."
     )
     response_text: str = Field(..., description="Raw response from the judge model.")
-    parsed_result: JudgeResult = Field(..., description="Parsed and validated result.")
-    model_id: str = Field(..., description="Judge model ID used.")
-    recorded_at: datetime = Field(..., description="UTC timestamp of recording.")
     response_digest: SHA256Digest = Field(
         ..., description="SHA-256 digest of the raw response text for verification."
     )
+    parsed_result: JudgeResult = Field(..., description="Parsed and validated result.")
+    parsed_result_digest: str = Field(
+        default="", description="Canonical SHA-256 digest of parsed_result."
+    )
+    model_id: str = Field(..., description="Judge model ID used.")
+    recorded_at: datetime = Field(..., description="UTC timestamp of recording.")
 
     @model_validator(mode="after")
     def _require_timezone_aware(self) -> JudgeExchange:
@@ -397,12 +466,30 @@ class JudgeExchangeManifest(ContractModel):
             )
         return self
 
-    def get_exchange(self, package_digest: str) -> JudgeExchange | None:
-        """Look up a recorded exchange by package digest."""
+    def get_exchange(self, key: str) -> JudgeExchange | None:
+        """Look up a recorded exchange by request fingerprint or package digest."""
         for ex in self.exchanges:
-            if ex.package_digest == package_digest:
+            if ex.request_fingerprint == key or ex.package_digest == key:
                 return ex
         return None
+
+    def semantic_digest(self) -> str:
+        """Compute deterministic semantic digest of manifest exchanges."""
+        data = {
+            "manifest_id": self.manifest_id,
+            "schema_version": self.schema_version,
+            "exchanges": [
+                {
+                    "request_fingerprint": e.request_fingerprint or e.package_digest,
+                    "response_digest": e.response_digest,
+                    "parsed_result_digest": e.parsed_result_digest
+                    or e.parsed_result.canonical_digest(),
+                }
+                for e in self.exchanges
+            ],
+        }
+        payload = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------

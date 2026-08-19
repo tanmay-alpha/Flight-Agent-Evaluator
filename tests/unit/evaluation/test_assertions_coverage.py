@@ -140,10 +140,17 @@ def test_eval_latency_and_replay_determinism_branches():
     o_rep_none = evaluator._eval_one(a_rep, StateSnapshot(), None, None)
     assert o_rep_none.status == "inconclusive"
 
+    from flight_agent_evaluator.recording.contracts import (
+        BehaviourVerificationStatus,
+        RecordingIntegrityStatus,
+    )
+
     rep_pass = ReplayReport(
         recording_run_id="r1",
         mode="verification",
-        status="behaviour_verified",
+        integrity_status=RecordingIntegrityStatus.VERIFIED,
+        behaviour_status=BehaviourVerificationStatus.VERIFIED,
+        original_journal_digest="0" * 64,
         final_digest="0" * 64,
     )
     o_rep_pass = evaluator._eval_one(a_rep, StateSnapshot(), None, rep_pass)
@@ -152,7 +159,9 @@ def test_eval_latency_and_replay_determinism_branches():
     rep_fail = ReplayReport(
         recording_run_id="r1",
         mode="verification",
-        status="behaviour_diverged",
+        integrity_status=RecordingIntegrityStatus.VERIFIED,
+        behaviour_status=BehaviourVerificationStatus.DIVERGED,
+        original_journal_digest="0" * 64,
         divergences=(DivergenceRecord(sequence=1, kind="missing_tool", detail="d1"),),
         final_digest="0" * 64,
     )

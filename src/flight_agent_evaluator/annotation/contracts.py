@@ -86,6 +86,19 @@ class AnnotationTask(ContractModel):
         description="Number of annotations submitted for this task.",
     )
 
+    def semantic_digest(self) -> str:
+        """Return deterministic SHA-256 digest of this task's content."""
+        content = {
+            "pseudonymous_run_id": self.pseudonymous_run_id,
+            "scenario_id": self.scenario_id,
+            "public_task": self.public_task,
+            "tool_call_summary": self.tool_call_summary,
+            "trusted_observations_json": self.trusted_observations_json,
+            "final_response": self.final_response,
+        }
+        raw = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
 
 class AnnotationBundle(ContractModel):
     """Bundle of annotation tasks for distribution to annotators.
@@ -136,20 +149,20 @@ class AnnotationBundle(ContractModel):
         return self
 
     def compute_digest(self) -> str:
-        """Compute a SHA-256 digest of all task content."""
-        content = json.dumps(
-            [
+        """Compute a SHA-256 digest binding all tasks, rubric version, and schema."""
+        content = {
+            "schema_version": self.schema_version,
+            "rubric_version": self.rubric_version,
+            "tasks": [
                 {
                     "task_id": t.task_id,
-                    "scenario_id": t.scenario_id,
-                    "final_response": t.final_response,
+                    "task_semantic_digest": t.semantic_digest(),
                 }
-                for t in self.tasks
+                for t in sorted(self.tasks, key=lambda t: t.task_id)
             ],
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+        }
+        raw = json.dumps(content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     @property
     def pending_count(self) -> int:

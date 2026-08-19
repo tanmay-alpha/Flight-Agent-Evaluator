@@ -23,6 +23,10 @@ class JudgeReplayNotFoundError(JudgeError):
     """No recorded exchange was found for the given evidence package digest."""
 
 
+class JudgeReplayCorruptedError(JudgeError):
+    """The recorded judge exchange or manifest failed integrity verification."""
+
+
 class JudgeValidationError(JudgeError):
     """The JudgeResult failed contract validation."""
 
