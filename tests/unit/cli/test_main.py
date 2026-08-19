@@ -30,19 +30,7 @@ from unittest import mock
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# The engine.runner module has a pre-existing IndentationError on this branch.
-# Patch sys.modules so that ``from flight_agent_evaluator.engine.runner
-# import ScenarioRunner`` resolves to a MagicMock, allowing the CLI module to
-# be imported and tested for all its own logic.
-# ---------------------------------------------------------------------------
-
-_mock_runner_module = mock.MagicMock()
-sys.modules.setdefault("flight_agent_evaluator.engine.runner", _mock_runner_module)
-_mock_replay_module = mock.MagicMock()
-sys.modules.setdefault("flight_agent_evaluator.replay.engine", _mock_replay_module)
-
-from flight_agent_evaluator.cli.main import (  # noqa: E402 - after mock injection
+from flight_agent_evaluator.cli.main import (
     cmd_replay,
     cmd_run,
     cmd_verify,
@@ -756,7 +744,7 @@ class TestCmdVerify:
             scenario_version=1,
             seed=0,
             entry_count=1,
-            final_digest="a" * 64,
+            final_digest=journal.final_digest(),
             started_at=datetime.now(UTC),
             completed_at=datetime.now(UTC),
         )
@@ -797,7 +785,7 @@ class TestCmdVerify:
             scenario_version=1,
             seed=0,
             entry_count=1,
-            final_digest="a" * 64,
+            final_digest=journal.final_digest(),
             started_at=datetime.now(UTC),
             completed_at=datetime.now(UTC),
         )
@@ -962,7 +950,7 @@ class TestCmdVerify:
         cmd_verify(ns)
         out = capsys.readouterr().out
         assert "seq=" in out
-        assert "chain-verification-failed" in out
+        assert "tampered" in out.lower() or "mismatch" in out.lower()
 
     def test_verify_nonexistent_run_propagates_error(self, tmp_path: Path):
         """Verification of a missing recording returns exit code 1."""
@@ -1004,7 +992,7 @@ class TestCmdVerify:
             scenario_version=1,
             seed=0,
             entry_count=1,
-            final_digest="a" * 64,
+            final_digest=journal.final_digest(),
             started_at=datetime.now(UTC),
             completed_at=datetime.now(UTC),
         )
@@ -1078,7 +1066,7 @@ class TestExitCodes:
             scenario_version=1,
             seed=0,
             entry_count=1,
-            final_digest="a" * 64,
+            final_digest=journal.final_digest(),
             started_at=datetime.now(UTC),
             completed_at=datetime.now(UTC),
         )
@@ -1118,7 +1106,7 @@ class TestExitCodes:
             scenario_version=1,
             seed=0,
             entry_count=1,
-            final_digest="a" * 64,
+            final_digest=journal.final_digest(),
             started_at=datetime.now(UTC),
             completed_at=datetime.now(UTC),
         )

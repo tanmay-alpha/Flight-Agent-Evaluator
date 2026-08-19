@@ -80,7 +80,8 @@ class TestHashChainJournal:
     def test_append_assigns_sequence_and_id_and_hash(self):
         journal = HashChainJournal()
         for seq in range(1, 4):
-            journal.append(_make_entry(seq=seq))
+            prev = "" if seq == 1 else journal.entries[-1].hash
+            journal.append(_make_entry(seq=seq, prev_hash=prev))
         assert journal.entry_count == 3
         for i, e in enumerate(journal.entries):
             assert e.seq == i + 1

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from flight_agent_evaluator.annotation.contracts import (
     AnnotationBundle,
@@ -91,7 +92,10 @@ def freeze_bundle(bundle: AnnotationBundle) -> AnnotationBundle:
     )
 
 
-def verify_bundle_digest(bundle: AnnotationBundle) -> bool:
+def verify_bundle_digest(bundle: AnnotationBundle | Path | str) -> bool:
     """Return True if the bundle digest is consistent with current tasks."""
+    if isinstance(bundle, (str, Path)):
+        raw = Path(bundle).read_text(encoding="utf-8")
+        bundle = AnnotationBundle.model_validate_json(raw)
     expected = bundle.compute_digest()
     return bundle.bundle_digest == expected

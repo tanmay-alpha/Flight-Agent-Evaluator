@@ -54,14 +54,16 @@ def _make_run_id() -> str:
     return str(_uuid.uuid4())
 
 
-def _minimal_recording(run_id: str) -> RunRecording:
+def _minimal_recording(run_id: str, journal: HashChainJournal | None = None) -> RunRecording:
+    digest = journal.final_digest() if journal is not None else "0" * 64
+    count = journal.entry_count if journal is not None else 1
     return RunRecording(
         run_id=_uuid.UUID(run_id),
         scenario_id="test-scenario",
         scenario_version=1,
         seed=0,
-        entry_count=1,
-        final_digest="a" * 64,
+        entry_count=count,
+        final_digest=digest,
         started_at=datetime.now(UTC),
         completed_at=datetime.now(UTC),
     )
@@ -126,7 +128,7 @@ class TestReplayEngine:
                 hash="0" * 64,
             )
         )
-        store.write_recording(run_id, journal, _minimal_recording(run_id))
+        store.write_recording(run_id, journal, _minimal_recording(run_id, journal))
 
         engine = ReplayEngine(tmp_path)
         report = engine.verify(run_id)
@@ -227,10 +229,9 @@ class TestJournalTampering:
             lines[0] = json.dumps(obj, sort_keys=True, default=str)
             record_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-        reloaded = FileRecordingStore(tmp_path).read_recording(run_id)
-        # Tampering causes hash mismatch which raises JournalVerificationError
+        # Tampering causes hash mismatch which raises error on read from store
         with pytest.raises(Exception):
-            reloaded.verify()
+            FileRecordingStore(tmp_path).read_recording(run_id)
 
     def test_verify_valid_journal(self):
         journal = HashChainJournal()
@@ -676,7 +677,7 @@ class TestReplayDivergenceCategories:
             correlation_id="test",
             time=datetime.now(UTC),
             payload={"step": 2},
-            prev_hash=e1.hash,
+            prev_hash=j.entries[-1].hash,
             hash="",
         )
         j.append(e2)

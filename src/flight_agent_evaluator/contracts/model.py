@@ -188,8 +188,24 @@ class ModelExchangeManifest(BaseModel):
 
     def manifest_digest(self) -> str:
         """SHA-256 digest of exchange manifest."""
-        ex_digests = [e.response_digest for e in self.exchanges]
-        raw = f"{self.manifest_id}:{json.dumps(ex_digests, sort_keys=True)}"
+        return self.semantic_digest()
+
+    def semantic_digest(self) -> str:
+        """Deterministic semantic digest of exchanges and model configuration."""
+        data = {
+            "manifest_id": self.manifest_id,
+            "model_id": self.model_configuration.model_id,
+            "provider": self.model_configuration.provider,
+            "exchanges": [
+                {
+                    "turn_index": e.turn_index,
+                    "request_fingerprint": e.request_fingerprint,
+                    "response_digest": e.response_digest,
+                }
+                for e in self.exchanges
+            ],
+        }
+        raw = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 

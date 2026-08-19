@@ -8,6 +8,12 @@ from typing import Any, Literal
 
 import openai
 
+from flight_agent_evaluator.agent.errors import (
+    ModelReplayFingerprintMismatchError,
+    ModelReplayManifestInvalidError,
+    ModelReplayMissingExchangeError,
+    ModelReplayResponseDigestMismatchError,
+)
 from flight_agent_evaluator.contracts.model import (
     ModelError,
     ModelErrorType,
@@ -192,12 +198,22 @@ class ReplayModelClient:
         model_id: str = "gpt-4o-mini",
     ) -> None:
         if isinstance(manifest_or_exchanges, ModelExchangeManifest):
-            self._exchanges = manifest_or_exchanges.exchanges
+            self._exchanges = list(manifest_or_exchanges.exchanges)
         else:
-            self._exchanges = manifest_or_exchanges
+            self._exchanges = list(manifest_or_exchanges)
 
         self._model_id = model_id
         self._exchange_history: list[ModelExchange] = []
+        self._fingerprint_index: dict[str, ModelExchange] = {}
+
+        # Validate unique fingerprints and build index
+        for ex in self._exchanges:
+            fp = ex.request_fingerprint
+            if fp in self._fingerprint_index:
+                raise ModelReplayManifestInvalidError(
+                    f"Duplicate request fingerprint {fp!r} in model exchange manifest."
+                )
+            self._fingerprint_index[fp] = ex
 
     @property
     def provider(self) -> str:
@@ -216,28 +232,38 @@ class ReplayModelClient:
 
     async def create_completion(self, request: ModelRequest) -> ModelResponse:
         """Replay recorded response for request. Zero network calls performed."""
-        turn_index = request.turn_index
-        if turn_index >= len(self._exchanges):
-            err = ModelError(
-                error_type=ModelErrorType.REPLAY_MISSING_EXCHANGE,
-                message=f"Replay error: No recorded model exchange for turn index {turn_index}",
-            )
-            raise RuntimeError(err.message)
-
-        recorded_exchange = self._exchanges[turn_index]
-        expected_fingerprint = recorded_exchange.request_fingerprint
         actual_fingerprint = request.canonical_fingerprint()
 
-        if actual_fingerprint != expected_fingerprint:
-            err = ModelError(
-                error_type=ModelErrorType.REPLAY_FINGERPRINT_MISMATCH,
-                message=(
-                    f"Replay fingerprint mismatch at turn {turn_index}.\n"
-                    f"Expected: {expected_fingerprint}\n"
-                    f"Actual:   {actual_fingerprint}"
-                ),
+        # Primary lookup by request fingerprint
+        recorded_exchange = self._fingerprint_index.get(actual_fingerprint)
+
+        # Fallback to turn index check if turn_index within bounds
+        if recorded_exchange is None:
+            turn_index = request.turn_index
+            if turn_index < len(self._exchanges):
+                candidate = self._exchanges[turn_index]
+                if candidate.request_fingerprint == actual_fingerprint:
+                    recorded_exchange = candidate
+                else:
+                    raise ModelReplayFingerprintMismatchError(
+                        f"Replay fingerprint mismatch at turn {turn_index}.\n"
+                        f"Expected: {candidate.request_fingerprint}\n"
+                        f"Actual:   {actual_fingerprint}"
+                    )
+            else:
+                raise ModelReplayMissingExchangeError(
+                    f"Replay error: No recorded model exchange for fingerprint {actual_fingerprint} (turn {turn_index})"
+                )
+
+        # Verify recorded response canonical digest against stored response_digest
+        computed_response_digest = recorded_exchange.response.canonical_digest()
+        if computed_response_digest != recorded_exchange.response_digest:
+            raise ModelReplayResponseDigestMismatchError(
+                f"Recorded model response canonical digest mismatch for turn {recorded_exchange.turn_index}.\n"
+                f"Expected: {recorded_exchange.response_digest}\n"
+                f"Computed: {computed_response_digest}\n"
+                "The recorded model response has been altered or tampered with."
             )
-            raise RuntimeError(err.message)
 
         self._exchange_history.append(recorded_exchange)
         return recorded_exchange.response

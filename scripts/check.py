@@ -449,6 +449,41 @@ def gate_cli_registry() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Gate 20: Replay Integrity Verification
+# ---------------------------------------------------------------------------
+
+
+def gate_replay_integrity() -> bool:
+    """Verify end-to-end replay deterministic execution and bundle validation."""
+    code = (
+        "import asyncio, pathlib, tempfile, json\n"
+        "from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader\n"
+        "from flight_agent_evaluator.engine.runner import ScenarioRunner\n"
+        "from flight_agent_evaluator.replay.engine import ReplayEngine\n"
+        "from flight_agent_evaluator.recording.contracts import BehaviourVerificationStatus, RecordingIntegrityStatus\n"
+        "from flight_agent_evaluator.annotation import verify_bundle_digest\n"
+        "\n"
+        "# 1. Verify official annotation bundle digest\n"
+        "bundle_path = pathlib.Path('validation/annotation-bundle-v1/bundle.json')\n"
+        "assert bundle_path.is_file(), 'annotation bundle missing'\n"
+        "assert verify_bundle_digest(bundle_path), 'annotation bundle digest check failed'\n"
+        "\n"
+        "# 2. Replay execution and verification smoke\n"
+        "scenario_path = pathlib.Path('resources/scenarios/jfk-lhr-delay.json')\n"
+        "loaded = ScenarioLoader().load_from_path(scenario_path)\n"
+        "with tempfile.TemporaryDirectory() as td:\n"
+        "    tmp = pathlib.Path(td)\n"
+        "    rec = asyncio.run(ScenarioRunner().run(loaded, output_dir=tmp))\n"
+        "    report = ReplayEngine(tmp).verify(str(rec.run_id), scenario_path=scenario_path)\n"
+        "    assert report.integrity_status == RecordingIntegrityStatus.VERIFIED, 'Integrity verification failed'\n"
+        "    assert report.behaviour_status == BehaviourVerificationStatus.VERIFIED, f'Behaviour verification failed: {report.divergences}'\n"
+        "    assert len(report.divergences) == 0, 'Unexpected divergences'\n"
+        "print('Replay integrity gate: OK')\n"
+    )
+    return _run("replay integrity verification gate", ["uv", "run", "python", "-c", code])
+
+
+# ---------------------------------------------------------------------------
 # Specific gates
 # ---------------------------------------------------------------------------
 
@@ -472,6 +507,7 @@ SPECIFIC_GATES: dict[str, Callable[[], bool]] = {
     "stage5-smoke": gate_stage5_smoke,
     "manifest": gate_benchmark_manifest,
     "cli": gate_cli_registry,
+    "replay": gate_replay_integrity,
 }
 
 
@@ -505,6 +541,7 @@ def main() -> int:
         gate_stage5_smoke,
         gate_benchmark_manifest,
         gate_cli_registry,
+        gate_replay_integrity,
     ]
     all_passed = all(g() for g in gates)
     print(f"\n{'=' * 60}")

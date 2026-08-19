@@ -101,7 +101,7 @@ def test_replay_verify_behaviour_diverged_tool_mismatch(tmp_path: Path):
     runner = ScenarioRunner()
     rec = asyncio.run(runner.run(loaded, output_dir=tmp_path))
 
-    # Tamper with tool call in journal (without breaking hash chain if we append extra entry)
+    # Modify tool call in journal with valid internal hash chain and matching summary
     store = FileRecordingStore(tmp_path)
     journal = store.read_recording(str(rec.run_id))
 
@@ -112,7 +112,10 @@ def test_replay_verify_behaviour_diverged_tool_mismatch(tmp_path: Path):
         time=datetime.now(UTC).isoformat(),
         payload={"tool_name": "extra.tool", "call_id": "extra-1"},
     )
-    store.write_recording(str(rec.run_id), journal, rec)
+    rec_updated = rec.model_copy(
+        update={"final_digest": journal.final_digest(), "entry_count": journal.entry_count}
+    )
+    store.write_recording(str(rec.run_id), journal, rec_updated)
 
     engine = ReplayEngine(tmp_path)
     report = engine.verify(str(rec.run_id), scenario_path=scenario_path)

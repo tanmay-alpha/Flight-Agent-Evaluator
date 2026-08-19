@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -42,6 +43,15 @@ class JournalVerificationError(Exception):
     """Raised when a journal hash chain fails verification."""
 
 
+@dataclass(frozen=True)
+class JournalReadLimits:
+    """Resource bounds for reading potentially untrusted journal files."""
+
+    max_entries: int = 50_000
+    max_line_bytes: int = 1_000_000
+    max_total_bytes: int = 50_000_000
+
+
 class HashChainJournal:
     """Append-only hash-chained journal of journal entries.
 
@@ -66,18 +76,26 @@ class HashChainJournal:
 
         The ``hash`` field is replaced with a freshly computed value. The
         ``seq`` field must be one greater than the current entry count.
-        The ``prev_hash`` field must match the last entry's ``hash`` or
-        be empty/zeros for the first entry.
+        The ``prev_hash`` field must match the last entry's ``hash`` exactly,
+        or be empty/EMPTY_HASH for the genesis entry.
         """
-        expected_prev = self._entries[-1].hash if self._entries else ""
         expected_seq = self.entry_count + 1
         if entry.seq != expected_seq:
             raise JournalVerificationError(f"Expected sequence {expected_seq}, got {entry.seq}")
-        if entry.prev_hash not in (expected_prev, ""):
-            raise JournalVerificationError(
-                f"prev_hash mismatch at seq={entry.seq}: "
-                f"expected {expected_prev}, got {entry.prev_hash}"
-            )
+
+        if self._entries:
+            expected_prev = self._entries[-1].hash
+            if entry.prev_hash != expected_prev:
+                raise JournalVerificationError(
+                    f"prev_hash mismatch at seq={entry.seq}: "
+                    f"expected {expected_prev}, got {entry.prev_hash!r}"
+                )
+        else:
+            if entry.prev_hash not in ("", EMPTY_HASH):
+                raise JournalVerificationError(
+                    f"Invalid genesis prev_hash at seq={entry.seq}: got {entry.prev_hash!r}"
+                )
+
         # Recompute hash.
         h = compute_canonical_entry_hash(entry)
         filled = entry.model_copy(update={"hash": h})
@@ -93,17 +111,7 @@ class HashChainJournal:
         payload: dict[str, object],
         entry_id: object | None = None,
     ) -> JournalEntry:
-        """Append a typed event with proper seq/hash chaining.
-
-        The journal assigns the seq from the current entry count,
-        computes the prev_hash from the previous entry (or ""),
-        and then re-hashes the entry.
-
-        If ``entry_id`` is not provided, a deterministic UUID is derived
-        from the entry's position in the chain. Callers that have a
-        deterministic ID factory should pass the result here so that
-        the recording is fully reproducible.
-        """
+        """Append a typed event with proper seq/hash chaining."""
         import uuid as _uuid
 
         seq = self.entry_count + 1
@@ -127,11 +135,7 @@ class HashChainJournal:
         return filled
 
     def append_raw(self, entry: JournalEntry) -> None:
-        """Append an entry without re-validating seq/prev_hash.
-
-        This is intended for loading from disk where each entry's hash is
-        already filled in. Use :meth:`verify` after to confirm integrity.
-        """
+        """Append an entry without re-validating seq/prev_hash."""
         self._entries.append(entry)
 
     @classmethod
@@ -160,28 +164,29 @@ class HashChainJournal:
                 f.write("\n")
 
     def final_digest(self) -> str:
-        """Compute a single 64-character hex digest identifying the entire
-        recording as the SHA-256 of the canonical concatenation of all
-        entry hashes joined by newline with a trailing newline.
-        """
+        """Compute a single 64-character hex digest identifying the entire recording."""
         if not self._entries:
             return hashlib.sha256(b"").hexdigest()
         joined = "\n".join(e.hash for e in self._entries) + "\n"
         return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
     def verify(self) -> bool:
-        """Verify the entire chain. Returns True on success.
-
-        Raises ``JournalVerificationError`` on failure.
-        """
+        """Verify the entire chain. Returns True on success."""
         prev = ""
         for idx, entry in enumerate(self._entries, start=1):
             if entry.seq != idx:
                 raise JournalVerificationError(f"Sequence gap: expected {idx}, got {entry.seq}")
-            if entry.prev_hash != prev:
-                raise JournalVerificationError(
-                    f"Chain break at seq={entry.seq}: prev_hash mismatch"
-                )
+            if idx == 1:
+                if entry.prev_hash not in ("", EMPTY_HASH):
+                    raise JournalVerificationError(
+                        f"Invalid genesis prev_hash at seq=1: got {entry.prev_hash!r}"
+                    )
+            else:
+                if entry.prev_hash != prev:
+                    raise JournalVerificationError(
+                        f"Chain break at seq={entry.seq}: prev_hash mismatch: "
+                        f"expected {prev}, got {entry.prev_hash!r}"
+                    )
             expected_hash = compute_canonical_entry_hash(entry)
             if entry.hash != expected_hash:
                 raise JournalVerificationError(
@@ -191,14 +196,45 @@ class HashChainJournal:
         return True
 
     @classmethod
-    def read_jsonl(cls, path: Path) -> HashChainJournal:
-        """Load a journal from canonical JSON Lines."""
+    def read_unverified_jsonl(
+        cls, path: Path, limits: JournalReadLimits | None = None
+    ) -> HashChainJournal:
+        """Load a journal from canonical JSON Lines without running hash chain verification."""
+        limits = limits or JournalReadLimits()
+        file_size = path.stat().st_size
+        if file_size > limits.max_total_bytes:
+            raise JournalVerificationError(
+                f"Journal file size {file_size} exceeds limit {limits.max_total_bytes}"
+            )
+
         j = cls()
         with path.open("r", encoding="utf-8", newline="\n") as f:
-            for line in f:
+            for line_idx, line in enumerate(f, start=1):
+                if len(line.encode("utf-8")) > limits.max_line_bytes:
+                    raise JournalVerificationError(
+                        f"Line {line_idx} size exceeds limit {limits.max_line_bytes}"
+                    )
                 line = line.rstrip("\n")
                 if not line:
                     continue
+                if j.entry_count >= limits.max_entries:
+                    raise JournalVerificationError(
+                        f"Journal entry count exceeds limit {limits.max_entries}"
+                    )
                 obj = json.loads(line)
                 j.append_raw(JournalEntry.model_validate(obj))
         return j
+
+    @classmethod
+    def read_verified_jsonl(
+        cls, path: Path, limits: JournalReadLimits | None = None
+    ) -> HashChainJournal:
+        """Load a journal from canonical JSON Lines and verify the complete hash chain."""
+        journal = cls.read_unverified_jsonl(path, limits=limits)
+        journal.verify()
+        return journal
+
+    @classmethod
+    def read_jsonl(cls, path: Path, limits: JournalReadLimits | None = None) -> HashChainJournal:
+        """Load a journal from canonical JSON Lines."""
+        return cls.read_unverified_jsonl(path, limits=limits)

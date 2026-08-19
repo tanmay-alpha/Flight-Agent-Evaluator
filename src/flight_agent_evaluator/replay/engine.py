@@ -1,9 +1,10 @@
-"""Replay and verification modes for the evaluation runtime.
+"""Replay and verification engine for run recordings.
 
-Two modes:
-- **playback** — replays a recorded run without verification.
-- **verification** — replays the run, re-executes the scenario deterministically in-memory
-  when scenario definition is resolved, and compares entries to locate behavioural divergences.
+Provides:
+- **playback**: reads and formats verified recording contents without re-execution.
+- **verification**: verifies recording integrity, reconstructs exact provenance,
+  re-executes deterministically in an isolated environment, projects semantic event streams,
+  and compares observable behaviour event-by-event with typed divergence reporting.
 """
 
 from __future__ import annotations
@@ -15,21 +16,70 @@ from pathlib import Path
 from typing import Any
 
 from flight_agent_evaluator.recording.contracts import (
-    DivergenceRecord,
-    ReplayOutcomeStatus,
+    BehaviourVerificationStatus,
+    RecordingBundleManifest,
+    RecordingIntegrityStatus,
     ReplayReport,
+    RunRecording,
 )
-from flight_agent_evaluator.recording.journal import HashChainJournal, JournalVerificationError
-from flight_agent_evaluator.recording.store import FileRecordingStore
+from flight_agent_evaluator.recording.journal import (
+    HashChainJournal,
+    JournalVerificationError,
+)
+from flight_agent_evaluator.recording.store import (
+    FileRecordingStore,
+    RecordingIntegrityError,
+    RecordingStoreError,
+)
+from flight_agent_evaluator.replay.comparator import (
+    SemanticDivergenceRecord,
+    SemanticDivergenceType,
+    SemanticReplayComparator,
+)
+from flight_agent_evaluator.replay.projection import (
+    compute_semantic_recording_digest,
+    project_semantic_event,
+)
+from flight_agent_evaluator.replay.provenance import (
+    ReplayExecutionFactory,
+    ReplayProvenanceError,
+    ReplayProvenanceMismatchError,
+    ReplayUnavailableError,
+    extract_provenance,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class ReplayEngine:
-    """Replay a recording in either playback or verification mode."""
+    """Replay engine orchestrating recording playback and deterministic verification."""
 
-    def __init__(self, root: Path | None = None) -> None:
-        self._root = root or Path(".recordings")
+    def __init__(self, root: Path | str | None = None) -> None:
+        self._root = Path(root) if root is not None else Path(".recordings")
+        self._store = FileRecordingStore(self._root)
+
+    @property
+    def store(self) -> FileRecordingStore:
+        return self._store
+
+    def playback(self, run_id: str, verify_integrity: bool = True) -> dict[str, Any]:
+        """Replay a recording in playback mode.
+
+        Validates recording integrity by default before returning entries.
+        """
+        # Strictly route through FileRecordingStore for path safety
+        if verify_integrity:
+            journal = self._store.read_recording(run_id)
+        else:
+            path = self._store.resolve_safe_path(run_id, ".jsonl")
+            journal = HashChainJournal.read_unverified_jsonl(path)
+
+        return {
+            "run_id": run_id,
+            "entries": [e.model_dump(mode="json") for e in journal.entries],
+            "digest": journal.final_digest(),
+            "integrity_verified": verify_integrity,
+        }
 
     def verify(
         self,
@@ -37,225 +87,243 @@ class ReplayEngine:
         scenario_path: Path | None = None,
         provider: Any = None,
         driver: Any = None,
+        model_exchange_manifest: Any = None,
+        strict_bundle: bool = False,
     ) -> ReplayReport:
-        """Re-execute and verify a recorded run matching exact behaviour."""
-        store = FileRecordingStore(self._root)
+        """Verify recording integrity and deterministic behavioural equivalence."""
+        stem = self._store._sanitise_run_id(run_id)
+
+        # 1. Load and verify recording artifacts from store
+        journal: HashChainJournal | None = None
+        recording: RunRecording | None = None
+        manifest: RecordingBundleManifest | None = None
+        integrity_status = RecordingIntegrityStatus.UNAVAILABLE
+        divergences: list[SemanticDivergenceRecord] = []
 
         try:
-            recording = store.read_recording_summary(run_id)
-            journal = store.read_recording(run_id)
-        except Exception:
-            # Fallback if metadata is missing but jsonl exists directly
-            path = self._root / f"{run_id}.jsonl"
-            if not path.is_file():
-                return ReplayReport(
-                    recording_run_id=str(run_id),
-                    mode="verification",
-                    status="replay_unavailable",
-                    divergences=(
-                        DivergenceRecord(
-                            sequence=1,
-                            kind="missing_tool",
-                            detail="Recording or journal not found in store",
-                        ),
-                    ),
-                    final_digest="0" * 64,
-                )
-            try:
-                journal = HashChainJournal.read_jsonl(path)
-                recording = None
-            except Exception as exc:
-                return ReplayReport(
-                    recording_run_id=str(run_id),
-                    mode="verification",
-                    status="replay_unavailable",
-                    divergences=(
-                        DivergenceRecord(
-                            sequence=1,
-                            kind="missing_tool",
-                            detail=f"Journal file unreadable: {exc}",
-                        ),
-                    ),
-                    final_digest="0" * 64,
-                )
-
-        divergences: list[DivergenceRecord] = []
-        final_digest = journal.final_digest()
-        journal_tampered = False
-
-        try:
-            journal.verify()
-        except JournalVerificationError as exc:
-            journal_tampered = True
+            journal, recording, manifest = self._store.read_bundle(stem, strict=strict_bundle)
+            integrity_status = RecordingIntegrityStatus.VERIFIED
+        except RecordingIntegrityError as exc:
+            integrity_status = RecordingIntegrityStatus.TAMPERED
             divergences.append(
-                DivergenceRecord(
+                SemanticDivergenceRecord(
                     sequence=1,
-                    kind="missing_tool",
-                    detail=f"chain-verification-failed: {exc}",
+                    kind=SemanticDivergenceType.RECORDING_TAMPERED,
+                    detail=f"Recording integrity check failed: {exc}",
                 )
             )
-
-        if journal_tampered:
-            return ReplayReport(
-                recording_run_id=str(run_id),
-                mode="verification",
-                status="recording_tampered",
-                divergences=tuple(divergences),
-                final_digest=final_digest,
-                entry_count=len(journal.entries),
-            )
-
-        # Attempt to resolve originating scenario definition
-        scenario_id = recording.scenario_id if recording else None
-        if not scenario_id:
-            for entry in journal.entries:
-                if entry.type == "run_started" and "scenario_id" in entry.payload:
-                    scenario_id = str(entry.payload["scenario_id"])
-                    break
-
-        from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
-
-        loader = ScenarioLoader()
-        loaded = None
-
-        if scenario_path and scenario_path.exists():
+        except RecordingStoreError:
+            # Try loading unverified journal if available
             try:
-                loaded = loader.load_from_path(scenario_path)
-            except Exception as exc:
-                logger.debug("Provided scenario_path %s failed to load: %s", scenario_path, exc)
-
-        if loaded is None and scenario_id:
-            candidates = [
-                Path(f"resources/scenarios/{scenario_id}.json"),
-                Path(f"tests/fixtures/scenarios/{scenario_id}.json"),
-                Path("resources/scenarios/smoke_phase2.json"),
-            ]
-            for candidate in candidates:
-                if candidate.exists():
+                path = self._store.resolve_safe_path(stem, ".jsonl")
+                if path.is_file():
+                    journal = HashChainJournal.read_unverified_jsonl(path)
                     try:
-                        candidate_loaded = loader.load_from_path(candidate)
-                        if candidate_loaded.scenario.scenario_id.id == scenario_id:
-                            loaded = candidate_loaded
-                            break
-                    except Exception as exc:
-                        logger.debug("Candidate scenario %s failed to load: %s", candidate, exc)
-                        continue
+                        journal.verify()
+                        integrity_status = RecordingIntegrityStatus.INCOMPLETE
+                    except JournalVerificationError as j_exc:
+                        integrity_status = RecordingIntegrityStatus.TAMPERED
+                        divergences.append(
+                            SemanticDivergenceRecord(
+                                sequence=1,
+                                kind=SemanticDivergenceType.RECORDING_TAMPERED,
+                                detail=f"Journal hash chain broken: {j_exc}",
+                            )
+                        )
+            except Exception as exc:
+                integrity_status = RecordingIntegrityStatus.UNAVAILABLE
+                divergences.append(
+                    SemanticDivergenceRecord(
+                        sequence=1,
+                        kind=SemanticDivergenceType.RECORDING_TAMPERED,
+                        detail=f"Journal unreadable or corrupted: {exc}",
+                    )
+                )
 
-        if loaded is None:
-            # Integrity is valid, but full scenario re-execution is unavailable
+        final_digest = journal.final_digest() if journal else "0" * 64
+        entry_count = journal.entry_count if journal else 0
+
+        # If recording integrity is tampered or unavailable, fail closed immediately
+        if (
+            integrity_status != RecordingIntegrityStatus.VERIFIED
+            and integrity_status != RecordingIntegrityStatus.INCOMPLETE
+        ):
+            legacy_divergences = tuple(d.to_legacy_divergence() for d in divergences)
             return ReplayReport(
-                recording_run_id=str(run_id),
+                recording_run_id=stem,
                 mode="verification",
-                status="integrity_valid",
-                divergences=(),
+                integrity_status=integrity_status,
+                behaviour_status=None,
+                original_journal_digest=final_digest,
+                original_semantic_digest="",
+                provenance_status="unavailable",
+                divergences=legacy_divergences,
                 final_digest=final_digest,
-                entry_count=len(journal.entries),
+                entry_count=entry_count,
             )
 
-        # Re-execute scenario in isolated temporary directory
-        from flight_agent_evaluator.engine.runner import ScenarioRunner
+        if journal is None:
+            legacy_divergences = tuple(d.to_legacy_divergence() for d in divergences)
+            return ReplayReport(
+                recording_run_id=stem,
+                mode="verification",
+                integrity_status=RecordingIntegrityStatus.UNAVAILABLE,
+                behaviour_status=None,
+                original_journal_digest=final_digest,
+                original_semantic_digest="",
+                provenance_status="unavailable",
+                divergences=legacy_divergences,
+                final_digest=final_digest,
+                entry_count=entry_count,
+            )
+
+        # 2. Extract provenance
+        try:
+            provenance = extract_provenance(recording, journal, manifest)
+            provenance_status: str = "verified"
+        except ReplayProvenanceError as exc:
+            divergences.append(
+                SemanticDivergenceRecord(
+                    sequence=1,
+                    kind=SemanticDivergenceType.PROVENANCE_MISMATCH,
+                    detail=f"Provenance extraction failed: {exc}",
+                )
+            )
+            legacy_divergences = tuple(d.to_legacy_divergence() for d in divergences)
+            return ReplayReport(
+                recording_run_id=stem,
+                mode="verification",
+                integrity_status=integrity_status,
+                behaviour_status=BehaviourVerificationStatus.UNAVAILABLE,
+                original_journal_digest=final_digest,
+                original_semantic_digest="",
+                provenance_status="unavailable",
+                divergences=legacy_divergences,
+                final_digest=final_digest,
+                entry_count=entry_count,
+            )
+
+        # 3. Resolve execution components via factory
+        factory = ReplayExecutionFactory()
+        try:
+            loaded_scenario = factory.resolve_scenario(provenance, explicit_path=scenario_path)
+            agent_policy = factory.resolve_agent(
+                provenance,
+                model_exchange_manifest=model_exchange_manifest,
+                custom_driver=driver,
+            )
+        except (ReplayProvenanceMismatchError, ReplayUnavailableError) as exc:
+            if isinstance(exc, ReplayProvenanceMismatchError):
+                divergences.append(
+                    SemanticDivergenceRecord(
+                        sequence=1,
+                        kind=SemanticDivergenceType.PROVENANCE_MISMATCH,
+                        detail=f"Replay resource mismatch: {exc}",
+                    )
+                )
+            legacy_divergences = tuple(d.to_legacy_divergence() for d in divergences)
+            return ReplayReport(
+                recording_run_id=stem,
+                mode="verification",
+                integrity_status=integrity_status,
+                behaviour_status=BehaviourVerificationStatus.UNAVAILABLE,
+                original_journal_digest=final_digest,
+                original_semantic_digest="",
+                provenance_status="mismatch"
+                if isinstance(exc, ReplayProvenanceMismatchError)
+                else "unavailable",
+                divergences=legacy_divergences,
+                final_digest=final_digest,
+                entry_count=entry_count,
+            )
+
+        # 4. Project original semantic events
+        orig_semantic_events = tuple(project_semantic_event(e) for e in journal.entries)
+        orig_semantic_digest = compute_semantic_recording_digest(orig_semantic_events)
+
+        # 5. Re-execute deterministically in isolated temporary directory
+        runner = factory.create_runner()
+        re_journal: HashChainJournal | None = None
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            runner = ScenarioRunner()
             try:
-                re_executed_rec = asyncio.run(
-                    runner.run(loaded, provider=provider, output_dir=tmp_path, driver=driver)
+                re_rec = asyncio.run(
+                    runner.run(
+                        loaded_scenario,
+                        provider=provider,
+                        output_dir=tmp_path,
+                        driver=agent_policy,
+                    )
                 )
                 tmp_store = FileRecordingStore(tmp_path)
-                re_journal = tmp_store.read_recording(str(re_executed_rec.run_id))
+                re_journal = tmp_store.read_recording(str(re_rec.run_id))
             except Exception as exc:
                 divergences.append(
-                    DivergenceRecord(
+                    SemanticDivergenceRecord(
                         sequence=len(divergences) + 1,
-                        kind="missing_tool",
-                        detail=f"Re-execution failed: {exc}",
+                        kind=SemanticDivergenceType.EVENT_TYPE_MISMATCH,
+                        detail=f"Deterministic re-execution failed: {exc}",
                     )
                 )
+                legacy_divergences = tuple(d.to_legacy_divergence() for d in divergences)
                 return ReplayReport(
-                    recording_run_id=str(run_id),
+                    recording_run_id=stem,
                     mode="verification",
-                    status="behaviour_diverged",
-                    divergences=tuple(divergences),
+                    integrity_status=integrity_status,
+                    behaviour_status=BehaviourVerificationStatus.REEXECUTION_ERROR,
+                    original_journal_digest=final_digest,
+                    original_semantic_digest=orig_semantic_digest,
+                    provenance_status=provenance_status,
+                    divergences=legacy_divergences,
                     final_digest=final_digest,
-                    entry_count=len(journal.entries),
+                    entry_count=entry_count,
                 )
 
-        # Compare entries
-        orig_tool_entries = [e for e in journal.entries if e.type in ("tool_call", "tool_result")]
-        re_tool_entries = [e for e in re_journal.entries if e.type in ("tool_call", "tool_result")]
-        re_calls = len([e for e in re_tool_entries if e.type == "tool_call"])
-
-        seq = len(divergences) + 1
-        if len(orig_tool_entries) != len(re_tool_entries):
-            divergences.append(
-                DivergenceRecord(
-                    sequence=seq,
-                    kind="missing_tool"
-                    if len(orig_tool_entries) > len(re_tool_entries)
-                    else "extra_tool",
-                    detail=f"Tool entry count mismatch: original={len(orig_tool_entries)}, re-executed={len(re_tool_entries)}",
-                )
+        if re_journal is None:
+            legacy_divergences = tuple(d.to_legacy_divergence() for d in divergences)
+            return ReplayReport(
+                recording_run_id=stem,
+                mode="verification",
+                integrity_status=integrity_status,
+                behaviour_status=BehaviourVerificationStatus.REEXECUTION_ERROR,
+                original_journal_digest=final_digest,
+                original_semantic_digest=orig_semantic_digest,
+                provenance_status=provenance_status,
+                divergences=legacy_divergences,
+                final_digest=final_digest,
+                entry_count=entry_count,
             )
 
-        min_len = min(len(orig_tool_entries), len(re_tool_entries))
-        for idx in range(min_len):
-            orig_e = orig_tool_entries[idx]
-            re_e = re_tool_entries[idx]
-            if orig_e.type != re_e.type:
-                divergences.append(
-                    DivergenceRecord(
-                        sequence=seq + idx,
-                        kind="tool_status_mismatch",
-                        detail=f"Entry type mismatch at index {idx}: {orig_e.type} != {re_e.type}",
-                    )
-                )
-            elif orig_e.type == "tool_call":
-                o_tool = orig_e.payload.get("tool_name")
-                r_tool = re_e.payload.get("tool_name")
-                if o_tool != r_tool:
-                    divergences.append(
-                        DivergenceRecord(
-                            sequence=seq + idx,
-                            kind="tool_status_mismatch",
-                            detail=f"Tool name mismatch at call {idx}: {o_tool} != {r_tool}",
-                        )
-                    )
-            elif orig_e.type == "tool_result":
-                o_stat = orig_e.payload.get("status")
-                r_stat = re_e.payload.get("status")
-                if o_stat != r_stat:
-                    divergences.append(
-                        DivergenceRecord(
-                            sequence=seq + idx,
-                            kind="tool_status_mismatch",
-                            detail=f"Tool status mismatch at call {idx}: {o_stat} != {r_stat}",
-                        )
-                    )
+        # 6. Project replayed semantic events & compare
+        re_semantic_events = tuple(project_semantic_event(e) for e in re_journal.entries)
+        re_semantic_digest = compute_semantic_recording_digest(re_semantic_events)
+        re_calls = len([e for e in re_journal.entries if e.type == "tool_call"])
 
-        final_status: ReplayOutcomeStatus = (
-            "behaviour_diverged" if divergences else "behaviour_verified"
-        )
+        comparator = SemanticReplayComparator()
+        comparison = comparator.compare(orig_semantic_events, re_semantic_events)
+
+        if not comparison.verified:
+            divergences.extend(comparison.divergences)
+            behaviour_status = BehaviourVerificationStatus.DIVERGED
+        else:
+            behaviour_status = BehaviourVerificationStatus.VERIFIED
+
+        legacy_divergences = tuple(d.to_legacy_divergence() for d in divergences)
 
         return ReplayReport(
-            recording_run_id=str(run_id),
+            recording_run_id=stem,
             mode="verification",
-            status=final_status,
-            divergences=tuple(divergences),
+            integrity_status=integrity_status,
+            behaviour_status=behaviour_status,
+            original_journal_digest=final_digest,
+            replay_journal_digest=re_journal.final_digest(),
+            original_semantic_digest=orig_semantic_digest,
+            replay_semantic_digest=re_semantic_digest,
+            provenance_status=provenance_status,
+            divergences=legacy_divergences,
             final_digest=final_digest,
-            entry_count=len(journal.entries),
+            entry_count=entry_count,
+            re_executed_entry_count=re_journal.entry_count,
             re_executed_calls=re_calls,
         )
-
-    def playback(self, run_id: str) -> dict[str, Any]:
-        """Replay a recording in playback mode.
-
-        Returns the journal entries as a list of dicts.
-        """
-        path = self._root / f"{run_id}.jsonl"
-        journal = HashChainJournal.read_jsonl(path)
-        return {
-            "run_id": run_id,
-            "entries": [e.model_dump(mode="json") for e in journal.entries],
-            "digest": journal.final_digest(),
-        }

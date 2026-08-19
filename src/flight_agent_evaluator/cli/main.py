@@ -307,18 +307,24 @@ def cmd_replay(args: argparse.Namespace) -> int:
     mode = getattr(args, "mode", "playback")
 
     try:
-        if mode == "verify" or mode == "verification":
-            report = engine.verify(args.run_id)
+        if mode in ("verify", "verification"):
+            scenario_path = Path(args.scenario) if getattr(args, "scenario", None) else None
+            report = engine.verify(args.run_id, scenario_path=scenario_path)
             if getattr(args, "json", False):
                 print(json.dumps(report.model_dump(mode="json")))
             else:
                 print(f"Verification of {args.run_id}: {report.status}")
+                print(f"  Integrity Status:  {report.integrity_status.value}")
+                print(
+                    f"  Behaviour Status:  {report.behaviour_status.value if report.behaviour_status else 'n/a'}"
+                )
+                print(f"  Provenance Status: {report.provenance_status}")
                 if report.divergences:
                     print(f"  Divergences: {len(report.divergences)}")
                     for d in report.divergences:
-                        print(f"    seq={d.sequence}: {d.kind} — {d.detail}")
-                    return 1
-                print("  All checks passed.")
+                        print(f"    seq={d.sequence}: [{d.kind}] {d.detail}")
+                else:
+                    print("  All checks passed.")
             return (
                 0 if report.status in ("verified", "integrity_valid", "behaviour_verified") else 1
             )
@@ -328,7 +334,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
                 print(json.dumps(result))
             else:
                 print(f"Replay of {args.run_id}:")
-                print(f"  Digest: {result['digest']}")
+                print(f"  Digest:  {result['digest']}")
                 print(f"  Entries: {len(result['entries'])}")
             return 0
     except Exception as exc:

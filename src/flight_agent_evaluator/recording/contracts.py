@@ -13,6 +13,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
@@ -46,10 +47,36 @@ JournalEntryType = Literal[
     "trace_span",
     "state_snapshot",
     "driver_completed",
+    "final_response",
+    "checkpoint",
     "replay_report",
     "evaluation_result",
     "run_completed",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Status Models
+# ---------------------------------------------------------------------------
+
+
+class RecordingIntegrityStatus(StrEnum):
+    """Integrity status of a recording."""
+
+    VERIFIED = "verified"
+    TAMPERED = "tampered"
+    INCOMPLETE = "incomplete"
+    UNAVAILABLE = "unavailable"
+    UNSUPPORTED_VERSION = "unsupported_version"
+
+
+class BehaviourVerificationStatus(StrEnum):
+    """Behavioral verification status of a deterministic re-execution."""
+
+    VERIFIED = "verified"
+    DIVERGED = "diverged"
+    UNAVAILABLE = "unavailable"
+    REEXECUTION_ERROR = "reexecution_error"
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +133,83 @@ class RunRecording(ContractModel):
 
 
 # ---------------------------------------------------------------------------
+# Recording Bundle Manifest
+# ---------------------------------------------------------------------------
+
+RECORDING_BUNDLE_SCHEMA_VERSION: str = "recording-bundle-v1"
+REPLAY_ALGORITHM_VERSION: str = "semantic-replay-v1"
+SEMANTIC_EVENT_PROJECTION_VERSION: str = "semantic-events-v1"
+
+
+class RecordingBundleManifest(ContractModel):
+    """Cryptographic manifest cross-binding all recording files and metadata."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: str = Field(default=RECORDING_BUNDLE_SCHEMA_VERSION)
+    run_id: str
+
+    journal_file: str
+    journal_bytes_sha256: SHA256Digest
+    journal_chain_digest: SHA256Digest
+    journal_entry_count: PositiveInt
+
+    metadata_file: str
+    metadata_bytes_sha256: SHA256Digest
+
+    scenario_id: NonEmptyIdentifier
+    scenario_version: PositiveInt
+    scenario_digest: SHA256Digest
+
+    expectation_digest: SHA256Digest | None = None
+    benchmark_manifest_digest: SHA256Digest | None = None
+
+    environment_version: str = "1.0.0"
+    evaluator_version: str = "1.0.0"
+
+    agent_id: str
+    agent_version: str = "1.0.0"
+    agent_configuration_digest: SHA256Digest | None = None
+
+    model_exchange_manifest_digest: SHA256Digest | None = None
+    fixture_manifest_digest: SHA256Digest | None = None
+
+    seed: int = 42
+    semantic_recording_digest: SHA256Digest
+
+
+# ---------------------------------------------------------------------------
+# Replay Provenance
+# ---------------------------------------------------------------------------
+
+
+class ReplayProvenance(ContractModel):
+    """Exact source provenance required to perform deterministic re-execution."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scenario_id: str
+    scenario_version: int
+    scenario_digest: str
+
+    benchmark_manifest_digest: str | None = None
+    expectation_digest: str | None = None
+
+    environment_version: str = "1.0.0"
+    fixture_manifest_digest: str | None = None
+
+    agent_id: str
+    agent_version: str = "1.0.0"
+    agent_configuration_digest: str | None = None
+
+    model_exchange_manifest_digest: str | None = None
+    seed: int = 42
+
+    replay_algorithm_version: str = REPLAY_ALGORITHM_VERSION
+    semantic_projection_version: str = SEMANTIC_EVENT_PROJECTION_VERSION
+
+
+# ---------------------------------------------------------------------------
 # Replay report
 # ---------------------------------------------------------------------------
 
@@ -128,14 +232,11 @@ class DivergenceRecord(ContractModel):
     model_config = ConfigDict(extra="forbid")
 
     sequence: PositiveInt
-    kind: Literal[
-        "tool_status_mismatch",
-        "tool_result_mismatch",
-        "tool_error_mismatch",
-        "missing_tool",
-        "extra_tool",
-    ]
-    detail: NonEmptyIdentifier
+    kind: str
+    detail: str
+    field_pointer: str | None = None
+    expected_value: str | None = None
+    observed_value: str | None = None
 
 
 class ReplayReport(ContractModel):
@@ -143,13 +244,38 @@ class ReplayReport(ContractModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    recording_run_id: NonEmptyIdentifier
+    recording_run_id: str
     mode: Literal["playback", "verification"]
-    status: ReplayOutcomeStatus
+    integrity_status: RecordingIntegrityStatus
+    behaviour_status: BehaviourVerificationStatus | None = None
+    original_journal_digest: str
+    replay_journal_digest: str | None = None
+    original_semantic_digest: str = ""
+    replay_semantic_digest: str | None = None
+    provenance_status: Literal["verified", "mismatch", "unavailable"] = "unavailable"
     divergences: tuple[DivergenceRecord, ...] = Field(default_factory=tuple)
-    final_digest: SHA256Digest
+    final_digest: str = ""
     entry_count: NonNegativeInt = 0
+    re_executed_entry_count: NonNegativeInt = 0
     re_executed_calls: NonNegativeInt = 0
+    replay_algorithm_version: str = REPLAY_ALGORITHM_VERSION
+    semantic_projection_version: str = SEMANTIC_EVENT_PROJECTION_VERSION
+
+    @property
+    def status(self) -> ReplayOutcomeStatus:
+        """Legacy outcome status property for backward compatibility."""
+        if self.integrity_status == RecordingIntegrityStatus.TAMPERED:
+            return "recording_tampered"
+        if (
+            self.integrity_status != RecordingIntegrityStatus.VERIFIED
+            and self.integrity_status != RecordingIntegrityStatus.INCOMPLETE
+        ):
+            return "replay_unavailable"
+        if self.behaviour_status == BehaviourVerificationStatus.VERIFIED:
+            return "behaviour_verified"
+        if self.behaviour_status == BehaviourVerificationStatus.DIVERGED:
+            return "behaviour_diverged"
+        return "integrity_valid"
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +370,13 @@ class ScriptedTrajectory(ContractModel):
 # Re-export key types so external callers can import a single module.
 __all__ = [
     "RECORDING_SCHEMA_VERSION",
+    "RECORDING_BUNDLE_SCHEMA_VERSION",
+    "REPLAY_ALGORITHM_VERSION",
+    "SEMANTIC_EVENT_PROJECTION_VERSION",
+    "RecordingIntegrityStatus",
+    "BehaviourVerificationStatus",
+    "RecordingBundleManifest",
+    "ReplayProvenance",
     "JournalEntry",
     "JournalEntryType",
     "RunRecording",
