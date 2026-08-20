@@ -125,21 +125,20 @@ class ScenarioLoader:
         self._max_bytes = max_bytes
         self._allowed_root = allowed_root
 
-    def load_from_path(self, path: Path) -> LoadedScenario:
-        # Reject symlinks unconditionally.
-        if path.is_symlink():
-            raise ScenarioLoaderError(f"Scenario file must not be a symlink: {path}")
-
-        # Resolve and verify path safety.
-        self._check_path_safety(path)
-
-        raw = path.read_bytes()
+    def load_from_bytes(self, raw: bytes, expected_sha256: str | None = None) -> LoadedScenario:
+        """Parse, validate, and digest a BenchmarkScenario from raw bytes."""
         if raw.startswith(_BOM):
             raise ScenarioLoaderError("Scenario file has a BOM prefix")
         if len(raw) > self._max_bytes:
             raise ScenarioLoaderError(
                 f"Scenario file is too large: {len(raw)} bytes "
                 f"exceeds maximum of {self._max_bytes} bytes"
+            )
+
+        digest = hashlib.sha256(raw).hexdigest()
+        if expected_sha256 and digest.lower() != expected_sha256.lower():
+            raise ScenarioLoaderError(
+                f"Scenario raw SHA-256 digest mismatch: expected '{expected_sha256}', got '{digest}'."
             )
 
         # Parse JSON strictly: reject duplicate keys, reject NaN/Infinity.
@@ -191,13 +190,73 @@ class ScenarioLoader:
         except ValidationError as exc:
             raise ScenarioLoaderError(f"Scenario validation failed: {exc}") from exc
 
-        digest = hashlib.sha256(raw).hexdigest()
-
         return LoadedScenario(
             scenario=scenario,
             digest=digest,
             raw_bytes=raw,
         )
+
+    def load_from_text(self, text: str, expected_sha256: str | None = None) -> LoadedScenario:
+        """Parse and validate a BenchmarkScenario from a UTF-8 string."""
+        return self.load_from_bytes(text.encode("utf-8"), expected_sha256=expected_sha256)
+
+    def load_resource(
+        self,
+        ref: Any,
+        locator: Any | None = None,
+    ) -> LoadedScenario:
+        """Load a BenchmarkScenario from a ResourceRef and ResourceLocator."""
+        from flight_agent_evaluator.resources.contracts import ResourceOrigin
+        from flight_agent_evaluator.resources.locator import get_builtin_locator
+
+        if ref.origin == ResourceOrigin.BUILTIN:
+            loc = locator or get_builtin_locator()
+            raw = loc.read_bytes(ref)
+            return self.load_from_bytes(raw, expected_sha256=ref.expected_sha256)
+
+        if locator is not None:
+            raw = locator.read_bytes(ref)
+            return self.load_from_bytes(raw, expected_sha256=ref.expected_sha256)
+
+        return self.load_from_path(Path(ref.logical_path), expected_sha256=ref.expected_sha256)
+
+    def load_builtin(self, scenario_id_or_path: str) -> LoadedScenario:
+        """Load a built-in packaged scenario by scenario ID or logical path."""
+        from flight_agent_evaluator.resources.contracts import (
+            ResourceKind,
+            ResourceOrigin,
+            ResourceRef,
+        )
+        from flight_agent_evaluator.resources.locator import (
+            get_builtin_locator,
+            sanitize_logical_path,
+        )
+
+        logical = scenario_id_or_path.strip()
+        if not logical.endswith(".json") and "/" not in logical and "\\" not in logical:
+            logical = f"scenarios/{logical}.json"
+        elif not logical.startswith("scenarios/"):
+            logical = f"scenarios/{logical}"
+
+        sanitized = sanitize_logical_path(logical)
+        ref = ResourceRef(
+            origin=ResourceOrigin.BUILTIN,
+            logical_path=sanitized,
+            kind=ResourceKind.SCENARIO,
+        )
+        return self.load_resource(ref, get_builtin_locator())
+
+    def load_from_path(self, path: Path, expected_sha256: str | None = None) -> LoadedScenario:
+        """Load a scenario from an explicit filesystem Path."""
+        # Reject symlinks unconditionally.
+        if path.is_symlink():
+            raise ScenarioLoaderError(f"Scenario file must not be a symlink: {path}")
+
+        # Resolve and verify path safety.
+        self._check_path_safety(path)
+
+        raw = path.read_bytes()
+        return self.load_from_bytes(raw, expected_sha256=expected_sha256)
 
     def _check_path_safety(self, path: Path) -> None:
         root = self._allowed_root

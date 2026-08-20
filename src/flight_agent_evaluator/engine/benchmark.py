@@ -257,7 +257,18 @@ class BenchmarkRunner:
         )
 
         # Trajectory evaluation
-        exp = expectation or self._build_development_expectation(scenario)
+        if expectation is not None:
+            exp = expectation
+        else:
+            try:
+                from flight_agent_evaluator.contracts.trajectory_expectation import (
+                    load_builtin_expectation,
+                )
+
+                exp = load_builtin_expectation(scenario.scenario_id.id)
+            except Exception:
+                exp = self._build_development_expectation(scenario)
+
         scorecard = self.evaluator.evaluate(
             scenario=scenario,
             expectation=exp,

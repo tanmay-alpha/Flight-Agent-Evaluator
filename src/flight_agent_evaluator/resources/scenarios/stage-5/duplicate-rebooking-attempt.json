@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "duplicate-rebooking-attempt",
+    "version": 1
+  },
+  "metadata": {
+    "title": "Duplicate Rebooking Attempt",
+    "description": "First mutation commits booking. Second non-idempotent attempt to rebook an already rebooked booking must be rejected by the state machine.",
+    "objective": "Verify state machine prevents duplicate non-idempotent rebooking mutations.",
+    "tags": [
+      "stage-5",
+      "transaction",
+      "duplicate-rebooking"
+    ],
+    "author": "Flight Agent Evaluator"
+  },
+  "scenario_mode": "transactional",
+  "initial_state": {
+    "booking_reference": "AS-1007",
+    "status": "disrupted"
+  },
+  "fixture_references": [
+    {
+      "fixture_name": "flight_status_delayed",
+      "raw_payload_reference": {
+        "uri": "fixture://flight_status_delayed.json",
+        "sha256": "1e6e098d77ddf55c378e0c5520434cce24bf33c59d9ef8d439efcd8558ce4921",
+        "byte_length": 1366
+      }
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "s1",
+      "description": "Test duplicate rebooking rejection on AS-1007.",
+      "initial_message": "Test duplicate rebooking rejection on AS-1007."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "reference_time": "2026-08-12T12:00:00+00:00",
+  "trajectory": {
+    "trajectory_id": "duplicate-rebooking-attempt-trajectory",
+    "description": "Scripted trajectory for duplicate-rebooking-attempt",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-get",
+        "tool_name": "booking.get_current",
+        "arguments": {
+          "booking_reference": "AS-1007"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-2-hold-1",
+        "tool_name": "booking.hold_alternative",
+        "arguments": {
+          "booking_reference": "AS-1007",
+          "offer_id": "offer-dup-1",
+          "flight_number": "AS158",
+          "origin": "JFK",
+          "destination": "LHR",
+          "price_amount": 550.0,
+          "idempotency_key": "idem-hold-dup-1"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-3-appr-1",
+        "tool_name": "approval.request",
+        "arguments": {
+          "booking_reference": "AS-1007",
+          "action_type": "confirm_rebooking",
+          "offer_id": "offer-dup-1",
+          "reason": "First rebooking approval.",
+          "idempotency_key": "idem-appr-dup-1",
+          "hold_id": {
+            "$ref_step": 1,
+            "json_pointer": "/hold_id"
+          }
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-4-conf-1",
+        "tool_name": "booking.confirm_rebooking",
+        "arguments": {
+          "booking_reference": "AS-1007",
+          "hold_id": {
+            "$ref_step": 1,
+            "json_pointer": "/hold_id"
+          },
+          "approval_id": {
+            "$ref_step": 2,
+            "json_pointer": "/approval_id"
+          },
+          "idempotency_key": "idem-conf-dup-1"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-5-hold-2",
+        "tool_name": "booking.hold_alternative",
+        "arguments": {
+          "booking_reference": "AS-1007",
+          "offer_id": "offer-dup-2",
+          "flight_number": "AS160",
+          "origin": "JFK",
+          "destination": "LHR",
+          "price_amount": 600.0,
+          "idempotency_key": "idem-hold-dup-2"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-6-appr-2",
+        "tool_name": "approval.request",
+        "arguments": {
+          "booking_reference": "AS-1007",
+          "action_type": "confirm_rebooking",
+          "offer_id": "offer-dup-2",
+          "reason": "Second rebooking approval attempt.",
+          "idempotency_key": "idem-appr-dup-2",
+          "hold_id": {
+            "$ref_step": 4,
+            "json_pointer": "/hold_id"
+          }
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-7-conf-2",
+        "tool_name": "booking.confirm_rebooking",
+        "arguments": {
+          "booking_reference": "AS-1007",
+          "hold_id": {
+            "$ref_step": 4,
+            "json_pointer": "/hold_id"
+          },
+          "approval_id": {
+            "$ref_step": 5,
+            "json_pointer": "/approval_id"
+          },
+          "idempotency_key": "idem-conf-dup-2"
+        },
+        "expected_failure": true
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-8-resp",
+        "response": "Duplicate rebooking attempt was rejected by state machine."
+      }
+    ]
+  }
+}

@@ -42,7 +42,7 @@ class CanonicalBenchmarkEngine:
 
     def run_benchmark(
         self,
-        manifest_path: Path | str = "resources/benchmarks/benchmark-v1.json",
+        manifest_path: Path | str = "builtin:benchmark-v1",
         agent_ids: Sequence[str] | None = None,
         output_dir: Path | str | None = None,
         repetitions: int | None = None,

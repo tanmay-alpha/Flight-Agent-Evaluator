@@ -157,13 +157,56 @@ def test_cli_demo_run(capsys):
     args = argparse.Namespace(
         scenario="resources/scenarios/jfk-lhr-delay.json",
         agent="oracle",
+        json=False,
     )
     assert cmd_demo_run(args) == 0
 
 
+def test_cli_benchmark_list(capsys):
+    from flight_agent_evaluator.cli.main import cmd_benchmark_list
+
+    args = argparse.Namespace(json=False)
+    assert cmd_benchmark_list(args) == 0
+    captured = capsys.readouterr()
+    assert "benchmark-v1" in captured.out
+
+    args_json = argparse.Namespace(json=True)
+    assert cmd_benchmark_list(args_json) == 0
+    captured_json = capsys.readouterr()
+    assert "benchmark-v1" in captured_json.out
+
+
+def test_cli_benchmark_validate(capsys):
+    from flight_agent_evaluator.cli.main import cmd_benchmark_validate
+
+    args = argparse.Namespace(
+        manifest="builtin:benchmark-v1", manifest_pos=None, scenarios=None, json=True
+    )
+    assert cmd_benchmark_validate(args) == 0
+    captured = capsys.readouterr()
+    assert '"valid": true' in captured.out
+
+
+def test_cli_benchmark_verify_release(capsys):
+    from flight_agent_evaluator.cli.main import cmd_verify_release
+
+    args = argparse.Namespace(json=True)
+    assert cmd_verify_release(args) == 0
+    captured = capsys.readouterr()
+    assert '"valid": true' in captured.out
+
+
 def test_cli_main_entry_point():
+    import pytest
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--version"])
+    assert exc_info.value.code == 0
+
     assert main(["agents", "list"]) == 0
     assert main(["agents", "describe", "oracle"]) == 0
     assert (
         main(["agent", "run", "resources/scenarios/jfk-lhr-delay.json", "--agent", "oracle"]) == 0
     )
+    assert main(["benchmark", "list", "--json"]) == 0
+    assert main(["benchmark", "validate", "--manifest", "builtin:demo-v1", "--json"]) == 0

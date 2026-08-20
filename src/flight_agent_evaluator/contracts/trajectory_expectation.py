@@ -7,6 +7,7 @@ forbidden actions, recovery constraints, and scoring profiles.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Final, Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -449,3 +450,85 @@ def validate_trajectory_expectation(expectation: TrajectoryExpectation) -> list[
         )
 
     return errors
+
+
+def load_expectation_bytes(
+    raw: bytes,
+    expected_sha256: str | None = None,
+) -> TrajectoryExpectation:
+    """Load and validate a TrajectoryExpectation from raw bytes with SHA-256 checking."""
+    import hashlib
+    import json
+
+    if expected_sha256:
+        actual_sha = hashlib.sha256(raw).hexdigest()
+        if actual_sha.lower() != expected_sha256.lower():
+            raise ValueError(
+                f"Expectation raw SHA-256 digest mismatch: expected '{expected_sha256}', got '{actual_sha}'."
+            )
+
+    try:
+        data = json.loads(raw.decode("utf-8"))
+        expectation = TrajectoryExpectation.model_validate(data)
+    except Exception as exc:
+        raise ValueError(f"Failed to parse TrajectoryExpectation: {exc}") from exc
+
+    validation_errors = validate_trajectory_expectation(expectation)
+    if validation_errors:
+        raise ValueError(f"Expectation graph validation failed: {validation_errors}")
+
+    return expectation
+
+
+def load_expectation_text(
+    text: str,
+    expected_sha256: str | None = None,
+) -> TrajectoryExpectation:
+    """Load and validate a TrajectoryExpectation from a UTF-8 string."""
+    return load_expectation_bytes(text.encode("utf-8"), expected_sha256=expected_sha256)
+
+
+def load_expectation_resource(
+    ref: Any,
+    locator: Any | None = None,
+) -> TrajectoryExpectation:
+    """Load a TrajectoryExpectation using a ResourceRef and ResourceLocator."""
+    from flight_agent_evaluator.resources.locator import get_builtin_locator
+
+    loc = locator or get_builtin_locator()
+    raw = loc.read_bytes(ref)
+    return load_expectation_bytes(raw, expected_sha256=ref.expected_sha256)
+
+
+def load_builtin_expectation(
+    scenario_id_or_path: str,
+) -> TrajectoryExpectation:
+    """Load a built-in TrajectoryExpectation by scenario ID or logical path."""
+    from flight_agent_evaluator.resources.contracts import ResourceKind, ResourceOrigin, ResourceRef
+    from flight_agent_evaluator.resources.locator import get_builtin_locator, sanitize_logical_path
+
+    logical = scenario_id_or_path.strip()
+    if not logical.endswith(".json") and "/" not in logical and "\\" not in logical:
+        logical = f"expectations/{logical}.json"
+    elif not logical.startswith("expectations/"):
+        logical = f"expectations/{logical}"
+
+    sanitized = sanitize_logical_path(logical)
+    ref = ResourceRef(
+        origin=ResourceOrigin.BUILTIN,
+        logical_path=sanitized,
+        kind=ResourceKind.EXPECTATION,
+    )
+    return load_expectation_resource(ref, get_builtin_locator())
+
+
+def load_expectation_from_path(
+    path: Path | str,
+    expected_sha256: str | None = None,
+) -> TrajectoryExpectation:
+    """Load a TrajectoryExpectation from an explicit filesystem path."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"Expectation file not found: {p}")
+    raw = p.read_bytes()
+    return load_expectation_bytes(raw, expected_sha256=expected_sha256)

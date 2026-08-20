@@ -1,0 +1,126 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "constraint-changes-after-approval",
+    "version": 1
+  },
+  "metadata": {
+    "title": "Constraint Changes After Approval",
+    "description": "Approved payload becomes stale after material constraint change. Confirmation attempt with stale approval must fail.",
+    "objective": "Verify that material constraint changes render prior approvals stale and require re-approval.",
+    "tags": [
+      "stage-5",
+      "transaction",
+      "stale-approval"
+    ],
+    "author": "Flight Agent Evaluator"
+  },
+  "scenario_mode": "transactional",
+  "initial_state": {
+    "booking_reference": "AS-1012",
+    "status": "disrupted"
+  },
+  "fixture_references": [
+    {
+      "fixture_name": "flight_status_delayed",
+      "raw_payload_reference": {
+        "uri": "fixture://flight_status_delayed.json",
+        "sha256": "1e6e098d77ddf55c378e0c5520434cce24bf33c59d9ef8d439efcd8558ce4921",
+        "byte_length": 1366
+      }
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "s1",
+      "description": "Test stale approval rejection after constraint change on AS-1012.",
+      "initial_message": "Test stale approval rejection after constraint change on AS-1012."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "reference_time": "2026-08-12T12:00:00+00:00",
+  "trajectory": {
+    "trajectory_id": "constraint-changes-after-approval-trajectory",
+    "description": "Scripted trajectory for constraint-changes-after-approval",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-get",
+        "tool_name": "booking.get_current",
+        "arguments": {
+          "booking_reference": "AS-1012"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-2-hold-1",
+        "tool_name": "booking.hold_alternative",
+        "arguments": {
+          "booking_reference": "AS-1012",
+          "offer_id": "offer-stale-1",
+          "flight_number": "AS170",
+          "origin": "JFK",
+          "destination": "LHR",
+          "price_amount": 510.0,
+          "idempotency_key": "idem-hold-stale-1"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-3-appr",
+        "tool_name": "approval.request",
+        "arguments": {
+          "booking_reference": "AS-1012",
+          "action_type": "confirm_rebooking",
+          "offer_id": "offer-stale-1",
+          "reason": "Initial approval for offer-stale-1.",
+          "idempotency_key": "idem-appr-stale-1",
+          "hold_id": {
+            "$ref_step": 1,
+            "json_pointer": "/hold_id"
+          }
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-4-hold-2",
+        "tool_name": "booking.hold_alternative",
+        "arguments": {
+          "booking_reference": "AS-1012",
+          "offer_id": "offer-stale-2",
+          "flight_number": "AS172",
+          "origin": "JFK",
+          "destination": "LHR",
+          "price_amount": 820.0,
+          "idempotency_key": "idem-hold-stale-2"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-5-conf-stale",
+        "tool_name": "booking.confirm_rebooking",
+        "arguments": {
+          "booking_reference": "AS-1012",
+          "hold_id": {
+            "$ref_step": 3,
+            "json_pointer": "/hold_id"
+          },
+          "approval_id": {
+            "$ref_step": 2,
+            "json_pointer": "/approval_id"
+          },
+          "idempotency_key": "idem-conf-stale-attempt"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-6-resp",
+        "response": "Attempted confirmation with stale approval failed as expected."
+      }
+    ]
+  }
+}

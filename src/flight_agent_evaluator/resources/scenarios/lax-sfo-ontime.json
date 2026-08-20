@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "lax-sfo-ontime",
+    "version": 1
+  },
+  "metadata": {
+    "title": "LAX-SFO on-time departure scenario",
+    "description": "Passenger checks status of AS204 from LAX to SFO. Flight is on time. No alternatives needed.",
+    "objective": "Verify agent confirms status without making unnecessary alternative searches."
+  },
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 120
+  },
+  "seed": 42,
+  "steps": [
+    {
+      "step_id": "check-on-time-status",
+      "description": "Passenger asks: 'Can you check if my flight AS204 from LAX to SFO on 2026-07-28 is running on time?'",
+      "initial_message": "Can you check if my flight AS204 from LAX to SFO on 2026-07-28 is running on time?"
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_id": "status-lookup-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    }
+  ],
+  "faults": [],
+  "trajectory": {
+    "trajectory_id": "lax-sfo-ontime-trajectory",
+    "description": "Status query for on-time flight AS204",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-status",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "AS204",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-2-response",
+        "response": "Flight AS204 from LAX to SFO is on time, scheduled for departure at 09:00."
+      }
+    ]
+  }
+}

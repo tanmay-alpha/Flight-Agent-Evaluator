@@ -155,7 +155,7 @@ def gate_uv_build() -> bool:
 def gate_wheel() -> bool:
     """Inspect built wheel for expected files."""
     dist = REPO_ROOT / "dist"
-    wheels = list(dist.glob("*.whl"))
+    wheels = sorted(dist.glob("*.whl"), reverse=True)
     if not wheels:
         print("No wheel found in dist/")
         return False
@@ -182,9 +182,9 @@ def gate_wheel() -> bool:
 
 
 def gate_sdist() -> bool:
-    """Inspect source distribution for expected files."""
+    """Inspect built sdist for expected files."""
     dist = REPO_ROOT / "dist"
-    sdists = list(dist.glob("*.tar.gz"))
+    sdists = sorted(dist.glob("*.tar.gz"), reverse=True)
     if not sdists:
         print("No sdist found in dist/")
         return False
@@ -212,9 +212,9 @@ def gate_sdist() -> bool:
 
 
 def gate_install_wheel() -> bool:
-    """Install the built wheel into a fresh virtual environment and import it."""
+    """Install the built wheel into a fresh virtual environment and verify CLI commands outside repo."""
     dist = REPO_ROOT / "dist"
-    wheels = list(dist.glob("*.whl"))
+    wheels = sorted(dist.glob("*.whl"), reverse=True)
     if not wheels:
         print("No wheel found for installation test")
         return False
@@ -223,7 +223,7 @@ def gate_install_wheel() -> bool:
         venv_dir = Path(tmp) / "venv"
         print(f"Creating test venv: {venv_dir}")
         result = subprocess.run(  # noqa: S603
-            [PYTHON, "-m", "venv", str(venv_dir)],
+            [PYTHON, "-m", "venv", "--system-site-packages", str(venv_dir)],
             check=False,
         )
         if result.returncode != 0:
@@ -231,7 +231,7 @@ def gate_install_wheel() -> bool:
             return False
         pip = venv_dir / "Scripts" / "pip.exe" if os.name == "nt" else venv_dir / "bin" / "pip"
         result = subprocess.run(  # noqa: S603
-            [str(pip), "install", "--quiet", str(wheel)],
+            [str(pip), "install", "--quiet", "--no-deps", "--force-reinstall", str(wheel)],
             check=False,
         )
         if result.returncode != 0:
@@ -240,8 +240,20 @@ def gate_install_wheel() -> bool:
         python = (
             venv_dir / "Scripts" / "python.exe" if os.name == "nt" else venv_dir / "bin" / "python"
         )
+        cli_bin = (
+            venv_dir / "Scripts" / "flight-evaluator.exe"
+            if os.name == "nt"
+            else venv_dir / "bin" / "flight-evaluator"
+        )
+
+        # Unrelated empty working directory
+        empty_dir = Path(tmp) / "empty_dir"
+        empty_dir.mkdir()
+
+        # 1. Test basic package import
         import_result = subprocess.run(  # noqa: S603
             [str(python), "-c", "import flight_agent_evaluator; print('OK')"],
+            cwd=str(empty_dir),
             check=False,
             capture_output=True,
             text=True,
@@ -249,6 +261,43 @@ def gate_install_wheel() -> bool:
         if import_result.returncode != 0:
             print(f"Import failed: {import_result.stderr!r}")
             return False
+
+        # 2. Test flight-evaluator --version
+        ver_res = subprocess.run(  # noqa: S603
+            [str(cli_bin), "--version"],
+            cwd=str(empty_dir),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if ver_res.returncode != 0 or "0.2.0" not in ver_res.stdout:
+            print(f"Version check failed: {ver_res.stderr!r} {ver_res.stdout!r}")
+            return False
+
+        # 3. Test flight-evaluator demo --json outside repo
+        demo_res = subprocess.run(  # noqa: S603
+            [str(cli_bin), "demo", "--json"],
+            cwd=str(empty_dir),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if demo_res.returncode != 0:
+            print(f"Demo failed in empty dir: {demo_res.stderr!r} {demo_res.stdout!r}")
+            return False
+
+        # 4. Test flight-evaluator benchmark verify-release
+        rel_res = subprocess.run(  # noqa: S603
+            [str(cli_bin), "benchmark", "verify-release"],
+            cwd=str(empty_dir),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if rel_res.returncode != 0:
+            print(f"Verify-release failed in empty dir: {rel_res.stderr!r} {rel_res.stdout!r}")
+            return False
+
     return True
 
 
