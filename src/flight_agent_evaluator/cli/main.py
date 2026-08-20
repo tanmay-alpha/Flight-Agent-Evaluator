@@ -13,6 +13,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from flight_agent_evaluator.agent import AgentPolicy, ModelClient, ModelMode
 from flight_agent_evaluator.agent.baselines import NaiveBaselineAgent, ScriptedOracleAgent
@@ -195,55 +196,6 @@ def cmd_agent_run(args: argparse.Namespace) -> int:
         print(f"  Tool Calls:   {metric_vector.tool_calls}")
 
     return 0 if metric_vector.task_success else 1
-
-
-def cmd_benchmark_run(args: argparse.Namespace) -> int:
-    """Run an authoritative benchmark suite using CanonicalBenchmarkEngine."""
-    from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
-
-    manifest_arg = getattr(args, "manifest", None)
-    scenarios_arg = getattr(args, "scenarios", None)
-
-    manifest_path = "resources/benchmarks/benchmark-v1.json"
-    if manifest_arg:
-        manifest_path = str(manifest_arg)
-    elif scenarios_arg and str(scenarios_arg).endswith(".json"):
-        manifest_path = str(scenarios_arg)
-
-    agents_arg = getattr(args, "agents", None)
-    agents_list = (
-        [a.strip() for a in agents_arg.split(",")]
-        if agents_arg
-        else ["scripted-oracle", "naive-baseline"]
-    )
-
-    output_dir = getattr(args, "output", None)
-    repetitions = getattr(args, "repetitions", None)
-
-    try:
-        engine = CanonicalBenchmarkEngine()
-        artifact = engine.run_benchmark(
-            manifest_path=manifest_path,
-            agent_ids=agents_list,
-            output_dir=output_dir,
-            repetitions=repetitions,
-        )
-    except Exception as exc:
-        print(f"Benchmark run error: {_sanitise_error(exc)}", file=sys.stderr)
-        return 1
-
-    if getattr(args, "json", False):
-        print(artifact.model_dump_json(indent=2))
-    else:
-        print(
-            f"Benchmark Suite Summary ({artifact.scenario_count} scenarios, {artifact.total_runs} runs):"
-        )
-        print(f"  Task Success Rate:   {artifact.metrics.task_success_rate * 100:.1f}%")
-        print(f"  Safety Pass Rate:    {artifact.metrics.safety_pass_rate * 100:.1f}%")
-        if artifact.metrics.evaluator_error_rate > 0:
-            print(f"  Evaluator Errors:    {artifact.metrics.evaluator_error_rate * 100:.1f}%")
-
-    return 0
 
 
 def cmd_scenario_validate(args: argparse.Namespace) -> int:
@@ -484,8 +436,11 @@ def cmd_trajectory_score(args: argparse.Namespace) -> int:
         expectation = TrajectoryExpectation.model_validate(exp_data)
 
         scenario_loader = ScenarioLoader()
-        sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
-        loaded = scenario_loader.load_from_path(sc_path)
+        try:
+            loaded = scenario_loader.load_builtin(expectation.scenario_id)
+        except Exception:
+            sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
+            loaded = scenario_loader.load_from_path(sc_path)
 
         evaluator = TrajectoryEvaluator()
         scorecard = evaluator.evaluate(
@@ -532,8 +487,11 @@ def cmd_trajectory_explain(args: argparse.Namespace) -> int:
         expectation = TrajectoryExpectation.model_validate(exp_data)
 
         scenario_loader = ScenarioLoader()
-        sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
-        loaded = scenario_loader.load_from_path(sc_path)
+        try:
+            loaded = scenario_loader.load_builtin(expectation.scenario_id)
+        except Exception:
+            sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
+            loaded = scenario_loader.load_from_path(sc_path)
 
         evaluator = TrajectoryEvaluator()
         scorecard = evaluator.evaluate(
@@ -578,8 +536,11 @@ def cmd_trajectory_diagnose(args: argparse.Namespace) -> int:
         expectation = TrajectoryExpectation.model_validate(exp_data)
 
         scenario_loader = ScenarioLoader()
-        sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
-        loaded = scenario_loader.load_from_path(sc_path)
+        try:
+            loaded = scenario_loader.load_builtin(expectation.scenario_id)
+        except Exception:
+            sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
+            loaded = scenario_loader.load_from_path(sc_path)
 
         evaluator = TrajectoryEvaluator()
         scorecard = evaluator.evaluate(
@@ -614,17 +575,17 @@ def cmd_benchmark_validate(args: argparse.Namespace) -> int:
     from flight_agent_evaluator.benchmarks.validator import BenchmarkCorpusValidator
 
     manifest_arg = (
-        getattr(args, "manifest", None)
-        or getattr(args, "manifest_pos", None)
+        getattr(args, "manifest_pos", None)
+        or getattr(args, "manifest", None)
         or getattr(args, "scenarios", None)
+        or "builtin:benchmark-v1"
     )
-    if manifest_arg and manifest_arg not in (
+    manifest_path = str(manifest_arg)
+    if manifest_path in (
         "resources/scenarios",
         "resources/benchmarks/benchmark-v1.json",
     ):
-        manifest_path = str(manifest_arg)
-    else:
-        manifest_path = "resources/benchmarks/benchmark-v1.json"
+        manifest_path = "builtin:benchmark-v1"
 
     validator = BenchmarkCorpusValidator()
     report = validator.validate_manifest_file(manifest_path)
@@ -706,34 +667,53 @@ def cmd_judge_score(args: argparse.Namespace) -> int:
         return 1
 
 
+def _get_version() -> str:
+    try:
+        import importlib.metadata
+
+        return importlib.metadata.version("flight-agent-evaluator")
+    except Exception:
+        return "0.2.0"
+
+
 def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
+    json_parent = argparse.ArgumentParser(add_help=False)
+    json_parent.add_argument(
+        "--json", action="store_true", default=None, help="Output machine-readable JSON."
+    )
+
     parser = argparse.ArgumentParser(
         prog="flight-evaluator",
         description="Evaluation, replay, and fault-injection platform for aviation AI agents.",
+        parents=[json_parent],
     )
-    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON.")
+    parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {_get_version()}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # scenario subcommands
-    scenario_p = subparsers.add_parser("scenario", help="Scenario management.")
+    scenario_p = subparsers.add_parser(
+        "scenario", help="Scenario management.", parents=[json_parent]
+    )
     scenario_sub = scenario_p.add_subparsers(dest="scenario_command", required=True)
-    val_p = scenario_sub.add_parser("validate", help="Validate a scenario file.")
+    val_p = scenario_sub.add_parser(
+        "validate", help="Validate a scenario file.", parents=[json_parent]
+    )
     val_p.add_argument("scenario", help="Path to scenario JSON file.")
     val_p.set_defaults(func=cmd_scenario_validate)
 
     # agents subcommands
-    agents_p = subparsers.add_parser("agents", help="Agent management.")
+    agents_p = subparsers.add_parser("agents", help="Agent management.", parents=[json_parent])
     agents_sub = agents_p.add_subparsers(dest="agents_command", required=True)
-    list_p = agents_sub.add_parser("list", help="List available agents.")
+    list_p = agents_sub.add_parser("list", help="List available agents.", parents=[json_parent])
     list_p.set_defaults(func=cmd_agents_list)
-    desc_p = agents_sub.add_parser("describe", help="Describe an agent.")
+    desc_p = agents_sub.add_parser("describe", help="Describe an agent.", parents=[json_parent])
     desc_p.add_argument("agent", help="Agent identifier (oracle, naive, model).")
     desc_p.set_defaults(func=cmd_agents_describe)
 
     # agent run subcommand
-    ag_run_p = subparsers.add_parser("agent", help="Single agent execution.")
+    ag_run_p = subparsers.add_parser("agent", help="Single agent execution.", parents=[json_parent])
     ag_sub = ag_run_p.add_subparsers(dest="agent_command", required=True)
-    ar_p = ag_sub.add_parser("run", help="Run an agent against a scenario.")
+    ar_p = ag_sub.add_parser("run", help="Run an agent against a scenario.", parents=[json_parent])
     ar_p.add_argument("scenario", help="Path to scenario JSON file.")
     ar_p.add_argument("--agent", choices=["oracle", "naive", "model"], default="oracle")
     ar_p.add_argument("--model", default="gpt-4o-mini")
@@ -746,47 +726,61 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
 
     # trajectory subcommands
     traj_p = subparsers.add_parser(
-        "trajectory", help="Trajectory expectation scoring and analysis."
+        "trajectory", help="Trajectory expectation scoring and analysis.", parents=[json_parent]
     )
     traj_sub = traj_p.add_subparsers(dest="trajectory_command", required=True)
 
-    traj_val = traj_sub.add_parser("validate", help="Validate an expectation JSON graph.")
+    traj_val = traj_sub.add_parser(
+        "validate", help="Validate an expectation JSON graph.", parents=[json_parent]
+    )
     traj_val.add_argument("expectation", help="Path to expectation JSON file.")
     traj_val.set_defaults(func=cmd_trajectory_validate)
 
     traj_score = traj_sub.add_parser(
-        "score", help="Score a run recording against an expectation graph."
+        "score", help="Score a run recording against an expectation graph.", parents=[json_parent]
     )
     traj_score.add_argument("recording", help="Path to run recording JSON file.")
     traj_score.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
     traj_score.set_defaults(func=cmd_trajectory_score)
 
     traj_explain = traj_sub.add_parser(
-        "explain", help="Explain evidence attribution for a scored run."
+        "explain", help="Explain evidence attribution for a scored run.", parents=[json_parent]
     )
     traj_explain.add_argument("recording", help="Path to run recording JSON file.")
     traj_explain.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
     traj_explain.set_defaults(func=cmd_trajectory_explain)
 
     traj_diag = traj_sub.add_parser(
-        "diagnose", help="Diagnose evidence-backed failures for a scored run."
+        "diagnose",
+        help="Diagnose evidence-backed failures for a scored run.",
+        parents=[json_parent],
     )
     traj_diag.add_argument("recording", help="Path to run recording JSON file.")
     traj_diag.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
     traj_diag.set_defaults(func=cmd_trajectory_diagnose)
 
     # demo subcommand
-    demo_p = subparsers.add_parser("demo", help="Run interactive V1 evaluator demonstration.")
+    demo_p = subparsers.add_parser(
+        "demo", help="Run interactive V1 evaluator demonstration.", parents=[json_parent]
+    )
     demo_p.set_defaults(func=cmd_demo_run)
 
     # benchmark subcommand
-    bm_p = subparsers.add_parser("benchmark", help="Benchmark execution.")
+    bm_p = subparsers.add_parser("benchmark", help="Benchmark execution.", parents=[json_parent])
     bm_sub = bm_p.add_subparsers(dest="benchmark_command", required=True)
-    bm_run_p = bm_sub.add_parser("run", help="Run benchmark suite across scenarios.")
+
+    bm_list_p = bm_sub.add_parser(
+        "list", help="List available built-in benchmarks.", parents=[json_parent]
+    )
+    bm_list_p.set_defaults(func=cmd_benchmark_list)
+
+    bm_run_p = bm_sub.add_parser(
+        "run", help="Run benchmark suite across scenarios.", parents=[json_parent]
+    )
     bm_run_p.add_argument(
         "--manifest",
-        default="resources/benchmarks/benchmark-v1.json",
-        help="Path to benchmark manifest JSON.",
+        default="builtin:benchmark-v1",
+        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
     )
     bm_run_p.add_argument(
         "--agents",
@@ -801,23 +795,33 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     bm_run_p.set_defaults(func=cmd_benchmark_run)
 
     bm_val_p = bm_sub.add_parser(
-        "validate", help="Validate benchmark scenarios and expectation graphs against manifest."
+        "validate",
+        help="Validate benchmark scenarios and expectation graphs against manifest.",
+        parents=[json_parent],
     )
     bm_val_p.add_argument(
         "manifest_pos",
         nargs="?",
-        default="resources/benchmarks/benchmark-v1.json",
-        help="Path to benchmark manifest JSON.",
+        default=None,
+        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
     )
-    bm_val_p.add_argument("--manifest", default=None, help="Path to benchmark manifest JSON.")
+    bm_val_p.add_argument(
+        "--manifest",
+        default="builtin:benchmark-v1",
+        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
+    )
     bm_val_p.add_argument("--scenarios", default=None, help="Deprecated alias for scenarios path.")
     bm_val_p.set_defaults(func=cmd_benchmark_validate)
 
-    bm_ab_p = bm_sub.add_parser("ablation", help="Run evaluator ablation study.")
+    bm_ab_p = bm_sub.add_parser(
+        "ablation", help="Run evaluator ablation study.", parents=[json_parent]
+    )
     bm_ab_p.set_defaults(func=cmd_ablation_run)
 
     bm_rep_p = bm_sub.add_parser(
-        "report", help="Generate benchmark summary report from stored artifacts."
+        "report",
+        help="Generate benchmark summary report from stored artifacts.",
+        parents=[json_parent],
     )
     bm_rep_p.add_argument(
         "summary_file", nargs="?", default=None, help="Path to summary.json or run.json."
@@ -826,32 +830,40 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     bm_rep_p.set_defaults(func=cmd_benchmark_report)
 
     bm_ver_p = bm_sub.add_parser(
-        "verify-release", help="Verify release integrity across all quality gates."
+        "verify-release",
+        help="Verify release integrity across all quality gates.",
+        parents=[json_parent],
     )
     bm_ver_p.set_defaults(func=cmd_verify_release)
 
     # annotation subcommand
-    ann_p = subparsers.add_parser("annotation", help="Annotation management.")
+    ann_p = subparsers.add_parser(
+        "annotation", help="Annotation management.", parents=[json_parent]
+    )
     ann_sub = ann_p.add_subparsers(dest="annotation_command", required=True)
-    ann_val = ann_sub.add_parser("validate", help="Validate an annotation bundle.")
+    ann_val = ann_sub.add_parser(
+        "validate", help="Validate an annotation bundle.", parents=[json_parent]
+    )
     ann_val.add_argument("bundle", help="Path to annotation bundle JSON file.")
     ann_val.set_defaults(func=cmd_annotation_validate)
 
     # judge subcommand
-    jdg_p = subparsers.add_parser("judge", help="Judge evaluation.")
+    jdg_p = subparsers.add_parser("judge", help="Judge evaluation.", parents=[json_parent])
     jdg_sub = jdg_p.add_subparsers(dest="judge_command", required=True)
-    jdg_score = jdg_sub.add_parser("score", help="Score a judge evidence package.")
+    jdg_score = jdg_sub.add_parser(
+        "score", help="Score a judge evidence package.", parents=[json_parent]
+    )
     jdg_score.add_argument("package", help="Path to judge evidence package JSON file.")
     jdg_score.set_defaults(func=cmd_judge_score)
 
     # run subcommand
-    run_p = subparsers.add_parser("run", help="Execute a scenario.")
+    run_p = subparsers.add_parser("run", help="Execute a scenario.", parents=[json_parent])
     run_p.add_argument("scenario", help="Path to a scenario JSON file.")
     run_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
     run_p.set_defaults(func=cmd_run)
 
     # replay subcommand
-    replay_p = subparsers.add_parser("replay", help="Replay a recorded run.")
+    replay_p = subparsers.add_parser("replay", help="Replay a recorded run.", parents=[json_parent])
     replay_p.add_argument("run_id", help="Run identifier.")
     replay_p.add_argument(
         "--output", "-o", help="Recording output directory.", default=".recordings"
@@ -879,7 +891,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     eval_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
     eval_p.set_defaults(func=cmd_evaluate)
 
+    raw_argv = list(argv) if argv is not None else sys.argv[1:]
+    is_json_flag = "--json" in raw_argv
+
     args = parser.parse_args(argv)
+    if is_json_flag:
+        args.json = True
+
     func = getattr(args, "func", None)
     if func is None:
         parser.print_help(sys.stderr)
@@ -887,8 +905,142 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     return int(func(args))
 
 
-def cmd_demo_run(args: argparse.Namespace) -> int:  # noqa: ARG001
+def cmd_benchmark_list(args: argparse.Namespace) -> int:
+    """List available built-in benchmark suites."""
+    from flight_agent_evaluator.benchmarks.loader import BenchmarkManifestLoader
+    from flight_agent_evaluator.resources.locator import get_builtin_locator
+
+    locator = get_builtin_locator()
+    b_ids = locator.list_builtin_benchmarks()
+    loader = BenchmarkManifestLoader()
+    items: list[dict[str, Any]] = []
+    for bid in b_ids:
+        try:
+            manifest, cases = loader.load_builtin(bid, verify_resources=False)
+            items.append(
+                {
+                    "id": manifest.benchmark_id,
+                    "version": manifest.benchmark_version,
+                    "title": manifest.title,
+                    "scenarios": len(manifest.scenarios),
+                    "manifest_digest": manifest.manifest_digest
+                    or manifest.compute_canonical_digest(),
+                }
+            )
+        except Exception:
+            items.append(
+                {
+                    "id": bid,
+                    "version": "1.0.0",
+                    "title": bid,
+                    "scenarios": 0,
+                    "manifest_digest": "",
+                }
+            )
+
+    if getattr(args, "json", False):
+        print(json.dumps(items, indent=2))
+    else:
+        print("Available Built-in Benchmarks:")
+        for item in items:
+            print(
+                f"  - {item['id']:<15} (v{item['version']}): {item['title']} "
+                f"[{item['scenarios']} scenarios, digest: {item['manifest_digest'][:16]}...]"
+            )
+    return 0
+
+
+def cmd_benchmark_run(args: argparse.Namespace) -> int:
+    """CLI handler for canonical benchmark run."""
+    from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
+
+    manifest_arg = (
+        getattr(args, "manifest", None)
+        or getattr(args, "scenarios", None)
+        or "builtin:benchmark-v1"
+    )
+    manifest_path = str(manifest_arg)
+    if manifest_path in (
+        "resources/scenarios",
+        "resources/benchmarks/benchmark-v1.json",
+    ):
+        manifest_path = "builtin:benchmark-v1"
+
+    agent_ids = (
+        [a.strip() for a in args.agents.split(",") if a.strip()]
+        if getattr(args, "agents", None)
+        else ["scripted-oracle", "naive-baseline"]
+    )
+    repetitions = getattr(args, "repetitions", 1)
+    output_dir = getattr(args, "output", None)
+
+    engine = CanonicalBenchmarkEngine()
+    try:
+        artifact = engine.run_benchmark(
+            manifest_path=manifest_path,
+            agent_ids=agent_ids,
+            output_dir=output_dir,
+            repetitions=repetitions,
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(artifact.model_dump(mode="json"), indent=2))
+        else:
+            sys.stdout.write(
+                "================================================================================\n"
+            )
+            sys.stdout.write("                      BENCHMARK EXECUTION SUMMARY\n")
+            sys.stdout.write(
+                "================================================================================\n"
+            )
+            sys.stdout.write(f"Run ID:               {artifact.run_semantic_id}\n")
+            sys.stdout.write(f"Manifest Digest:      {artifact.manifest_digest}\n")
+            sys.stdout.write(f"Scenarios:            {artifact.scenario_count}\n")
+            sys.stdout.write(f"Total Runs:           {artifact.total_runs}\n")
+            sys.stdout.write(
+                f"Task Success Rate:    {artifact.metrics.task_success_rate * 100:.1f}%\n"
+            )
+            sys.stdout.write(
+                f"Safety Pass Rate:     {artifact.metrics.safety_pass_rate * 100:.1f}%\n"
+            )
+            sys.stdout.write(
+                f"Average Score:        {artifact.metrics.average_overall_score:.3f} / 1.000\n"
+            )
+            if artifact.metrics.agent_pass_rates:
+                sys.stdout.write(
+                    "--------------------------------------------------------------------------------\n"
+                )
+                sys.stdout.write("AGENT BREAKDOWN:\n")
+                for aid, pr in artifact.metrics.agent_pass_rates.items():
+                    avg_s = artifact.metrics.agent_average_scores.get(aid, 0.0)
+                    sys.stdout.write(
+                        f"  - {aid:<20}: pass_rate={pr * 100:.1f}%, avg_score={avg_s:.3f}\n"
+                    )
+            sys.stdout.write(
+                "================================================================================\n"
+            )
+        return 0 if artifact.metrics.evaluator_error_rate == 0.0 else 1
+    except Exception as exc:
+        print(f"Error executing benchmark run: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
+
+def cmd_demo_run(args: argparse.Namespace) -> int:
     """CLI handler for interactive V1 evaluator demonstration."""
+    loader = ScenarioLoader()
+    try:
+        loaded = loader.load_builtin("jfk-lhr-delay")
+    except Exception as exc:
+        print(f"Error loading demo scenario: {_sanitise_error(exc)}", file=sys.stderr)
+        return 1
+
+    agent = ScriptedOracleAgent()
+    bm_runner = BenchmarkRunner(scenario_loader=loader)
+    metric_vector = asyncio.run(bm_runner.run_scenario(loaded.scenario, agent))
+
+    if getattr(args, "json", False):
+        print(json.dumps(metric_vector.model_dump(mode="json"), indent=2))
+        return 0 if metric_vector.task_success else 1
+
     banner = """
 ================================================================================
            FLIGHT AGENT EVALUATOR — V1 PORTFOLIO DEMONSTRATION
@@ -898,22 +1050,9 @@ def cmd_demo_run(args: argparse.Namespace) -> int:  # noqa: ARG001
 """
     sys.stdout.write(banner + "\n")
     sys.stdout.write(
-        "[1/4] Loading benchmark scenario 'resources/scenarios/jfk-lhr-delay.json'...\n"
+        "[1/4] Loading packaged benchmark scenario 'builtin:scenarios/jfk-lhr-delay.json'...\n"
     )
-    loader = ScenarioLoader()
-    sc_path = Path("resources/scenarios/jfk-lhr-delay.json")
-    try:
-        loaded = loader.load_from_path(sc_path)
-    except Exception as exc:
-        print(f"Error loading demo scenario: {_sanitise_error(exc)}", file=sys.stderr)
-        return 1
-
     sys.stdout.write("[2/4] Executing ScriptedOracleAgent in Simulated Airline Environment...\n")
-    agent = ScriptedOracleAgent()
-    bm_runner = BenchmarkRunner(scenario_loader=loader)
-
-    metric_vector = asyncio.run(bm_runner.run_scenario(loaded.scenario, agent))
-
     sys.stdout.write("[3/4] Evaluating trajectory against constraint-graph expectations...\n")
     sys.stdout.write("[4/4] Invoking Evidence-Grounded LLM Judge (rubric-v1)...\n\n")
 
@@ -946,22 +1085,31 @@ def cmd_demo_run(args: argparse.Namespace) -> int:  # noqa: ARG001
     return 0 if metric_vector.task_success else 1
 
 
-def cmd_bm_suite_run(args: argparse.Namespace) -> int:
-    """CLI handler for benchmark run."""
-    from flight_agent_evaluator.benchmarks.report import generate_benchmark_report
-    from flight_agent_evaluator.benchmarks.suite import BenchmarkSuite
+def cmd_verify_release(args: argparse.Namespace) -> int:
+    """Run full release verification suite across all quality gates."""
+    from flight_agent_evaluator.benchmarks.release_verifier import ReleaseVerifier
 
-    models = (
-        [m.strip() for m in args.models.split(",")]
-        if args.models
-        else ["gpt-4o", "baseline-scripted"]
-    )
-    scenarios = [{"id": f"sc-{i}", "version": 1} for i in range(1, args.scenarios + 1)]
-    suite = BenchmarkSuite()
-    summary = suite.run_benchmark(models, scenarios)
-    report = generate_benchmark_report(summary)
-    sys.stdout.write(report + "\n")
-    return 0
+    verifier = ReleaseVerifier()
+    report = verifier.verify_installed_release()
+
+    if getattr(args, "json", False):
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print("================================================================================")
+        print(f"       RELEASE VERIFICATION SUITE — v{report.package_version}")
+        print("================================================================================")
+        for check in report.checks:
+            status_tag = "[PASSED]" if check.passed else "[FAILED]"
+            print(f"  {status_tag:<9} {check.check_id}: {check.description}")
+            if check.details:
+                print(f"            {check.details}")
+        print("================================================================================")
+        if report.valid:
+            print("All release verification checks passed successfully!")
+        else:
+            print("Release verification failed.", file=sys.stderr)
+
+    return 0 if report.valid else 1
 
 
 def cmd_benchmark_report(args: argparse.Namespace) -> int:
@@ -1031,30 +1179,6 @@ def cmd_benchmark_report(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(f"Error loading benchmark report: {_sanitise_error(exc)}", file=sys.stderr)
         return 1
-
-
-def cmd_verify_release(args: argparse.Namespace) -> int:  # noqa: ARG001
-    """Run full release verification suite across all quality gates."""
-    import subprocess
-
-    cmds = [
-        ["uv", "lock", "--check"],
-        ["uv", "sync", "--locked"],
-        ["uv", "run", "ruff", "check", "."],
-        ["uv", "run", "ruff", "format", "--check", "."],
-        ["uv", "run", "mypy", "src"],
-        ["uv", "run", "pytest"],
-        ["uv", "run", "python", "scripts/check.py"],
-        ["uv", "build"],
-    ]
-    for cmd in cmds:
-        sys.stdout.write(f"Executing: {' '.join(cmd)}...\n")
-        res = subprocess.run(cmd)  # noqa: S603
-        if res.returncode != 0:
-            print(f"Release verification step failed: {' '.join(cmd)}", file=sys.stderr)
-            return res.returncode
-    sys.stdout.write("All release verification checks passed successfully!\n")
-    return 0
 
 
 def cmd_ablation_run(args: argparse.Namespace) -> int:  # noqa: ARG001

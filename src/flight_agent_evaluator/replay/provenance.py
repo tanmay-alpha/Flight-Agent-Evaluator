@@ -14,7 +14,11 @@ from flight_agent_evaluator.agent.baselines import NaiveBaselineAgent
 from flight_agent_evaluator.agent.model_client import ReplayModelClient
 from flight_agent_evaluator.contracts.model import ModelExchangeManifest
 from flight_agent_evaluator.engine.runner import ScenarioRunner
-from flight_agent_evaluator.engine.scenario_loader import LoadedScenario, ScenarioLoader
+from flight_agent_evaluator.engine.scenario_loader import (
+    LoadedScenario,
+    ScenarioLoader,
+    ScenarioLoaderError,
+)
 from flight_agent_evaluator.recording.contracts import (
     RecordingBundleManifest,
     ReplayProvenance,
@@ -114,21 +118,37 @@ class ReplayExecutionFactory:
                     )
             return loaded
 
-        # Exact path resolution
-        candidate = self._resource_root / "scenarios" / f"{provenance.scenario_id}.json"
-        if candidate.is_file():
-            loaded = loader.load_from_path(candidate)
-            if provenance.scenario_digest:
-                raw_sha = hashlib.sha256(candidate.read_bytes()).hexdigest()
-                if raw_sha != provenance.scenario_digest:
-                    raise ReplayProvenanceMismatchError(
-                        f"Scenario digest mismatch for {candidate}: "
-                        f"expected {provenance.scenario_digest}, got {raw_sha}"
-                    )
-            return loaded
+        # Built-in packaged resource resolution
+        try:
+            loaded_builtin = loader.load_builtin(provenance.scenario_id)
+            if provenance.scenario_digest and loaded_builtin.digest != provenance.scenario_digest:
+                raise ReplayProvenanceMismatchError(
+                    f"Built-in scenario digest mismatch for '{provenance.scenario_id}': "
+                    f"expected {provenance.scenario_digest}, got {loaded_builtin.digest}"
+                )
+            return loaded_builtin
+        except (ScenarioLoaderError, ReplayProvenanceMismatchError):
+            raise
+        except Exception:  # noqa: S110
+            pass
+
+        # Filesystem path fallback if resource_root is explicitly configured
+        if self._resource_root is not None:
+            candidate = self._resource_root / "scenarios" / f"{provenance.scenario_id}.json"
+            if candidate.is_file():
+                loaded = loader.load_from_path(candidate)
+                if provenance.scenario_digest:
+                    raw_sha = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                    if raw_sha != provenance.scenario_digest:
+                        raise ReplayProvenanceMismatchError(
+                            f"Scenario digest mismatch for {candidate}: "
+                            f"expected {provenance.scenario_digest}, got {raw_sha}"
+                        )
+                return loaded
 
         raise ReplayUnavailableError(
-            f"Scenario '{provenance.scenario_id}' not found at {candidate} for authoritative replay."
+            f"Scenario '{provenance.scenario_id}' not found in built-in package resources "
+            f"or at {self._resource_root} for authoritative replay."
         )
 
     def resolve_agent(

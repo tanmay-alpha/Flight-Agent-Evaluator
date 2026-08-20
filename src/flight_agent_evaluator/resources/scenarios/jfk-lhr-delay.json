@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "jfk-lhr-delay",
+    "version": 1
+  },
+  "metadata": {
+    "title": "JFK-LHR delayed departure scenario",
+    "description": "Passenger flight AS142 is delayed. Agent should investigate status and search for alternative flights.",
+    "objective": "Verify status investigation and alternative search for delayed flight."
+  },
+  "limits": {
+    "tool_call_limit": 10,
+    "time_limit_seconds": 120
+  },
+  "seed": 42,
+  "steps": [
+    {
+      "step_id": "check-flight-status",
+      "description": "Passenger asks: 'Flight AS142 departing JFK for LHR on 2026-07-28 is delayed. What is the current status and are there alternative flights?'",
+      "initial_message": "Flight AS142 departing JFK for LHR on 2026-07-28 is delayed. What is the current status and are there alternative flights?"
+    }
+  ],
+  "assertions": [
+    {
+      "assertion_id": "status-lookup-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    },
+    {
+      "assertion_id": "search-called",
+      "assertion_type": "tool_called",
+      "tool_name": "flight.search_flights"
+    }
+  ],
+  "faults": [],
+  "trajectory": {
+    "trajectory_id": "jfk-lhr-delay-trajectory",
+    "description": "Standard delay investigation for AS142 JFK->LHR",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-1-status",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "AS142",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "step-2-search",
+        "tool_name": "flight.search_flights",
+        "arguments": {
+          "origin": "JFK",
+          "destination": "LHR",
+          "departure_date": "2026-07-28"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "step-3-response",
+        "response": "AS142 is delayed by 180 minutes due to weather. Alternative flight AS144 is available at 18:30."
+      }
+    ]
+  }
+}

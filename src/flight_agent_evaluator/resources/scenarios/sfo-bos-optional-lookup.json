@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "sfo-bos-optional-lookup",
+    "version": 1
+  },
+  "metadata": {
+    "title": "SFO to BOS Disruption — Optional Policy Lookup",
+    "description": "Flight UA789 is delayed. Agent looks up flight status and may optionally check carrier rebooking policy.",
+    "objective": "Verify flight status with optional policy lookup.",
+    "tags": ["disruption", "optional_lookup", "sfo_bos"]
+  },
+  "steps": [
+    {
+      "step_id": "step1",
+      "description": "Check UA789 status and rebooking rules if needed.",
+      "initial_message": "Flight UA789 SFO to BOS is delayed. Please check flight status and optional rebooking rules for carrier UA."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 5,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "assertions": [
+    {
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    }
+  ],
+  "trajectory": {
+    "trajectory_id": "traj_sfo_bos",
+    "description": "Oracle trace for SFO-BOS scenario",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "s1",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "UA789",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "s2",
+        "tool_name": "policy.get_rebooking_rules",
+        "arguments": {
+          "carrier_code": "UA"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "s3",
+        "response": "Flight UA789 is delayed. Carrier UA rebooking rules allow same-carrier and interline options."
+      }
+    ]
+  }
+}

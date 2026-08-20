@@ -1,0 +1,101 @@
+{
+  "benchmark_id": "demo-v1",
+  "benchmark_version": "1.0.0",
+  "title": "Flight Agent Evaluator Demo V1",
+  "description": "Curated demo suite of 4 representative scenarios spanning read-only disruption and Stage 5 transactional safety.",
+  "environment_version": "1.0.0",
+  "evaluator_version": "1.0.0",
+  "taxonomy_version": "1.0.0",
+  "scoring_profile_version": "1.0.0",
+  "judge_validation_status": "human_calibration_pending",
+  "scenarios": [
+    {
+      "scenario_id": "jfk-lhr-delay",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/jfk-lhr-delay.json",
+      "scenario_sha256": "6b8291146ed529329bc8eb4fac13886e9ce202d336d6caca3c9f9ae8e694a66a",
+      "expectation_path": "resources/expectations/jfk-lhr-delay.json",
+      "expectation_sha256": "15c99ed1764ad198684472c4d4fa11c513b297cc1a55e89d7e1f567742f5e3c5",
+      "family": "read_only",
+      "difficulty": "medium",
+      "tags": [
+        "disruption",
+        "delay"
+      ]
+    },
+    {
+      "scenario_id": "lax-sfo-ontime",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/lax-sfo-ontime.json",
+      "scenario_sha256": "68248e6ed50945c42e8bd1ee8d55abcb0cca1c185130e1d379e9fb24384afcf2",
+      "expectation_path": "resources/expectations/lax-sfo-ontime.json",
+      "expectation_sha256": "0dd1372a3adf28c35bd81f036837a2af5dc279460bee8859f1e422df8020761f",
+      "family": "read_only",
+      "difficulty": "easy",
+      "tags": [
+        "ontime",
+        "baseline"
+      ]
+    },
+    {
+      "scenario_id": "bwi-mco-forbidden-mutation",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/bwi-mco-forbidden-mutation.json",
+      "scenario_sha256": "c402bd6e1873fadba640d598d033467f48e90df517c61f86b1cdabf7302a04ba",
+      "expectation_path": "resources/expectations/bwi-mco-forbidden-mutation.json",
+      "expectation_sha256": "b8677cceb0b3170c36e0d585f1c52baa2311a7bd7a44a7ba5c6f1429ddad8576",
+      "family": "read_only",
+      "difficulty": "medium",
+      "tags": [
+        "safety",
+        "forbidden-mutation"
+      ]
+    },
+    {
+      "scenario_id": "approval-granted",
+      "scenario_version": 1,
+      "scenario_path": "resources/scenarios/stage-5/approval-granted.json",
+      "scenario_sha256": "bd8cccba516e7d7d5ad6c0a3e09dbc5b4be7872c26d09e6da49fd1952954aded",
+      "expectation_path": "resources/expectations/stage-5/approval-granted.json",
+      "expectation_sha256": "2a9106b68c6b4043863ee357d72b5b1dec7b8e7a210b84ef5a9a1151acd1d268",
+      "family": "transactional",
+      "difficulty": "hard",
+      "tags": [
+        "stage-5",
+        "transaction",
+        "approval"
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "agent_id": "scripted-oracle",
+      "agent_version": "1.0.0",
+      "implementation": "flight_agent_evaluator.agent.baselines.ScriptedOracleAgent",
+      "configuration_digest": null
+    },
+    {
+      "agent_id": "naive-baseline",
+      "agent_version": "1.0.0",
+      "implementation": "flight_agent_evaluator.agent.baselines.NaiveBaselineAgent",
+      "configuration_digest": null
+    },
+    {
+      "agent_id": "random-baseline",
+      "agent_version": "1.0.0",
+      "implementation": "flight_agent_evaluator.agent.baselines.RandomBaselineAgent",
+      "configuration_digest": null
+    }
+  ],
+  "run_policy": {
+    "repetitions": 1,
+    "seeds": [
+      42
+    ],
+    "network_allowed": false,
+    "judge_policy": "offline_rubric",
+    "replay_policy": "deterministic",
+    "failure_policy": "fail_closed"
+  },
+  "manifest_digest": "a54c7a74698fd7212dbdf6ab7b5a768efdd943f39e83207cf4433860dd963800"
+}

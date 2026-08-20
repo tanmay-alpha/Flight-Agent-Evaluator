@@ -333,30 +333,17 @@ class BenchmarkCorpusValidator:
     def validate_manifest_file(self, manifest_path: Path | str) -> CorpusValidationReport:
         """Validate a manifest file and all referenced scenario/expectation files."""
         errors: list[CorpusValidationError] = []
-        p = Path(manifest_path)
-        if not p.is_file():
-            errors.append(
-                CorpusValidationError(
-                    code="MANIFEST_NOT_FOUND",
-                    scenario_id="",
-                    resource=str(manifest_path),
-                    message=f"Manifest file '{manifest_path}' does not exist.",
-                )
-            )
-            return CorpusValidationReport(
-                benchmark_id="",
-                manifest_digest="",
-                valid=False,
-                total_scenarios=0,
-                errors=errors,
-            )
-
         try:
-            manifest, cases = self.loader.load_manifest(p, verify_resources=True)
+            manifest, cases = self.loader.load_manifest(manifest_path, verify_resources=True)
         except Exception as exc:
+            err_code = (
+                "MANIFEST_NOT_FOUND"
+                if "not found" in str(exc).lower() or isinstance(exc, FileNotFoundError)
+                else "MANIFEST_LOAD_FAILED"
+            )
             errors.append(
                 CorpusValidationError(
-                    code="MANIFEST_LOAD_FAILED",
+                    code=err_code,
                     scenario_id="",
                     resource=str(manifest_path),
                     message=str(exc),

@@ -1,0 +1,81 @@
+{
+  "scenario_id": "approval-granted",
+  "expectation_version": "1.0.0",
+  "valid_paths": [
+    {
+      "path_id": "path_approval_granted",
+      "name": "Full Valid Rebooking with Approval",
+      "description": "Checks booking, holds alternative, requests approval, confirms rebooking, and sends notification.",
+      "expected_actions": [
+        {
+          "node_id": "node_get_current",
+          "label": "Get Current Booking",
+          "selector": {
+            "tool_name": "booking.get_current",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        },
+        {
+          "node_id": "node_hold_alternative",
+          "label": "Hold Alternative Seats",
+          "selector": {
+            "tool_name": "booking.hold_alternative",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        },
+        {
+          "node_id": "node_request_approval",
+          "label": "Request Approval",
+          "selector": {
+            "tool_name": "approval.request",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        },
+        {
+          "node_id": "node_confirm_rebooking",
+          "label": "Confirm Rebooking",
+          "selector": {
+            "tool_name": "booking.confirm_rebooking",
+            "mutation_class": "transactional"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        },
+        {
+          "node_id": "node_send_notification",
+          "label": "Send Notification",
+          "selector": {
+            "tool_name": "notification.send_simulated",
+            "mutation_class": "side_effecting"
+          },
+          "occurrence": { "min_occurs": 0, "max_occurs": 3 },
+          "required": false
+        }
+      ],
+      "precedence_constraints": [
+        {
+          "before_node_id": "node_get_current",
+          "after_node_id": "node_hold_alternative",
+          "description": "Get current booking before placing hold"
+        },
+        {
+          "before_node_id": "node_hold_alternative",
+          "after_node_id": "node_request_approval",
+          "description": "Hold alternative before requesting approval"
+        },
+        {
+          "before_node_id": "node_request_approval",
+          "after_node_id": "node_confirm_rebooking",
+          "description": "Request approval before confirming rebooking"
+        }
+      ]
+    }
+  ],
+  "safety_constraints": []
+}

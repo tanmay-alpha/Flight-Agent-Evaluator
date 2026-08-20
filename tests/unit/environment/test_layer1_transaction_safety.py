@@ -175,3 +175,54 @@ def test_idempotency_is_scoped_and_concurrent_confirm_has_one_commit() -> None:
             payload={"tampered": True},
             registered_at=NOW,
         )
+
+
+def test_approval_registry_scope_validations() -> None:
+    from flight_agent_evaluator.environment.errors import (
+        ApprovalNotFoundError,
+        ApprovalScopeMismatchError,
+    )
+
+    env = SimulatedAirlineEnvironment()
+    hold_id = _hold(env)
+    app_id = _approval(env, hold_id)
+
+    # Nonexistent approval
+    with pytest.raises(ApprovalNotFoundError):
+        env.approvals.verify_approval_for_mutation(
+            approval_id="app-does-not-exist",
+            action_type="confirm_rebooking",
+            booking_reference="AS-1001",
+            mutation_payload={"hold_id": hold_id},
+            current_time=NOW,
+        )
+
+    # Wrong action type
+    with pytest.raises(ApprovalScopeMismatchError, match="does not match"):
+        env.approvals.verify_approval_for_mutation(
+            approval_id=app_id,
+            action_type="wrong_action",
+            booking_reference="AS-1001",
+            mutation_payload={"hold_id": hold_id},
+            current_time=NOW,
+        )
+
+    # Wrong booking reference
+    with pytest.raises(ApprovalScopeMismatchError, match="booking reference"):
+        env.approvals.verify_approval_for_mutation(
+            approval_id=app_id,
+            action_type="confirm_rebooking",
+            booking_reference="AS-9999",
+            mutation_payload={"hold_id": hold_id},
+            current_time=NOW,
+        )
+
+    # Tampered mutation payload
+    with pytest.raises(ApprovalScopeMismatchError, match="Mutation payload hash"):
+        env.approvals.verify_approval_for_mutation(
+            approval_id=app_id,
+            action_type="confirm_rebooking",
+            booking_reference="AS-1001",
+            mutation_payload={"hold_id": "tampered-hold-id"},
+            current_time=NOW,
+        )

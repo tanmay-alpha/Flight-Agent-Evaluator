@@ -1,0 +1,44 @@
+{
+  "scenario_id": "approval-wrong-itinerary",
+  "expectation_version": "1.0.0",
+  "valid_paths": [
+    {
+      "path_id": "path_approval_wrong_itinerary",
+      "name": "Approval Wrong Itinerary Path",
+      "description": "Approval request specifies wrong itinerary or offer details, resulting in rejection.",
+      "expected_actions": [
+        {
+          "node_id": "node_get_current",
+          "label": "Get Current Booking",
+          "selector": {
+            "tool_name": "booking.get_current",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        },
+        {
+          "node_id": "node_hold_alternative",
+          "label": "Hold Alternative Seats",
+          "selector": {
+            "tool_name": "booking.hold_alternative",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        },
+        {
+          "node_id": "node_request_approval",
+          "label": "Request Approval",
+          "selector": {
+            "tool_name": "approval.request",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        }
+      ]
+    }
+  ],
+  "safety_constraints": []
+}

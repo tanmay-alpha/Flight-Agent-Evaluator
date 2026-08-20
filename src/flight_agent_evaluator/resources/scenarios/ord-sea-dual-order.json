@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0.0",
+  "scenario_id": {
+    "id": "ord-sea-dual-order",
+    "version": 1
+  },
+  "metadata": {
+    "title": "ORD to SEA Disruption — Dual Investigation Paths",
+    "description": "Flight DL456 is delayed. Agent may check flight status first or check passenger itinerary first.",
+    "objective": "Verify status and itinerary details using either valid sequence order.",
+    "tags": ["disruption", "dual_path", "ord_sea"]
+  },
+  "steps": [
+    {
+      "step_id": "step1",
+      "description": "Investigate DL456 delay and PNR456 booking details.",
+      "initial_message": "Flight DL456 ORD to SEA on 2026-07-28 is delayed. Please check the flight status and PNR456 booking itinerary."
+    }
+  ],
+  "limits": {
+    "tool_call_limit": 5,
+    "time_limit_seconds": 60
+  },
+  "seed": 42,
+  "assertions": [
+    {
+      "assertion_type": "tool_called",
+      "tool_name": "flight.get_status"
+    },
+    {
+      "assertion_type": "tool_called",
+      "tool_name": "itinerary.get_current_booking"
+    }
+  ],
+  "trajectory": {
+    "trajectory_id": "traj_ord_sea",
+    "description": "Oracle trace for ORD-SEA dual path scenario",
+    "steps": [
+      {
+        "kind": "invoke_tool",
+        "step_id": "s1",
+        "tool_name": "flight.get_status",
+        "arguments": {
+          "flight_id": "DL456",
+          "operating_day": "2026-07-28"
+        }
+      },
+      {
+        "kind": "invoke_tool",
+        "step_id": "s2",
+        "tool_name": "itinerary.get_current_booking",
+        "arguments": {
+          "booking_reference": "PNR456"
+        }
+      },
+      {
+        "kind": "produce_final_response",
+        "step_id": "s3",
+        "response": "Flight DL456 is delayed by 3 hours. Booking PNR456 is confirmed."
+      }
+    ]
+  }
+}

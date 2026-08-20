@@ -141,10 +141,16 @@ def test_prompt_building() -> None:
 
 def test_evidence_package_from_scorecard() -> None:
     scorecard = {
-        "safety_passed": True,
-        "required_action_recall": 1.0,
-        "task_success": True,
+        "safety_passed": False,
+        "required_action_recall": 0.5,
+        "task_success": False,
         "tool_call_summary": "Called flight.search",
+        "failure_report": {
+            "instances": [
+                {"code": "MISSING_ACTION", "severity": "error"},
+                {"code": "FORBIDDEN_ACTION", "severity": "fatal"},
+            ]
+        },
     }
     pkg = build_evidence_package_from_scorecard(
         scenario_id="scen-1",
@@ -153,5 +159,74 @@ def test_evidence_package_from_scorecard() -> None:
         final_response="Final answer",
         scorecard=scorecard,
     )
-    assert len(pkg.trusted_observations) == 3
+    assert len(pkg.trusted_observations) == 5
     assert pkg.tool_call_summary == "Called flight.search"
+    assert any(
+        o.value is not None and "MISSING_ACTION" in o.value for o in pkg.trusted_observations
+    )
+
+
+def test_verified_evidence_resolver() -> None:
+    import uuid
+    from datetime import UTC, datetime
+
+    from flight_agent_evaluator.judges.base import JudgeClient
+    from flight_agent_evaluator.judges.resolver import VerifiedEvidenceResolver
+    from flight_agent_evaluator.recording.contracts import JournalEntry
+    from flight_agent_evaluator.recording.journal import HashChainJournal
+
+    journal = HashChainJournal()
+    run_id = uuid.uuid4()
+    e1 = journal.append(
+        JournalEntry(
+            seq=1,
+            id=uuid.uuid4(),
+            type="run_started",
+            run_id=run_id,
+            correlation_id="c1",
+            time=datetime.now(UTC),
+            payload={"scenario_id": "scen-1"},
+            prev_hash="0" * 64,
+            hash="",
+        )
+    )
+    journal.append(
+        JournalEntry(
+            seq=2,
+            id=uuid.uuid4(),
+            type="tool_call",
+            run_id=run_id,
+            correlation_id="c2",
+            time=datetime.now(UTC),
+            payload={"call_id": "call-abc-123", "tool": "search_flights"},
+            prev_hash=e1.hash,
+            hash="",
+        )
+    )
+
+    resolver = VerifiedEvidenceResolver(journal)
+
+    # Resolve seq reference
+    obs1 = TrustedObservation(
+        evidence_id="ev-1",
+        source="seq:1",
+        description="Run started",
+    )
+    res1 = resolver.resolve_observation(obs1)
+    assert res1["evidence_id"] == "ev-1"
+    assert res1["resolved_entry_seq"] == 1
+    assert res1["resolved_entry_type"] == "run_started"
+
+    # Resolve tool call reference
+    obs2 = TrustedObservation(
+        evidence_id="ev-2",
+        source="tool_call:call-abc-123",
+        description="Search flight call",
+    )
+    res2 = resolver.resolve_observation(obs2)
+    assert res2["resolved_entry_seq"] == 2
+    assert res2["resolved_entry_type"] == "tool_call"
+
+    # Protocol check
+    fake = FakeJudgeClient()
+    assert isinstance(fake, JudgeClient)

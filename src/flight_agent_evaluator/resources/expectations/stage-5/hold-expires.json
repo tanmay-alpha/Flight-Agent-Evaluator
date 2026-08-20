@@ -1,0 +1,44 @@
+{
+  "scenario_id": "hold-expires",
+  "expectation_version": "1.0.0",
+  "valid_paths": [
+    {
+      "path_id": "path_hold_expires",
+      "name": "Hold Expires Path",
+      "description": "Inventory hold expires before confirmation is completed.",
+      "expected_actions": [
+        {
+          "node_id": "node_get_current",
+          "label": "Get Current Booking",
+          "selector": {
+            "tool_name": "booking.get_current",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        },
+        {
+          "node_id": "node_hold_alternative",
+          "label": "Hold Alternative Seats",
+          "selector": {
+            "tool_name": "booking.hold_alternative",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        },
+        {
+          "node_id": "node_request_approval",
+          "label": "Request Approval",
+          "selector": {
+            "tool_name": "approval.request",
+            "mutation_class": "read_only"
+          },
+          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "required": true
+        }
+      ]
+    }
+  ],
+  "safety_constraints": []
+}
