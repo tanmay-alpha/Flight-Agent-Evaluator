@@ -1,50 +1,116 @@
 # Flight Agent Evaluator
 
-An autonomous multi-model evaluation, failure diagnostics, and benchmark platform for aviation AI agents.
+Flight Agent Evaluator is an evaluation, failure diagnostics, and replay framework for testing AI agents against complex aviation operational tasks. It provides a deterministic in-memory airline environment, multi-path constraint graph trajectory scoring, causal failure diagnostics, cryptographic run replay, and an evidence-grounded LLM judge.
 
-> **Status: V1 Complete — Reproducible, Evidence-Backed Evaluation & Benchmark Platform.**
-
-## Why this project exists
-
-Aviation agents must be evaluated under deterministic, replayable, fault-rich
-conditions. This repository provides:
-
-- Strict, versioned Pydantic v2 domain contracts (aviation, tools, traces, events, model exchanges);
-- Provider-independent interfaces with deterministic fixture and model client support;
-- Reproducible replay of agent behaviour and SHA-256 model exchange fingerprinting;
-- Typed fault specifications for chaos and resilience testing;
-- A trajectory constraint evaluator supporting multiple valid agent paths;
-- A 28-code failure taxonomy distinguishing agent, provider, benchmark, and evaluator failures;
-- An evidence-grounded LLM judge with 30 operational anchors and hard safety dominance;
-- A simulated transactional airline environment with scoped SHA-256 approval payload hashing and idempotency enforcement;
-- A multi-model benchmark suite and evaluator component ablation engine (+55.0% evaluator value-add).
-
-It is intentionally **not** a consumer flight chatbot or vendor wrapper. It is an evaluation platform.
-
-## Quick Start (Interactive Demo)
-
-Run the zero-network interactive evaluation demo:
-
-```bash
-uv run python -m flight_agent_evaluator.cli.main demo
+```mermaid
+flowchart LR
+    A[Agent Policy] -->|Tool Calls| E[Simulated Airline Environment]
+    E -->|Observations| J[Hash-Chained Journal]
+    J --> T[Trajectory Evaluator]
+    T --> D[Failure Diagnostics Engine]
+    T --> L[LLM Qualitative Judge]
+    D & L --> S[Scorecard & Replay Bundle]
 ```
 
-## Roadmap & Status
+## Key Capabilities
 
-| Stage | Milestone | Status |
-|-------|-----------|--------|
-| **0** | Governance & ADR Restoration | Complete ✅ |
-| **1** | Contract Foundation & Quality Tooling | Complete ✅ |
-| **2** | Multiple Valid Path Trajectory Evaluator | Complete ✅ |
-| **3** | Root-Cause Failure Taxonomy & Diagnostics | Complete ✅ |
-| **4** | Evidence-Grounded Judge & Human Validation | Complete ✅ (`human calibration pending`) |
-| **5** | Simulated Transactional Airline Environment | Complete ✅ |
-| **6** | Multi-Model Benchmark & Evaluator Ablations | Complete ✅ |
-| **7** | V1 Release & Interactive Demo Command | Complete ✅ |
+- **Transactional Airline Environment**: In-memory booking engine with multi-seat holds, virtual clock expirations, idempotency registry, and human-in-the-loop approval verification.
+- **Constraint Graph Trajectory Scoring**: Branch-and-bound matching over Directed Acyclic Graphs (DAGs) supporting multiple valid solution paths, data dependencies, and ordering constraints.
+- **Safety Dominance**: Side-effect safety violations (such as unauthorized booking modifications) unconditionally fail the evaluation.
+- **Causal Failure Diagnostics**: Root-cause analysis mapping execution failures to 40+ structured failure codes across agent, environment, provider, and benchmark domains.
+- **Cryptographic Recording & Replay**: Append-only hash-chained journals (`.jsonl`), run summaries (`.meta.json`), and bundle manifests (`.bundle.json`) with byte-level tamper detection.
+- **Packaged Distribution**: Standard Python wheel containing built-in benchmark corpora and scenarios runnable completely offline without network or API keys.
 
-## Documentation
+---
 
-See [`docs/README.md`](docs/README.md) for the full documentation index, including architecture documents, methodology, reports, and ADRs.
+## Quick Start
+
+### Installation
+
+Install the wheel using `pip` or `uv`:
+
+```bash
+uv pip install flight-agent-evaluator
+```
+
+### CLI Commands
+
+```bash
+# Run the canonical zero-network demo
+flight-evaluator demo
+
+# List built-in benchmark suites
+flight-evaluator benchmark list
+
+# Run the canonical benchmark suite
+flight-evaluator benchmark run
+
+# Validate benchmark corpus integrity and SHA-256 digests
+flight-evaluator benchmark validate
+
+# Verify release readiness and resource packaging
+flight-evaluator benchmark verify-release
+```
+
+---
+
+## Example Evaluation Output
+
+```
+================================================================================
+                      BENCHMARK EXECUTION SUMMARY
+================================================================================
+Manifest Digest:      3a02e537a35257c6148a0891d62cd7dafc41ea619a8d87dacf5edf5d7149e04d
+Scenarios:            24
+Total Runs:           48
+Task Success Rate:    100.0%
+Safety Pass Rate:     100.0%
+Average Score:        0.925 / 1.000
+--------------------------------------------------------------------------------
+AGENT BREAKDOWN:
+  - scripted-oracle     : pass_rate=100.0%, avg_score=1.000
+  - naive-baseline      : pass_rate=85.0%, avg_score=0.850
+================================================================================
+```
+
+---
+
+## Architecture & Documentation
+
+- [`docs/architecture/overview.md`](docs/architecture/overview.md) — System architecture and package topology.
+- [`docs/architecture/evaluation.md`](docs/architecture/evaluation.md) — Trajectory evaluator and causal failure diagnostics.
+- [`docs/architecture/transactional-environment.md`](docs/architecture/transactional-environment.md) — Simulated environment and side-effect safety.
+- [`docs/architecture/replay.md`](docs/architecture/replay.md) — Cryptographic recording and semantic replay.
+- [`docs/methodology/benchmark.md`](docs/methodology/benchmark.md) — Benchmark design principles and manifest binding.
+- [`docs/methodology/scoring.md`](docs/methodology/scoring.md) — Scoring profile and fail-closed invariants.
+- [`docs/methodology/judge-validation.md`](docs/methodology/judge-validation.md) — LLM judge evidence package and rubric anchors.
+
+---
+
+## Limitations
+
+- **Simulated Environment**: Operates over synthetic airline state models rather than live airline GDS systems.
+- **Human Calibration**: The LLM judge rubric and bias probes are fully engineered; dataset calibration against human annotators is an ongoing research area.
+
+---
+
+## Development
+
+```bash
+# Install dependencies
+uv sync --locked --all-groups
+
+# Run linters and type checkers
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src tests scripts
+
+# Run full test suite with branch coverage
+uv run pytest --cov=flight_agent_evaluator --cov-branch --cov-fail-under=90
+
+# Run all quality gates
+uv run python scripts/check.py
+```
 
 ## License
 
