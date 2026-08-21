@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -40,9 +41,7 @@ def test_installed_demo_succeeds_outside_repo(tmp_path: Path):
 
     # Create clean virtual environment in tmp_path
     venv_dir = tmp_path / "venv"
-    subprocess.run(
-        [sys.executable, "-m", "venv", "--system-site-packages", str(venv_dir)], check=True
-    )
+    subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
 
     # Find python and executable
     if sys.platform == "win32":
@@ -51,27 +50,17 @@ def test_installed_demo_succeeds_outside_repo(tmp_path: Path):
         venv_python = venv_dir / "bin" / "python"
 
     # Install wheel into venv
+    uv_bin = shutil.which("uv") or "uv"
     subprocess.run(
         [
-            sys.executable,
-            "-m",
+            uv_bin,
             "pip",
             "install",
-            "--quiet",
-            "--no-deps",
-            "--force-reinstall",
-            "--target",
-            str(
-                venv_dir / "Lib" / "site-packages"
-                if sys.platform == "win32"
-                else venv_dir
-                / "lib"
-                / f"python{sys.version_info.major}.{sys.version_info.minor}"
-                / "site-packages"
-            ),
+            "--python",
+            str(venv_python),
             str(wheel_path.resolve()),
         ],
-        check=False,
+        check=True,
     )
 
     # Run flight-evaluator demo in an unrelated working directory

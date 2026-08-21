@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -55,30 +56,33 @@ def isolated_installed_venv(built_distribution: tuple[Path, Path]) -> tuple[Path
     temp_dir = Path(tempfile.mkdtemp(prefix="fae-installed-env-"))
     venv_dir = temp_dir / "venv"
 
-    # Create isolated venv with system-site-packages for dependencies
+    # Create isolated venv
     res_venv = subprocess.run(
-        [PYTHON_EXE, "-m", "venv", "--system-site-packages", str(venv_dir)],
+        [PYTHON_EXE, "-m", "venv", str(venv_dir)],
         check=False,
         capture_output=True,
         text=True,
     )
     assert res_venv.returncode == 0, f"Failed to create venv: {res_venv.stderr}"
 
-    pip = venv_dir / "Scripts" / "pip.exe" if os.name == "nt" else venv_dir / "bin" / "pip"
+    venv_python = (
+        venv_dir / "Scripts" / "python.exe" if os.name == "nt" else venv_dir / "bin" / "python"
+    )
     cli_bin = (
         venv_dir / "Scripts" / "flight-evaluator.exe"
         if os.name == "nt"
         else venv_dir / "bin" / "flight-evaluator"
     )
 
-    # Force install wheel into the virtualenv
-    res_pip = subprocess.run(
-        [str(pip), "install", "--quiet", "--no-deps", "--force-reinstall", str(wheel_path)],
+    # Install wheel and its dependencies into the virtualenv using uv
+    uv_bin = shutil.which("uv") or "uv"
+    res_install = subprocess.run(
+        [uv_bin, "pip", "install", "--python", str(venv_python), str(wheel_path)],
         check=False,
         capture_output=True,
         text=True,
     )
-    assert res_pip.returncode == 0, f"Failed to install wheel: {res_pip.stderr}"
+    assert res_install.returncode == 0, f"Failed to install wheel: {res_install.stderr}"
 
     return venv_dir, cli_bin
 
