@@ -546,9 +546,7 @@ class FailureDiagnosticEngine:
         ev_idx = 1
 
         for idx, signal in enumerate(signals):
-            code, origin, ev_id, evidence, extra_meta = self._classify_signal(
-                signal, scorecard, expectation, evidence_collection, ev_idx
-            )
+            code, origin, ev_id, evidence, extra_meta = self._classify_signal(signal, ev_idx)
             ev_idx += len(evidence)
             evidence_collection.extend(evidence)
 
@@ -629,7 +627,6 @@ class FailureDiagnosticEngine:
             evidence_collection=evidence_collection,
             evidence_graph=evidence_graph,
             summary=summary,
-            signals=signals,
         )
 
     # ------------------------------------------------------------------
@@ -653,9 +650,6 @@ class FailureDiagnosticEngine:
     def _classify_signal(
         self,
         signal: DiagnosticSignal,
-        scorecard: TrajectoryScorecard,  # noqa: ARG002
-        expectation: TrajectoryExpectation,  # noqa: ARG002
-        existing_evidence: list[FailureEvidence],  # noqa: ARG002
         ev_base_idx: int,
     ) -> tuple[FailureCode, FailureOrigin, str, list[FailureEvidence], dict[str, str]]:
         """Map a signal to (code, origin, evidence_id, evidence_list, metadata)."""
