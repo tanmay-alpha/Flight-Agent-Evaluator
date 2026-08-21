@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -223,19 +224,11 @@ def gate_install_wheel() -> bool:
         venv_dir = Path(tmp) / "venv"
         print(f"Creating test venv: {venv_dir}")
         result = subprocess.run(  # noqa: S603
-            [PYTHON, "-m", "venv", "--system-site-packages", str(venv_dir)],
+            [PYTHON, "-m", "venv", str(venv_dir)],
             check=False,
         )
         if result.returncode != 0:
             print("Failed to create venv")
-            return False
-        pip = venv_dir / "Scripts" / "pip.exe" if os.name == "nt" else venv_dir / "bin" / "pip"
-        result = subprocess.run(  # noqa: S603
-            [str(pip), "install", "--quiet", "--no-deps", "--force-reinstall", str(wheel)],
-            check=False,
-        )
-        if result.returncode != 0:
-            print("Failed to install wheel")
             return False
         python = (
             venv_dir / "Scripts" / "python.exe" if os.name == "nt" else venv_dir / "bin" / "python"
@@ -245,6 +238,14 @@ def gate_install_wheel() -> bool:
             if os.name == "nt"
             else venv_dir / "bin" / "flight-evaluator"
         )
+        uv_bin = shutil.which("uv") or "uv"
+        result = subprocess.run(  # noqa: S603
+            [uv_bin, "pip", "install", "--python", str(python), str(wheel)],
+            check=False,
+        )
+        if result.returncode != 0:
+            print("Failed to install wheel")
+            return False
 
         # Unrelated empty working directory
         empty_dir = Path(tmp) / "empty_dir"
