@@ -11,11 +11,6 @@ from flight_agent_evaluator.agent.baselines import (
     RandomBaselineAgent,
     ScriptedOracleAgent,
 )
-from flight_agent_evaluator.benchmarks.contracts import (
-    AblationConfig,
-    BenchmarkRunSummary,
-    ScenarioBenchmarkResult,
-)
 from flight_agent_evaluator.benchmarks.loader import (
     BenchmarkIntegrityError,
     BenchmarkManifestLoader,
@@ -44,6 +39,10 @@ def test_registry_registered_agents() -> None:
     assert "naive-baseline" in agents
     assert "random-baseline" in agents
 
+    assert isinstance(registry.resolve("scripted-oracle"), ScriptedOracleAgent)
+    assert isinstance(registry.resolve("naive-baseline"), NaiveBaselineAgent)
+    assert isinstance(registry.resolve("random-baseline"), RandomBaselineAgent)
+    # Compatibility aliases
     assert isinstance(registry.resolve("oracle"), ScriptedOracleAgent)
     assert isinstance(registry.resolve("naive"), NaiveBaselineAgent)
     assert isinstance(registry.resolve("random"), RandomBaselineAgent)
@@ -101,8 +100,8 @@ def test_results_persistence_atomic(tmp_path: Path) -> None:
         safety_pass_rate=1.0,
         evaluator_error_rate=0.0,
         average_overall_score=1.0,
-        agent_pass_rates={"oracle": 1.0},
-        agent_average_scores={"oracle": 1.0},
+        agent_pass_rates={"scripted-oracle": 1.0},
+        agent_average_scores={"scripted-oracle": 1.0},
     )
     case_res = BenchmarkCaseResult(
         benchmark_id="bm1",
@@ -111,7 +110,7 @@ def test_results_persistence_atomic(tmp_path: Path) -> None:
         scenario_version=1,
         scenario_resource_digest="a" * 64,
         expectation_resource_digest="b" * 64,
-        agent_id="oracle",
+        agent_id="scripted-oracle",
         task_success=True,
         safety_pass=True,
         overall_score=1.0,
@@ -121,7 +120,7 @@ def test_results_persistence_atomic(tmp_path: Path) -> None:
         run_semantic_id="run_sem_1",
         benchmark_id="benchmark-v1",
         benchmark_version="1.0.0",
-        executed_agents=["oracle"],
+        executed_agents=["scripted-oracle"],
         manifest_digest="1" * 64,
         scenario_count=1,
         total_runs=1,
@@ -141,31 +140,40 @@ def test_results_persistence_atomic(tmp_path: Path) -> None:
 
 
 def test_report_generation() -> None:
-    from datetime import UTC, datetime
-
-    summary = BenchmarkRunSummary(
-        run_id="run-1",
-        evaluated_at=datetime.now(UTC),
-        models_evaluated=["oracle"],
-        ablation_config=AblationConfig(name="full", description="Full"),
-        scenarios_count=1,
+    metrics = BenchmarkAggregateMetrics(
+        total_cases=1,
         total_runs=1,
-        model_pass_rates={"oracle": 1.0},
-        model_average_scores={"oracle": 1.0},
-        results=[
-            ScenarioBenchmarkResult(
-                scenario_id="sc1",
-                scenario_version=1,
-                model_name="oracle",
-                passed=True,
-                overall_score=1.0,
-                score_vector={"accuracy": 1.0},
-                failure_codes=[],
-                execution_time_ms=10.0,
-                evaluator_overhead_ms=1.0,
-            )
-        ],
+        task_success_rate=1.0,
+        safety_pass_rate=1.0,
+        evaluator_error_rate=0.0,
+        average_overall_score=1.0,
+        agent_pass_rates={"scripted-oracle": 1.0},
+        agent_average_scores={"scripted-oracle": 1.0},
     )
-    md = generate_benchmark_report(summary)
+    case_res = BenchmarkCaseResult(
+        benchmark_id="benchmark-v1",
+        benchmark_version="1.0.0",
+        scenario_id="sc1",
+        scenario_version=1,
+        scenario_resource_digest="a" * 64,
+        expectation_resource_digest="b" * 64,
+        agent_id="scripted-oracle",
+        task_success=True,
+        safety_pass=True,
+        overall_score=1.0,
+        run_id="run-1",
+    )
+    artifact = BenchmarkRunArtifact(
+        run_semantic_id="bm_run_test_123",
+        benchmark_id="benchmark-v1",
+        benchmark_version="1.0.0",
+        executed_agents=["scripted-oracle"],
+        manifest_digest="1" * 64,
+        scenario_count=1,
+        total_runs=1,
+        metrics=metrics,
+        case_results=[case_res],
+    )
+    md = generate_benchmark_report(artifact)
     assert "# Benchmark Run Report" in md
-    assert "`oracle`" in md
+    assert "`scripted-oracle`" in md

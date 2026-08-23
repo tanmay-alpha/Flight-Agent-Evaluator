@@ -44,11 +44,20 @@ class CanonicalBenchmarkEngine:
         self,
         manifest_path: Path | str = "builtin:benchmark-v1",
         agent_ids: Sequence[str] | None = None,
+        scenario_filter: Sequence[str] | None = None,
         output_dir: Path | str | None = None,
         repetitions: int | None = None,
     ) -> BenchmarkRunArtifact:
         """Execute authoritative benchmark run across verified manifest cases and exact agents."""
         manifest, cases = self.loader.load_manifest(manifest_path, verify_resources=True)
+
+        if scenario_filter:
+            target_ids = set(scenario_filter)
+            cases = [c for c in cases if c.manifest_entry.scenario_id in target_ids]
+            if not cases:
+                raise FileNotFoundError(
+                    f"No scenarios matching {scenario_filter} found in manifest."
+                )
 
         selected_agent_ids = (
             [aid.strip() for aid in agent_ids]

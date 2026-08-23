@@ -1,22 +1,24 @@
-"""Metrics calculation for multi-model benchmark runs and evaluator ablations."""
+"""Metrics calculation for benchmark runs and failure classification accuracy."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
-from flight_agent_evaluator.benchmarks.contracts import ScenarioBenchmarkResult
+if TYPE_CHECKING:
+    from flight_agent_evaluator.benchmarks.results import BenchmarkCaseResult
 
 
-def compute_pass_rate(results: Sequence[ScenarioBenchmarkResult]) -> float:
-    """Compute pass rate ratio (0.0 to 1.0) across scenario benchmark results."""
+def compute_pass_rate(results: Sequence[BenchmarkCaseResult]) -> float:
+    """Compute pass rate ratio (0.0 to 1.0) across case benchmark results."""
     if not results:
         return 0.0
-    passed_count = sum(1 for r in results if r.passed)
+    passed_count = sum(1 for r in results if r.task_success)
     return round(passed_count / len(results), 4)
 
 
-def compute_average_score(results: Sequence[ScenarioBenchmarkResult]) -> float:
-    """Compute mean overall score across scenario benchmark results."""
+def compute_average_score(results: Sequence[BenchmarkCaseResult]) -> float:
+    """Compute mean overall score across case benchmark results."""
     if not results:
         return 0.0
     total_score = sum(r.overall_score for r in results)
@@ -59,12 +61,3 @@ def compute_macro_f1(
         f1_scores.append(f1)
 
     return round(sum(f1_scores) / len(f1_scores), 4)
-
-
-def compute_evaluator_value_add(
-    full_macro_f1: float,
-    no_diagnostics_macro_f1: float,
-) -> float:
-    """Quantify the value-add score (0.0 to 100.0) of diagnostic tools over unablated baseline."""
-    delta = max(0.0, full_macro_f1 - no_diagnostics_macro_f1)
-    return round(delta * 100.0, 2)

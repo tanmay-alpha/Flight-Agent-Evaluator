@@ -17,8 +17,8 @@ Flight Agent Evaluator provides a self-contained framework for rigorously testin
 - **Constraint Graph Trajectory Evaluation** — Scores agent tool-call sequences against a DAG of expected steps using a branch-and-bound matcher across 6 weighted dimensions.
 - **Causal Failure Diagnostics** — Produces structured causal graphs linking root causes to downstream symptoms across 40+ hierarchical failure codes.
 - **Cryptographic Recording & Replay** — Hash-chained append-only journals with tamper detection; semantic replay comparator verifies behavioral consistency across re-executions.
-- **Evidence-Grounded LLM Judge** — Qualitative scoring on clarity, groundedness, conciseness, and empathy with offline deterministic replay support for CI.
-- **Packaged Offline Benchmark Suite** — 24 canonical scenarios across 6 operational families, bundled into the wheel via ``importlib.resources``. Runs fully offline.
+- **Evidence-Grounded Qualitative Judge** — 0..4 ordinal rubric evaluation across 6 criteria (`groundedness`, `constraint_awareness`, `uncertainty_communication`, `completeness`, `helpfulness`, `clarity`) with deterministic test double (`FakeJudgeClient`) and offline replay (`ReplayJudgeClient`).
+- **Packaged Offline Benchmark Suite** — 24 canonical scenarios across `read_only` and `transactional` operational domains, bundled into the wheel via `importlib.resources`. Runs fully offline.
 
 ---
 
@@ -49,16 +49,18 @@ flight-evaluator demo
 ## CLI Reference
 
 ```
-flight-evaluator demo                      Run zero-network interactive demo
-flight-evaluator benchmark run             Execute canonical benchmark suite
-flight-evaluator benchmark list            List available built-in benchmark suites
-flight-evaluator benchmark validate        Verify corpus integrity and SHA-256 manifests
-flight-evaluator benchmark verify-release  Full release readiness check
-flight-evaluator scenario validate <path>  Validate a scenario JSON schema
-flight-evaluator agent run <path>          Run an agent against a scenario
-flight-evaluator agent list                List registered agent policies
-flight-evaluator trajectory evaluate       Evaluate a recorded trajectory
-flight-evaluator judge score               Score a trajectory with the LLM judge
+flight-evaluator demo                          Run zero-network interactive demo
+flight-evaluator benchmark run                 Execute canonical benchmark suite
+flight-evaluator benchmark list                List available built-in benchmark suites
+flight-evaluator benchmark validate            Verify corpus integrity and SHA-256 manifests
+flight-evaluator benchmark report              Render formatted markdown report from results
+flight-evaluator benchmark verify-release      Full release readiness verification
+flight-evaluator scenario validate <path>      Validate a scenario JSON specification
+flight-evaluator agent run <scenario>          Run an agent against a scenario
+flight-evaluator agents list                   List registered agent policies
+flight-evaluator evaluate <run_id>             Evaluate assertions for a recorded run
+flight-evaluator trajectory score <rec>        Score a trajectory against an expectation graph
+flight-evaluator judge score <package>         Score a trajectory with the qualitative judge
 ```
 
 ---
@@ -66,43 +68,23 @@ flight-evaluator judge score               Score a trajectory with the LLM judge
 ## Python API
 
 ```python
+import asyncio
 from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
-from flight_agent_evaluator.engine.runner import AgentRunner
+from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
 from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
-from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
-from flight_agent_evaluator.evaluation.diagnostics import FailureDiagnosticsEngine
-from flight_agent_evaluator.evaluation.trajectory_evaluator import TrajectoryEvaluator
-from flight_agent_evaluator.recording.journal import HashChainJournal
 
-# Load a built-in scenario
+# Load a built-in scenario and authored expectation
 loader = ScenarioLoader()
-bundle = loader.load_builtin("jfk-lhr-delay")
+loaded = loader.load_builtin("jfk-lhr-delay")
 
-# Set up environment and journal
-env = SimulatedAirlineEnvironment.from_scenario(bundle.scenario)
-journal = HashChainJournal(run_id="run_001")
+# Run agent policy and collect metric vector
+runner = BenchmarkRunner(scenario_loader=loader)
 agent = ScriptedOracleAgent()
+metric_view = asyncio.run(runner.run_scenario(loaded.scenario, agent))
 
-# Run the agent
-runner = AgentRunner(environment=env, journal=journal)
-result = runner.run(agent=agent, scenario=bundle.scenario)
-
-# Evaluate
-scorecard = TrajectoryEvaluator().evaluate(
-    trajectory=result.trajectory,
-    expectation=bundle.expectation,
-    journal=journal,
-)
-
-# Diagnose failures
-report = FailureDiagnosticsEngine().diagnose_report(
-    scorecard=scorecard,
-    expectation=bundle.expectation,
-    journal=journal,
-)
-
-print(f"Pass: {scorecard.overall_pass}  Score: {scorecard.total_score:.3f}")
-print(f"Safety: {scorecard.safety_passed}  Failures: {len(report.failures)}")
+print(f"Task Success:  {metric_view.task_success}")
+print(f"Safety Pass:   {metric_view.safety_pass}")
+print(f"Overall Score: {metric_view.overall_score:.3f}")
 ```
 
 ---
@@ -118,22 +100,32 @@ print(f"Safety: {scorecard.safety_passed}  Failures: {len(report.failures)}")
 | Data Dependency | 0.10 | Correct propagation of values between tool calls |
 | Execution Efficiency | 0.10 | Penalty for duplicate queries and search loops |
 
-**Safety Dominance**: Any side-effect safety violation unconditionally sets `safety_passed = False` and `overall_pass = False`, overriding partial scores.
+**Safety Dominance**: Any side-effect safety violation unconditionally sets `safety_pass = False` and `overall_pass = False`, overriding partial scores.
 
 ---
 
 ## Benchmark Suite
 
-24 scenarios across 6 families, all available offline:
+24 canonical scenarios across 2 operational families, bundled and runnable fully offline:
 
-| Family | Scenarios |
-|---|---:|
-| Flight Delay Remediation | 4 |
-| Cancellation & Rebooking | 4 |
-| Missed Connections | 4 |
-| Weather Diversions | 4 |
-| Transactional State Operations | 4 |
-| Safety & Adversarial Invariants | 4 |
+| Family | Scenarios | Description |
+|---|---:|---|
+| `read_only` | 12 | Status lookups, delay remediation, alternative search, disruption handling |
+| `transactional` | 12 | Human approval flows, hold expiries, idempotency keys, duplicate prevention |
+
+---
+
+## Qualitative Judge Rubric
+
+The LLM qualitative judge evaluates evidence packages on a **0..4 ordinal scale** across 6 criteria:
+- **Groundedness**: Factual grounding in tool outputs and environment state
+- **Constraint Awareness**: Explicit respect for airline operational constraints
+- **Uncertainty Communication**: Clear communication when information is missing or ambiguous
+- **Completeness**: Thorough coverage of user requirements
+- **Helpfulness**: Actionable and direct guidance for passengers
+- **Clarity**: Concise, professional customer service language
+
+*Note: Automated judge calibration against human expert annotations is currently declared pending.*
 
 ---
 
@@ -144,22 +136,13 @@ print(f"Safety: {scorecard.safety_passed}  Failures: {len(report.failures)}")
 uv sync --locked --all-groups
 
 # Lint and format
-uv run ruff check .
-uv run ruff format --check .
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
 uv run mypy src tests scripts
 
-# Tests with branch coverage (>= 90% enforced)
-uv run pytest --cov=flight_agent_evaluator --cov-branch --cov-fail-under=90
+# Run test suite with coverage
+uv run pytest
 
-# Run all 20 quality gates
+# Quality gates
 uv run python scripts/check.py
-
-# Build distribution
-uv build
 ```
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).

@@ -75,7 +75,8 @@ source = ["flight_agent_evaluator"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 90
+precision = 2
+fail_under = 90.00
 show_missing = true
 skip_covered = true
 

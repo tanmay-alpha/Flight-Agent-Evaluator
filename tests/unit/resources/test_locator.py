@@ -143,8 +143,8 @@ def test_builtin_locator_iter_children_and_materialize():
     locator = get_builtin_locator()
     children = locator.iter_children("scenarios", ResourceKind.SCENARIO)
     assert len(children) == 12
-    children_stage5 = locator.iter_children("scenarios/stage-5", ResourceKind.SCENARIO)
-    assert len(children_stage5) == 12
+    children_trans = locator.iter_children("scenarios/transactional", ResourceKind.SCENARIO)
+    assert len(children_trans) == 12
 
     first = children[0]
     with locator.materialize(first) as materialized_path:

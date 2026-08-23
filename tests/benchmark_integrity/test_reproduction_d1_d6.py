@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
-from flight_agent_evaluator.benchmarks.suite import BenchmarkSuite
+from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
+from flight_agent_evaluator.benchmarks.registry import (
+    BenchmarkAgentRegistry,
+    UnknownBenchmarkAgentError,
+)
 from flight_agent_evaluator.contracts.model import AgentTask
 from flight_agent_evaluator.contracts.trajectory_expectation import TrajectoryExpectation
 from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
@@ -39,29 +43,29 @@ async def test_t1_authored_expectation_mandatory_not_generated() -> None:
 
 
 def test_t2_resolve_agent_gpt4o_must_fail_closed() -> None:
-    """T2: resolve_agent('gpt-4o') MUST raise UnknownBenchmarkAgent instead of aliasing to ScriptedOracle."""
-    suite = BenchmarkSuite()
-    with pytest.raises(Exception) as exc_info:
-        suite.resolve_agent("gpt-4o")
-    # Must not return ScriptedOracleAgent masquerading as gpt-4o
+    """T2: resolve('gpt-4o') MUST raise UnknownBenchmarkAgentError instead of aliasing to ScriptedOracle."""
+    registry = BenchmarkAgentRegistry()
+    with pytest.raises(UnknownBenchmarkAgentError) as exc_info:
+        registry.resolve("gpt-4o")
     assert "unknown" in str(exc_info.value).lower() or "unregistered" in str(exc_info.value).lower()
 
 
 def test_t3_resolve_agent_unknown_must_fail_closed() -> None:
-    """T3: resolve_agent('definitely-not-real') MUST raise instead of falling back to NaiveBaselineAgent."""
-    suite = BenchmarkSuite()
-    with pytest.raises(Exception) as exc_info:
-        suite.resolve_agent("definitely-not-real")
+    """T3: resolve('definitely-not-real') MUST raise instead of falling back to NaiveBaselineAgent."""
+    registry = BenchmarkAgentRegistry()
+    with pytest.raises(UnknownBenchmarkAgentError) as exc_info:
+        registry.resolve("definitely-not-real")
     assert "unknown" in str(exc_info.value).lower() or "unregistered" in str(exc_info.value).lower()
 
 
 def test_t4_missing_scenario_must_fail_closed_no_jfk_fallback() -> None:
     """T4: Missing scenario MUST raise error and MUST NOT fall back to jfk-lhr-delay.json."""
-    suite = BenchmarkSuite()
+    engine = CanonicalBenchmarkEngine()
     with pytest.raises(Exception):
-        suite.run_benchmark(
-            model_names=["naive-baseline"],
-            scenarios=[{"id": "totally-nonexistent-scenario-xyz", "version": 1}],
+        engine.run_benchmark(
+            manifest_path="resources/benchmarks/benchmark-v1.json",
+            agent_ids=["scripted-oracle"],
+            scenario_filter=["totally-nonexistent-scenario-xyz"],
         )
 
 

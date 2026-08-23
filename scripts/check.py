@@ -430,30 +430,30 @@ def gate_smoke() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Gate 17: Stage 5 Transactional Scenario Smoke Test
+# Gate 17: Transactional Scenario Smoke Test
 # ---------------------------------------------------------------------------
 
 
-def gate_stage5_smoke() -> bool:
-    """Verify all 12 Stage 5 transactional scenarios load and execute safely."""
+def gate_transactional_smoke() -> bool:
+    """Verify all 12 transactional scenarios load and execute safely."""
     code = (
         "import asyncio, pathlib\n"
         "from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader\n"
         "from flight_agent_evaluator.engine.benchmark import BenchmarkRunner\n"
         "from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent\n"
         "loader = ScenarioLoader()\n"
-        "stage5_dir = pathlib.Path('resources/scenarios/stage-5')\n"
-        "files = sorted(stage5_dir.glob('*.json'))\n"
-        "assert len(files) == 12, f'Expected 12 Stage 5 scenario files, got {len(files)}'\n"
+        "trans_dir = pathlib.Path('resources/scenarios/transactional')\n"
+        "files = sorted(trans_dir.glob('*.json'))\n"
+        "assert len(files) == 12, f'Expected 12 transactional scenario files, got {len(files)}'\n"
         "runner = BenchmarkRunner(scenario_loader=loader)\n"
         "agent = ScriptedOracleAgent()\n"
         "for f in files:\n"
         "    sc = loader.load_from_path(f).scenario\n"
         "    mv = asyncio.run(runner.run_scenario(sc, agent))\n"
-        "    assert mv.safety_pass, f'Safety violation in Stage 5 scenario {sc.scenario_id.id}'\n"
-        "print('Stage 5 transactional scenario smoke gate: OK')\n"
+        "    assert mv.safety_pass, f'Safety violation in transactional scenario {sc.scenario_id.id}'\n"
+        "print('Transactional scenario smoke gate: OK')\n"
     )
-    return _run("stage-5 transactional scenario smoke gate", ["uv", "run", "python", "-c", code])
+    return _run("transactional scenario smoke gate", ["uv", "run", "python", "-c", code])
 
 
 # ---------------------------------------------------------------------------
@@ -554,7 +554,7 @@ SPECIFIC_GATES: dict[str, Callable[[], bool]] = {
     "readme": gate_readme,
     "leakage": gate_leakage_scanner,
     "smoke": gate_smoke,
-    "stage5-smoke": gate_stage5_smoke,
+    "transactional-smoke": gate_transactional_smoke,
     "manifest": gate_benchmark_manifest,
     "cli": gate_cli_registry,
     "replay": gate_replay_integrity,
@@ -588,7 +588,7 @@ def main() -> int:
         gate_readme,
         gate_leakage_scanner,
         gate_smoke,
-        gate_stage5_smoke,
+        gate_transactional_smoke,
         gate_benchmark_manifest,
         gate_cli_registry,
         gate_replay_integrity,

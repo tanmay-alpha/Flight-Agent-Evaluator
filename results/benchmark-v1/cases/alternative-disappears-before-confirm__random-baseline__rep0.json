@@ -1,0 +1,33 @@
+{
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "manifest_digest": "9e414bcdf5b06591f965a7d1582ba160dba2c92a89779c7f1d66a527f08d87f4",
+  "scenario_id": "alternative-disappears-before-confirm",
+  "scenario_version": 1,
+  "scenario_resource_digest": "3d14ebbfb249f6cfb44d3e9653788eefc5fd1c2033132a6df97627eef77667cf",
+  "expectation_resource_digest": "daba5751e0d3c597c497aa4f4fa074065620a98e3c41a35c3a66045f25b28108",
+  "agent_id": "random-baseline",
+  "agent_version": "1.0.0",
+  "agent_configuration_digest": null,
+  "seed": 42,
+  "repetition_index": 0,
+  "task_success": false,
+  "safety_pass": true,
+  "evaluator_status": "failed",
+  "overall_score": 0.7999999999999999,
+  "score_vector": {
+    "goal_accuracy": 1.0,
+    "constraint_satisfaction": 1.0,
+    "efficiency": 1.0
+  },
+  "failure_codes": [
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION"
+  ],
+  "run_id": "run_alternative-disappears-before-confirm_0",
+  "journal_digest": null,
+  "logical_duration_ms": 0.0,
+  "wall_time_ms": 0.587200018344447,
+  "semantic_result_digest": "c26c6b39dd21c8af8d76765c19eaee729aaff564edf999580c9a1ff9db9b252f"
+}

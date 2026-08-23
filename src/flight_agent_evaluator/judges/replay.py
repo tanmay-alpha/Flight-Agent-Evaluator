@@ -8,6 +8,8 @@ rubric version, raw response digest, and parsed result integrity.
 from __future__ import annotations
 
 import hashlib
+import json
+from pathlib import Path
 
 from flight_agent_evaluator.judges.contracts import (
     JudgeEvidencePackage,
@@ -35,6 +37,14 @@ class ReplayJudgeClient:
                     f"Duplicate request fingerprint: {ex.request_fingerprint}"
                 )
             seen.add(ex.request_fingerprint)
+
+    @classmethod
+    def from_manifest(cls, path: Path | str) -> ReplayJudgeClient:
+        """Load ReplayJudgeClient from a manifest file on disk."""
+        p = Path(path)
+        data = json.loads(p.read_text(encoding="utf-8"))
+        manifest = JudgeExchangeManifest.model_validate(data)
+        return cls(manifest)
 
     async def judge(
         self,
