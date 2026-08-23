@@ -18,7 +18,7 @@ from typing import Any
 from flight_agent_evaluator.agent import AgentPolicy, ModelClient, ModelMode
 from flight_agent_evaluator.agent.baselines import (
     NaiveBaselineAgent,
-    RandomBaselineAgent,
+    NoOpBaselineAgent,
     ScriptedOracleAgent,
 )
 from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
@@ -91,10 +91,10 @@ def cmd_agents_list(args: argparse.Namespace) -> int:
             "description": "Fixed status lookup and simple alternative search heuristic.",
         },
         {
-            "id": "random-baseline",
-            "name": "RandomBaselineAgent",
-            "type": "stochastic",
-            "description": "Executes random valid tool actions across available schemas.",
+            "id": "no-op-baseline",
+            "name": "NoOpBaselineAgent",
+            "type": "negative_control",
+            "description": "Deterministic negative control that performs no task actions.",
         },
         {
             "id": "model",
@@ -141,17 +141,23 @@ def cmd_agents_describe(args: argparse.Namespace) -> int:
             "mode": "heuristic",
             "capabilities": ["read_only_status", "retry_once", "alternative_search"],
         },
-        "random": {
-            "id": "random-baseline",
-            "class": "RandomBaselineAgent",
-            "mode": "stochastic",
-            "capabilities": ["random_valid_tool_invocations"],
+        "noop": {
+            "id": "no-op-baseline",
+            "class": "NoOpBaselineAgent",
+            "mode": "negative_control",
+            "capabilities": ["negative_control_no_actions"],
         },
-        "random-baseline": {
-            "id": "random-baseline",
-            "class": "RandomBaselineAgent",
-            "mode": "stochastic",
-            "capabilities": ["random_valid_tool_invocations"],
+        "no-op": {
+            "id": "no-op-baseline",
+            "class": "NoOpBaselineAgent",
+            "mode": "negative_control",
+            "capabilities": ["negative_control_no_actions"],
+        },
+        "no-op-baseline": {
+            "id": "no-op-baseline",
+            "class": "NoOpBaselineAgent",
+            "mode": "negative_control",
+            "capabilities": ["negative_control_no_actions"],
         },
         "model": {
             "id": "model",
@@ -195,8 +201,8 @@ def cmd_agent_run(args: argparse.Namespace) -> int:
         agent = ScriptedOracleAgent()
     elif agent_type in ("naive", "naive-baseline"):
         agent = NaiveBaselineAgent()
-    elif agent_type in ("random", "random-baseline"):
-        agent = RandomBaselineAgent()
+    elif agent_type in ("noop", "no-op", "no-op-baseline"):
+        agent = NoOpBaselineAgent()
     elif agent_type == "model":
         client: ModelClient
         if model_mode == "replay":
@@ -1076,11 +1082,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
         choices=[
             "oracle",
             "naive",
-            "random",
+            "noop",
+            "no-op",
             "model",
             "scripted-oracle",
             "naive-baseline",
-            "random-baseline",
+            "no-op-baseline",
         ],
         default="oracle",
         help="Agent policy identifier to execute.",

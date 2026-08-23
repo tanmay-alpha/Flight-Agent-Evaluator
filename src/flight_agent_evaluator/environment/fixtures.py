@@ -1,4 +1,4 @@
-"""Synthetic booking and environment state fixtures for Stage 5 scenarios."""
+"""Synthetic booking and environment state fixtures for transactional scenarios."""
 
 from __future__ import annotations
 

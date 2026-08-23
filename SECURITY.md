@@ -40,7 +40,7 @@ real personal data will be rejected.
 
 ## Simulated environment scope
 
-The simulated airline environment introduced in Stage 5 performs **no real
-mutations**. It does not connect to any airline booking API, payment processor,
-or passenger data system. All booking references, itineraries, and passenger
-identifiers are synthetic and explicitly labelled as such.
+The simulated airline environment performs **no real mutations**. It does not
+connect to any airline booking API, payment processor, or passenger data system.
+All booking references, itineraries, and passenger identifiers are synthetic and
+explicitly labelled as such.

@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
   "scenario_id": "mutation-success-response-lost",
   "scenario_version": 1,
   "scenario_resource_digest": "116996c78c68dee2141f12fb68afba2d6d5b6d76b74cc44d40ab090e05ab5af3",
@@ -24,9 +24,9 @@
     "EFFICIENCY.REDUNDANT_CALL",
     "EFFICIENCY.REDUNDANT_CALL"
   ],
-  "run_id": "run_mutation-success-response-lost_0",
+  "run_id": "564bd924-1e9c-5780-b5c3-8c9d4fcfefc2",
   "journal_digest": "285c0b30c76bc87ee118b610f14a5b7b30be10a9d95e6449636a17d84f1e1f9f",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.7478000081609935,
-  "semantic_result_digest": "6731b93915725ef1456929ab942c3ccceab70462fbe2a790376fa33cddc46caa"
+  "wall_time_ms": 2.0875000045634806,
+  "semantic_result_digest": "19d783b463bb3887403b5cdb028a54c7fff15987527b443645f6587f7869c74f"
 }

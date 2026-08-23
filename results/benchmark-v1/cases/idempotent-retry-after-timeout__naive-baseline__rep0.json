@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
   "scenario_id": "idempotent-retry-after-timeout",
   "scenario_version": 1,
   "scenario_resource_digest": "59ba30e550198fd3fcc31b9d7be2d5e6483051edbc9905a5e56e3cd35b19c8e1",
@@ -31,9 +31,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "run_idempotent-retry-after-timeout_0",
+  "run_id": "c80d8deb-88cd-5d93-b1be-90de8a0046c4",
   "journal_digest": "35d426cff99196a1aabbab5b0417a81fd5f727d494faa0a23113fca529edce94",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.12599998828955,
-  "semantic_result_digest": "21989353f23439e3e4a58d15e409121f745da653c7e43438be415c3d97cef1be"
+  "wall_time_ms": 1.438200008124113,
+  "semantic_result_digest": "df1e72e204d6fd7a3d4d436bd1d7a9a81a7362fb421ee6e7877a0f4405b46cae"
 }

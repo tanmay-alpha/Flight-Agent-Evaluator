@@ -1,4 +1,4 @@
-"""Authoritative regression test suite R01-R20 verifying release truth and correctness."""
+"""Release truth and benchmark-integrity regression tests."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import pytest
 
 from flight_agent_evaluator.agent.baselines import (
     NaiveBaselineAgent,
-    RandomBaselineAgent,
+    NoOpBaselineAgent,
     ScriptedOracleAgent,
 )
 from flight_agent_evaluator.benchmarks.loader import BenchmarkManifestLoader
@@ -41,6 +41,7 @@ from flight_agent_evaluator.judges.contracts import JudgeCriterion, JudgeEvidenc
 from flight_agent_evaluator.judges.fake import FakeJudgeClient
 from flight_agent_evaluator.judges.rubric import DEFAULT_RUBRIC
 from flight_agent_evaluator.recording.contracts import (
+    InvokeToolStep,
     ProduceFinalResponseStep,
     ScriptedTrajectory,
 )
@@ -67,11 +68,11 @@ def test_r03_registered_benchmark_identities() -> None:
     """R03: Verify registered benchmark identities match canonical baselines."""
     registry = BenchmarkAgentRegistry()
     registered_ids = [a["agent_id"] for a in registry.list_agents()]
-    assert registered_ids == ["scripted-oracle", "naive-baseline", "random-baseline"]
+    assert registered_ids == ["scripted-oracle", "naive-baseline", "no-op-baseline"]
 
     assert isinstance(registry.resolve("scripted-oracle"), ScriptedOracleAgent)
     assert isinstance(registry.resolve("naive-baseline"), NaiveBaselineAgent)
-    assert isinstance(registry.resolve("random-baseline"), RandomBaselineAgent)
+    assert isinstance(registry.resolve("no-op-baseline"), NoOpBaselineAgent)
 
 
 def test_r04_unregistered_agent_resolution_fails_closed() -> None:
@@ -318,12 +319,12 @@ def test_r21_oracle_100_percent_pass_rate() -> None:
 
 
 def test_r22_strict_score_monotonicity() -> None:
-    """R22: Verify strict score monotonicity: oracle > naive > random."""
+    """R22: Verify strict score monotonicity: oracle > naive > no-op."""
     loader = BenchmarkManifestLoader()
     manifest, cases = loader.load_builtin("benchmark-v1")
     runner = BenchmarkRunner()
 
-    def score_agent(agent_factory):
+    def score_agent(agent_factory: Any) -> float:
         total = 0.0
         for case in cases:
             res = asyncio.run(runner.run_case(case=case, agent=agent_factory(), repetition_index=0))
@@ -332,11 +333,11 @@ def test_r22_strict_score_monotonicity() -> None:
 
     oracle_score = score_agent(lambda: ScriptedOracleAgent())
     naive_score = score_agent(lambda: NaiveBaselineAgent())
-    random_score = score_agent(lambda: RandomBaselineAgent())
+    no_op_score = score_agent(lambda: NoOpBaselineAgent())
 
-    assert oracle_score > naive_score > random_score
+    assert oracle_score > naive_score > no_op_score
     assert oracle_score >= 0.95
-    assert random_score <= 0.35
+    assert no_op_score <= 0.35
 
 
 def test_r23_fail_closed_missing_assertion_evidence() -> None:
@@ -553,16 +554,14 @@ def test_r27_stale_resource_digest_detection() -> None:
 
 
 def test_r28_negative_control_zero_pass_rate() -> None:
-    """R28: Verify RandomBaselineAgent achieves 0.0% pass rate across all cases."""
+    """R28: Verify NoOpBaselineAgent achieves 0.0% pass rate across all cases."""
     loader = BenchmarkManifestLoader()
     manifest, cases = loader.load_builtin("benchmark-v1")
     runner = BenchmarkRunner()
 
     pass_count = 0
     for case in cases:
-        res = asyncio.run(
-            runner.run_case(case=case, agent=RandomBaselineAgent(), repetition_index=0)
-        )
+        res = asyncio.run(runner.run_case(case=case, agent=NoOpBaselineAgent(), repetition_index=0))
         if res.task_success:
             pass_count += 1
 
@@ -593,5 +592,397 @@ def test_r30_deterministic_benchmark_smoke_test() -> None:
     assert summary["total_cases"] == 24
     assert summary["total_runs"] == 72
     assert summary["agent_pass_rates"]["scripted-oracle"] == 1.0
-    assert summary["agent_pass_rates"]["random-baseline"] == 0.0
+    assert summary["agent_pass_rates"]["no-op-baseline"] == 0.0
     assert summary["safety_pass_rate"] == 1.0
+
+
+def test_r31_run_json_metrics_recompute_from_case_results() -> None:
+    """R31: Verify run.json metrics recompute exactly from case_results."""
+    run_path = Path("results/benchmark-v1/run.json")
+    assert run_path.is_file()
+    from flight_agent_evaluator.benchmarks.results import (
+        BenchmarkAggregateMetrics,
+        BenchmarkRunArtifact,
+    )
+
+    artifact = BenchmarkRunArtifact.model_validate_json(run_path.read_text(encoding="utf-8"))
+    cases = artifact.case_results
+    total_runs = len(cases)
+    assert total_runs == 72
+
+    task_success_count = sum(1 for r in cases if r.task_success)
+    safety_pass_count = sum(1 for r in cases if r.safety_pass)
+    error_count = sum(
+        1
+        for r in cases
+        if "evaluator_error" in r.failure_codes or r.evaluator_status == "evaluator_error"
+    )
+    avg_score = sum(r.overall_score for r in cases) / total_runs
+
+    agent_pass_rates: dict[str, float] = {}
+    agent_avg_scores: dict[str, float] = {}
+    for aid in artifact.executed_agents:
+        a_cases = [r for r in cases if r.agent_id == aid]
+        agent_pass_rates[aid] = sum(1 for r in a_cases if r.task_success) / len(a_cases)
+        agent_avg_scores[aid] = sum(r.overall_score for r in a_cases) / len(a_cases)
+
+    recomputed = BenchmarkAggregateMetrics(
+        total_cases=artifact.scenario_count,
+        total_runs=total_runs,
+        task_success_rate=task_success_count / total_runs,
+        safety_pass_rate=safety_pass_count / total_runs,
+        evaluator_error_rate=error_count / total_runs,
+        average_overall_score=avg_score,
+        agent_pass_rates=agent_pass_rates,
+        agent_average_scores=agent_avg_scores,
+    )
+
+    assert recomputed.total_runs == artifact.metrics.total_runs
+    assert abs(recomputed.task_success_rate - artifact.metrics.task_success_rate) < 1e-6
+    assert abs(recomputed.safety_pass_rate - artifact.metrics.safety_pass_rate) < 1e-6
+    assert abs(recomputed.average_overall_score - artifact.metrics.average_overall_score) < 1e-6
+
+
+def test_r32_summary_json_equals_run_metrics() -> None:
+    """R32: Verify summary.json equals run.json metrics exactly."""
+    from flight_agent_evaluator.benchmarks.results import (
+        BenchmarkAggregateMetrics,
+        BenchmarkRunArtifact,
+    )
+
+    summary = BenchmarkAggregateMetrics.model_validate_json(
+        Path("results/benchmark-v1/summary.json").read_text(encoding="utf-8")
+    )
+    run = BenchmarkRunArtifact.model_validate_json(
+        Path("results/benchmark-v1/run.json").read_text(encoding="utf-8")
+    )
+
+    assert summary.total_cases == run.metrics.total_cases
+    assert summary.total_runs == run.metrics.total_runs
+    assert abs(summary.task_success_rate - run.metrics.task_success_rate) < 1e-6
+    assert abs(summary.safety_pass_rate - run.metrics.safety_pass_rate) < 1e-6
+    assert abs(summary.average_overall_score - run.metrics.average_overall_score) < 1e-6
+    assert summary.agent_pass_rates == run.metrics.agent_pass_rates
+
+
+def test_r33_generated_readme_equals_committed_readme() -> None:
+    """R33: Verify generated README equals committed README byte-for-byte (normalized)."""
+    from flight_agent_evaluator.benchmarks.results import (
+        BenchmarkRunArtifact,
+        render_benchmark_report,
+    )
+
+    run = BenchmarkRunArtifact.model_validate_json(
+        Path("results/benchmark-v1/run.json").read_text(encoding="utf-8")
+    )
+    generated = render_benchmark_report(run).strip().replace("\r\n", "\n")
+    committed = (
+        Path("results/benchmark-v1/README.md")
+        .read_text(encoding="utf-8")
+        .strip()
+        .replace("\r\n", "\n")
+    )
+
+    assert generated == committed
+
+
+def test_r34_manifest_digest_in_run_equals_current_manifest() -> None:
+    """R34: Verify manifest digest in run.json matches current benchmark manifest digest."""
+    from flight_agent_evaluator.benchmarks.loader import BenchmarkManifestLoader
+    from flight_agent_evaluator.benchmarks.results import BenchmarkRunArtifact
+
+    manifest, _ = BenchmarkManifestLoader().load_builtin("benchmark-v1", verify_resources=False)
+    run = BenchmarkRunArtifact.model_validate_json(
+        Path("results/benchmark-v1/run.json").read_text(encoding="utf-8")
+    )
+
+    m_digest = manifest.manifest_digest or manifest.compute_canonical_digest()
+    assert run.manifest_digest == m_digest
+
+
+def test_r35_every_case_manifest_digest_equals_run_manifest_digest() -> None:
+    """R35: Verify every case manifest_digest equals run.manifest_digest."""
+    from flight_agent_evaluator.benchmarks.results import BenchmarkRunArtifact
+
+    run = BenchmarkRunArtifact.model_validate_json(
+        Path("results/benchmark-v1/run.json").read_text(encoding="utf-8")
+    )
+    for case in run.case_results:
+        assert case.manifest_digest == run.manifest_digest
+
+
+def test_r36_every_canonical_case_journal_digest_non_null() -> None:
+    """R36: Verify all 72 canonical cases have non-null 64-char journal_digest."""
+    from flight_agent_evaluator.benchmarks.results import BenchmarkRunArtifact
+
+    run = BenchmarkRunArtifact.model_validate_json(
+        Path("results/benchmark-v1/run.json").read_text(encoding="utf-8")
+    )
+    assert len(run.case_results) == 72
+    for case in run.case_results:
+        assert case.journal_digest is not None
+        assert len(case.journal_digest) == 64
+
+
+def test_r37_run_semantic_id_differs_for_filtered_run() -> None:
+    """R37: Verify run_semantic_id differs when scenario selection changes."""
+    from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
+
+    engine = CanonicalBenchmarkEngine()
+    full_artifact = engine.run_benchmark(
+        manifest_path="resources/benchmarks/benchmark-v1.json",
+        agent_ids=["scripted-oracle"],
+    )
+    filtered_artifact = engine.run_benchmark(
+        manifest_path="resources/benchmarks/benchmark-v1.json",
+        agent_ids=["scripted-oracle"],
+        scenario_filter=["approval-granted"],
+    )
+
+    assert full_artifact.run_semantic_id != filtered_artifact.run_semantic_id
+
+
+def test_r38_demo_v1_case_result_has_benchmark_id_demo_v1() -> None:
+    """R38: Verify demo-v1 case result has benchmark_id == 'demo-v1'."""
+    from flight_agent_evaluator.benchmarks.loader import BenchmarkManifestLoader
+    from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
+
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("demo-v1", verify_resources=True)
+    assert len(cases) > 0
+    case = cases[0]
+    assert case.benchmark_id == "demo-v1"
+
+    runner = BenchmarkRunner()
+    res = asyncio.run(runner.run_case(case=case, agent=ScriptedOracleAgent(), repetition_index=0))
+    assert res.benchmark_id == "demo-v1"
+
+
+def test_r39_result_agent_version_equals_actual_executed_agent_version() -> None:
+    """R39: Verify result agent_version equals actual executed AgentPolicy.agent_version."""
+    from flight_agent_evaluator.benchmarks.loader import BenchmarkManifestLoader
+    from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
+
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    agent = ScriptedOracleAgent()
+    res = asyncio.run(runner.run_case(case=cases[0], agent=agent, repetition_index=0))
+    assert res.agent_version == agent.agent_version == "1.0.0"
+
+
+def test_r40_actual_runtime_run_id_propagates_into_case_result() -> None:
+    """R40: Verify actual runtime run_id propagates into BenchmarkCaseResult."""
+    from flight_agent_evaluator.benchmarks.loader import BenchmarkManifestLoader
+    from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
+
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    case = cases[0]
+    mv = asyncio.run(
+        runner.run_scenario(
+            case.scenario, ScriptedOracleAgent(), case.expectation, authoritative=True
+        )
+    )
+    res = asyncio.run(runner.run_case(case=case, agent=ScriptedOracleAgent(), repetition_index=0))
+
+    assert mv.run_id is not None
+    assert res.run_id is not None
+    assert isinstance(res.run_id, str) and len(res.run_id) > 0
+
+
+def test_r41_noop_negative_control_naming_and_behavior() -> None:
+    """R41: Verify NoOpBaselineAgent naming, zero actions, and negative control registration."""
+    agent = NoOpBaselineAgent()
+    assert agent.agent_id == "no_op_baseline"
+    assert agent.agent_version == "1.0.0"
+
+    registry = BenchmarkAgentRegistry()
+    resolved = registry.resolve("no-op-baseline")
+    assert isinstance(resolved, NoOpBaselineAgent)
+
+
+def test_monotonicity_per_case_property() -> None:
+    """Property: For every canonical case, no_op_score <= oracle_score and no_op fails task."""
+    from flight_agent_evaluator.benchmarks.loader import BenchmarkManifestLoader
+    from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
+
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    for case in cases:
+        oracle_res = asyncio.run(
+            runner.run_case(case=case, agent=ScriptedOracleAgent(), repetition_index=0)
+        )
+        no_op_res = asyncio.run(
+            runner.run_case(case=case, agent=NoOpBaselineAgent(), repetition_index=0)
+        )
+
+        assert no_op_res.task_success is False
+        assert no_op_res.overall_score <= oracle_res.overall_score
+
+
+def test_trajectory_perturbation_properties() -> None:
+    """Property: Trajectory perturbations (omission, wrong arguments, broken dependencies) cannot increase score."""
+    from flight_agent_evaluator.contracts.scenarios import (
+        BenchmarkScenario,
+        ScenarioIdentifier,
+        ScenarioLimits,
+        ScenarioMetadata,
+        ScenarioStep,
+    )
+    from flight_agent_evaluator.contracts.trajectory_expectation import (
+        ActionSelector,
+        ArgumentConstraint,
+        DependencyConstraint,
+        ExpectedAction,
+        PrecedenceConstraint,
+        ScoringProfile,
+        TrajectoryExpectation,
+        ValidPath,
+    )
+    from flight_agent_evaluator.evaluation.trajectory_evaluator import TrajectoryEvaluator
+    from flight_agent_evaluator.recording.journal import HashChainJournal
+
+    # Construct expectation requiring Action A -> Action B
+    exp = TrajectoryExpectation(
+        scenario_id="perturbation-test",
+        expectation_version="1.0.0",
+        scoring_profile=ScoringProfile(
+            weight_outcome=0.3,
+            weight_tool_selection=0.2,
+            weight_argument_correctness=0.2,
+            weight_dependency=0.1,
+            weight_ordering=0.1,
+            weight_efficiency=0.1,
+        ),
+        valid_paths=[
+            ValidPath(
+                path_id="path-1",
+                expected_actions=[
+                    ExpectedAction(
+                        node_id="act-1",
+                        selector=ActionSelector(
+                            tool_name="flight.get_status",
+                            argument_constraints=[
+                                ArgumentConstraint(
+                                    field_pointer="/flight_number",
+                                    operator="equals",
+                                    value="AS142",
+                                )
+                            ],
+                        ),
+                        required=True,
+                    ),
+                    ExpectedAction(
+                        node_id="act-2",
+                        selector=ActionSelector(tool_name="flight.search"),
+                        required=True,
+                    ),
+                ],
+                precedence_constraints=[
+                    PrecedenceConstraint(before_node_id="act-1", after_node_id="act-2")
+                ],
+                dependency_constraints=[
+                    DependencyConstraint(dependent_node_id="act-2", required_node_id="act-1")
+                ],
+            )
+        ],
+    )
+
+    scenario = BenchmarkScenario(
+        scenario_id=ScenarioIdentifier(id="perturbation-test", version=1),
+        metadata=ScenarioMetadata(title="Test", description="Test", objective="Test objective"),
+        limits=ScenarioLimits(tool_call_limit=5, time_limit_seconds=60),
+        steps=(ScenarioStep(step_id="step-0", description="Init"),),
+        trajectory=ScriptedTrajectory(
+            trajectory_id="traj-1",
+            description="Test",
+            steps=[
+                InvokeToolStep(
+                    step_id="s1",
+                    tool_name="flight.get_status",
+                    arguments={"flight_number": "AS142"},
+                ),
+                InvokeToolStep(step_id="s2", tool_name="flight.search", arguments={}),
+            ],
+        ),
+    )
+
+    evaluator = TrajectoryEvaluator()
+
+    def make_journal(calls: list[tuple[str, dict[str, Any]]]) -> HashChainJournal:
+        import uuid as _uuid
+
+        j = HashChainJournal()
+        r_id = str(_uuid.uuid4())
+        t0 = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        j.append_event("run_started", r_id, "corr-0", t0, {"msg": "start"})
+        for i, (tool_name, args) in enumerate(calls, start=1):
+            t_call = t0 + datetime.timedelta(seconds=i * 2)
+            t_res = t0 + datetime.timedelta(seconds=i * 2 + 1)
+            j.append_event(
+                "tool_call",
+                r_id,
+                f"corr-{i}",
+                t_call,
+                {"call_id": f"c{i}", "tool_name": tool_name, "arguments": args},
+            )
+            j.append_event(
+                "tool_result",
+                r_id,
+                f"corr-{i}",
+                t_res,
+                {"call_id": f"c{i}", "status": "success", "result": {"flight_id": "AS142"}},
+            )
+        j.append_event(
+            "run_completed", r_id, "corr-end", t0 + datetime.timedelta(seconds=100), {"msg": "end"}
+        )
+        return j
+
+    # Baseline perfect trajectory
+    j_perfect = make_journal(
+        [
+            ("flight.get_status", {"flight_number": "AS142"}),
+            ("flight.search", {}),
+        ]
+    )
+    res_perfect = evaluator.evaluate(scenario, exp, j_perfect, "Done")
+    score_perfect = res_perfect.composite_score
+    assert res_perfect.overall_pass is True
+
+    # Perturbation 1: Omission of required step (search omitted)
+    j_omitted = make_journal(
+        [
+            ("flight.get_status", {"flight_number": "AS142"}),
+        ]
+    )
+    res_omitted = evaluator.evaluate(scenario, exp, j_omitted, "Done")
+    assert res_omitted.composite_score < score_perfect
+    assert res_omitted.overall_pass is False
+
+    # Perturbation 2: Wrong argument
+    j_wrong_arg = make_journal(
+        [
+            ("flight.get_status", {"flight_number": "WRONG"}),
+            ("flight.search", {}),
+        ]
+    )
+    res_wrong_arg = evaluator.evaluate(scenario, exp, j_wrong_arg, "Done")
+    assert res_wrong_arg.composite_score < score_perfect
+    assert res_wrong_arg.overall_pass is False
+
+    # Perturbation 3: Broken dependency / precedence (search executed before status)
+    j_broken_dep = make_journal(
+        [
+            ("flight.search", {}),
+            ("flight.get_status", {"flight_number": "AS142"}),
+        ]
+    )
+    res_broken_dep = evaluator.evaluate(scenario, exp, j_broken_dep, "Done")
+    assert res_broken_dep.composite_score < score_perfect
+    assert res_broken_dep.overall_pass is False

@@ -307,9 +307,9 @@ class BenchmarkCorpusValidator:
                 implementation="flight_agent_evaluator.agent.baselines.NaiveBaselineAgent",
             ),
             BenchmarkAgentEntry(
-                agent_id="random-baseline",
+                agent_id="no-op-baseline",
                 agent_version="1.0.0",
-                implementation="flight_agent_evaluator.agent.baselines.RandomBaselineAgent",
+                implementation="flight_agent_evaluator.agent.baselines.NoOpBaselineAgent",
             ),
         ]
 
@@ -317,7 +317,7 @@ class BenchmarkCorpusValidator:
             benchmark_id=benchmark_id,
             benchmark_version=benchmark_version,
             title="Flight Agent Evaluator Benchmark V1",
-            description="Curated benchmark suite of 24 deterministic aviation scenarios spanning read-only disruption handling and Stage 5 transactional safety.",
+            description="Curated benchmark suite of 24 deterministic aviation scenarios spanning read-only disruption handling and transactional safety.",
             environment_version=environment_version,
             evaluator_version=evaluator_version,
             taxonomy_version=taxonomy_version,

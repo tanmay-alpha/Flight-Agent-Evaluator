@@ -1,12 +1,12 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
-  "scenario_id": "payload-changes-after-approval",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "scenario_id": "approval-wrong-itinerary",
   "scenario_version": 1,
-  "scenario_resource_digest": "5ecc5ca34db8cc2c9705088604826ed0a4334959be3effd1929225be98b7db1f",
-  "expectation_resource_digest": "089982b078d3a5d0e115f9b8a1982963f812d92f33eac780363df3c59e214694",
-  "agent_id": "random-baseline",
+  "scenario_resource_digest": "c949b4732e6ba9fcc39ff88a6fa210e46bcfd350a067466fae7061022a0e9a16",
+  "expectation_resource_digest": "d90a37665556bf08241db2d690b9a2365664977ffdab5dc5a21db16b5255ab33",
+  "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
@@ -28,9 +28,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "run_payload-changes-after-approval_0",
-  "journal_digest": "b76fb8fa05df8db8490470819fb062a2402d63f0e9711e5b190b222af7a54422",
+  "run_id": "042a1dc0-4020-59cb-86b0-a121d685e511",
+  "journal_digest": "1e0848d4f51bdfbf4c370ef62d1c2f0828b4e68168eb9d1f904b42eee70216a9",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.7905000238679349,
-  "semantic_result_digest": "ff98f2de4eeabd5b48c6ebfa3ee394a0935249a894f07d1943b8efab4586a85f"
+  "wall_time_ms": 0.9744999988470227,
+  "semantic_result_digest": "11c05e36b0b02c00bafe38a322e1e17ff670ac23e2362861bb08ad8ec298209d"
 }

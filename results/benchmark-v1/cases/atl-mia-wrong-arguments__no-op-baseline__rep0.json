@@ -1,12 +1,12 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
   "scenario_id": "atl-mia-wrong-arguments",
   "scenario_version": 1,
   "scenario_resource_digest": "7abc71f93e21a9f05a2a7f39a7f8daa842f849347bf1af31e00db1c917fc2aaa",
   "expectation_resource_digest": "af09b7c982ccb2b1d5f4cf41171dabdbf59f09954a23fa6ed4a8b73a262d411f",
-  "agent_id": "random-baseline",
+  "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
@@ -27,9 +27,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "run_atl-mia-wrong-arguments_0",
-  "journal_digest": "c3b2f4a45d83249ccf22ea417c1d1f4da2233af85dc88e2c1b1f1982f8c111f0",
+  "run_id": "5b9859cb-76ee-5014-a535-9e75d958e734",
+  "journal_digest": "8a33aa86a8afdf41d9af1a1acf35ea435360cb3cc40dab67875418f1c5566089",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.5775000026915222,
-  "semantic_result_digest": "00223b027c11c3fcf701c25a5eba2f8a8540ace20a1b6e8f0e296180b17bba5a"
+  "wall_time_ms": 0.8951000054366887,
+  "semantic_result_digest": "3e3e89b54185d2cb7b2d82c606274672e95db1c9f4012748f82401377aecfcab"
 }

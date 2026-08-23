@@ -7,6 +7,7 @@ import importlib.resources
 import json
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from flight_agent_evaluator.benchmarks.loader import BenchmarkManifestLoader
@@ -223,6 +224,39 @@ class ReleaseVerifier:
         overall_valid = all(c.passed for c in checks)
         return ReleaseVerificationReport(
             package_version=pkg_ver,
+            valid=overall_valid,
+            checks=checks,
+        )
+
+    def verify_source_release(
+        self,
+        results_dir: Path | str = "results/benchmark-v1",
+        manifest_id_or_path: str = "builtin:benchmark-v1",
+    ) -> ReleaseVerificationReport:
+        """Run complete release verification including source result bundle consistency."""
+        from flight_agent_evaluator.benchmarks.consistency import ResultBundleConsistencyVerifier
+
+        report = self.verify_installed_release()
+        checks = list(report.checks)
+
+        bundle_verifier = ResultBundleConsistencyVerifier(loader=self.loader)
+        bundle_report = bundle_verifier.verify_bundle(
+            results_dir, manifest_id_or_path=manifest_id_or_path
+        )
+
+        checks.extend(
+            ReleaseCheckItem(
+                check_id=f"REL-SRC-{bc.check_id}",
+                description=f"Source bundle: {bc.description}",
+                passed=bc.passed,
+                details=bc.details,
+            )
+            for bc in bundle_report.checks
+        )
+
+        overall_valid = all(c.passed for c in checks)
+        return ReleaseVerificationReport(
+            package_version=report.package_version,
             valid=overall_valid,
             checks=checks,
         )

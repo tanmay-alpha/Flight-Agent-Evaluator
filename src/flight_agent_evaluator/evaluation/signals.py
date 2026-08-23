@@ -1,7 +1,5 @@
 """Diagnostic signal extraction and root-cause analysis.
 
-Gates 4-9 of the Stage 3 diagnostic validity specification.
-
 Signal extraction separates *what was observed* in the journal from *how it is
 classified* by the taxonomy.  :class:`TrajectoryEvaluator` must not perform
 taxonomy classification; that is the responsibility of :class:`SignalExtractor`

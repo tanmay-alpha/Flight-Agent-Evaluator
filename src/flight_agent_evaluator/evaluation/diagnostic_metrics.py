@@ -1,6 +1,4 @@
-"""Diagnostic consistency metrics for the Stage 3 challenge set.
-
-Gate 13 of the Stage 3 diagnostic validity specification.
+"""Diagnostic consistency metrics for the failure diagnostic challenge set.
 
 These metrics measure the diagnostic engine's consistency against synthetic
 labels that are known by construction (from controlled perturbations).

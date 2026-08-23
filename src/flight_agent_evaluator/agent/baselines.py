@@ -273,12 +273,12 @@ class NaiveBaselineAgent:
         return None
 
 
-class RandomBaselineAgent:
-    """Random baseline agent for benchmark evaluation."""
+class NoOpBaselineAgent:
+    """Deterministic negative control that performs no task actions."""
 
     @property
     def agent_id(self) -> str:
-        return "random_baseline"
+        return "no_op_baseline"
 
     @property
     def agent_version(self) -> str:
@@ -296,6 +296,6 @@ class RandomBaselineAgent:
             agent_id=self.agent_id,
             agent_version=self.agent_version,
             stop_reason=AgentStopReason.ERROR,
-            final_response="Random baseline execution failed.",
+            final_response="No-op baseline executed no actions.",
             tool_call_count=0,
         )

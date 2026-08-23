@@ -84,14 +84,16 @@ def test_property_p3_changing_expectation_digest_changes_manifest_digest(random_
             not in (
                 "scripted-oracle",
                 "naive-baseline",
-                "random-baseline",
+                "no-op-baseline",
                 "oracle",
                 "naive",
-                "random",
+                "noop",
+                "no-op",
                 "scripted",
                 "baseline-scripted",
                 "baseline-naive",
-                "baseline-random",
+                "baseline-noop",
+                "baseline-no-op",
             )
         )
     )

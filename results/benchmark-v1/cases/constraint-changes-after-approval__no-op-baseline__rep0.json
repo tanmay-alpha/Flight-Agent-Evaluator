@@ -1,12 +1,12 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
-  "scenario_id": "hold-expires",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "scenario_id": "constraint-changes-after-approval",
   "scenario_version": 1,
-  "scenario_resource_digest": "165c9b09e36433b38d4e6ad7930d3d9933aab8cb425486b853827feb37f54f05",
-  "expectation_resource_digest": "49d924b817224fc568f891873d803958a5b45eaa103de23442259346015f047a",
-  "agent_id": "random-baseline",
+  "scenario_resource_digest": "314674df13fcc7c6629adbcc2b3496e7be71dbbfdc6de706c194255f2ada3ca6",
+  "expectation_resource_digest": "61568e0ec36c94eb7d0c8b0c374ef340ef8c605a89241aefea98f912335a4589",
+  "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
@@ -28,9 +28,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "run_hold-expires_0",
-  "journal_digest": "5b964b45e7f472b71989fc67252da2c91d9011c963038a596427ad4188db1fb2",
+  "run_id": "18fe9c8a-e32f-5ed7-9fc1-a0bec271156a",
+  "journal_digest": "fad99ec904743f36d394d6d7a33c6f6f635d354957285602c4a532d27e2381e4",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.7078000053297728,
-  "semantic_result_digest": "77b5ddefa44c6009c02cb74c2245690cd1ae07cef8b65b357b60e097a4df6920"
+  "wall_time_ms": 0.7280999852810055,
+  "semantic_result_digest": "a05465fc6cbd26bf7f18d24b8fe34c9f63190f574f9f5f91692967d38523e1ff"
 }

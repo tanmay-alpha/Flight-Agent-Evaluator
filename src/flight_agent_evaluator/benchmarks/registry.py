@@ -7,7 +7,7 @@ from typing import Any
 
 from flight_agent_evaluator.agent.baselines import (
     NaiveBaselineAgent,
-    RandomBaselineAgent,
+    NoOpBaselineAgent,
     ScriptedOracleAgent,
 )
 from flight_agent_evaluator.agent.protocol import AgentPolicy
@@ -44,11 +44,11 @@ class BenchmarkAgentRegistry:
             description="Fixed status lookup and simple alternative search heuristic.",
         )
         self.register(
-            agent_id="random-baseline",
-            factory=RandomBaselineAgent,
+            agent_id="no-op-baseline",
+            factory=NoOpBaselineAgent,
             agent_version="1.0.0",
-            implementation="flight_agent_evaluator.agent.baselines.RandomBaselineAgent",
-            description="Executes random valid tool actions across available schemas.",
+            implementation="flight_agent_evaluator.agent.baselines.NoOpBaselineAgent",
+            description="Deterministic negative control that performs no task actions.",
         )
 
         # Explicit aliases pointing to canonical identities
@@ -57,8 +57,10 @@ class BenchmarkAgentRegistry:
         self.register_alias("baseline-scripted", "scripted-oracle")
         self.register_alias("naive", "naive-baseline")
         self.register_alias("baseline-naive", "naive-baseline")
-        self.register_alias("random", "random-baseline")
-        self.register_alias("baseline-random", "random-baseline")
+        self.register_alias("noop", "no-op-baseline")
+        self.register_alias("no-op", "no-op-baseline")
+        self.register_alias("baseline-noop", "no-op-baseline")
+        self.register_alias("baseline-no-op", "no-op-baseline")
 
     def register(
         self,

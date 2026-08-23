@@ -1,4 +1,4 @@
-"""Comprehensive unit tests for FailureDiagnosticEngine (Stage 3).
+"""Comprehensive unit tests for FailureDiagnosticEngine.
 
 Covers all failure categories, severity rankings, evidence attribution,
 compound failures, and the clean-pass baseline.

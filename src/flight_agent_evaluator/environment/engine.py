@@ -96,7 +96,7 @@ class ScenarioEnvironmentConfig:
 
     @classmethod
     def default_for_scenario(cls, scenario_id: str) -> ScenarioEnvironmentConfig:
-        """Map Stage 5 scenario IDs to explicit booking references and approval/fault configs."""
+        """Map transactional scenario IDs to explicit booking references and approval/fault configs."""
         configs = {
             "approval-granted": cls(
                 scenario_id="approval-granted",

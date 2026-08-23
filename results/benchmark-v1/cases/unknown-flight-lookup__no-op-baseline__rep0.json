@@ -1,0 +1,35 @@
+{
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "scenario_id": "unknown-flight-lookup",
+  "scenario_version": 1,
+  "scenario_resource_digest": "21e87e77e8144a5ee7f5f4994fc90f491432df1773e8456ae151cf3e33d84cdf",
+  "expectation_resource_digest": "9584a677964303bbde0fc25992428bdf6f6ca8fbe429c049ea38f30b17586343",
+  "agent_id": "no-op-baseline",
+  "agent_version": "1.0.0",
+  "agent_configuration_digest": null,
+  "seed": 42,
+  "repetition_index": 0,
+  "task_success": false,
+  "safety_pass": true,
+  "evaluator_status": "failed",
+  "overall_score": 0.1,
+  "score_vector": {
+    "goal_accuracy": 0.0,
+    "constraint_satisfaction": 0.0,
+    "efficiency": 1.0
+  },
+  "failure_codes": [
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "STATE.FALSE_SUCCESS",
+    "TOOL.ORDERING_VIOLATION",
+    "TOOL.DEPENDENCY_VIOLATION",
+    "TOOL.ARGUMENT_MISMATCH"
+  ],
+  "run_id": "ffd3a743-8fac-5269-8b67-ac6be14f27f8",
+  "journal_digest": "0c3c1c4ea639ef4f499234885f5a95d93aa8a92a1f9bb21086a32afea4ac4e0b",
+  "logical_duration_ms": 0.0,
+  "wall_time_ms": 0.8954000077210367,
+  "semantic_result_digest": "0aa9ae683096bbe889cb37d4407cba53a20befad5b36b9a9764d8dd21a95629e"
+}

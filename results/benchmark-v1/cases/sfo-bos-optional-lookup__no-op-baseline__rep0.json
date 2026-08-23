@@ -1,12 +1,12 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
-  "scenario_id": "ord-sea-dual-order",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "scenario_id": "sfo-bos-optional-lookup",
   "scenario_version": 1,
-  "scenario_resource_digest": "2694ce7ca67df8d7feeadf4645ae489ac7530a671db8c40eadb0923bba3fb599",
-  "expectation_resource_digest": "482dbc462dadb84cd17c10a36aa1a41774a9c317ffdf5c055d045801b66f5ba1",
-  "agent_id": "random-baseline",
+  "scenario_resource_digest": "303ec1a09cfb9a437874f4583baace6f8a9cc0808e936d23a5c01ddd2102b273",
+  "expectation_resource_digest": "5ea65aad2d438a336ec2d6861d1e02a9944b5277768ebc2fd309650eec5e2f51",
+  "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
@@ -28,9 +28,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "run_ord-sea-dual-order_0",
-  "journal_digest": "f05ea372b44eb078b00bd5fda60bd7d5d833df49eeadba0df17f235ea302b299",
+  "run_id": "b8511c9b-cde4-59e5-93f6-2c7a87b9a6c0",
+  "journal_digest": "7c099f7e5cb9be9cae81dd24c3efc9ad461f786c918c57388d168bf823f5a369",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.6947999936528504,
-  "semantic_result_digest": "00289cb802345e9151ffaaa51825f25b4d0682c73c9987294295f4887b97027f"
+  "wall_time_ms": 0.7921000069472939,
+  "semantic_result_digest": "e9800e6a2680b8be49d58444980db3905addb24c47cab7dd3ba348a97745ac81"
 }
