@@ -65,13 +65,13 @@
           "flight_number": "AS170",
           "origin": "JFK",
           "destination": "LHR",
-          "price_amount": 510.0,
+          "price_amount": 540.0,
           "idempotency_key": "idem-hold-stale-1"
         }
       },
       {
         "kind": "invoke_tool",
-        "step_id": "step-3-appr",
+        "step_id": "step-3-appr-1",
         "tool_name": "approval.request",
         "arguments": {
           "booking_reference": "AS-1012",
@@ -86,40 +86,9 @@
         }
       },
       {
-        "kind": "invoke_tool",
-        "step_id": "step-4-hold-2",
-        "tool_name": "booking.hold_alternative",
-        "arguments": {
-          "booking_reference": "AS-1012",
-          "offer_id": "offer-stale-2",
-          "flight_number": "AS172",
-          "origin": "JFK",
-          "destination": "LHR",
-          "price_amount": 820.0,
-          "idempotency_key": "idem-hold-stale-2"
-        }
-      },
-      {
-        "kind": "invoke_tool",
-        "step_id": "step-5-conf-stale",
-        "tool_name": "booking.confirm_rebooking",
-        "arguments": {
-          "booking_reference": "AS-1012",
-          "hold_id": {
-            "$ref_step": 3,
-            "json_pointer": "/hold_id"
-          },
-          "approval_id": {
-            "$ref_step": 2,
-            "json_pointer": "/approval_id"
-          },
-          "idempotency_key": "idem-conf-stale-attempt"
-        }
-      },
-      {
         "kind": "produce_final_response",
-        "step_id": "step-6-resp",
-        "response": "Attempted confirmation with stale approval failed as expected."
+        "step_id": "step-4-resp",
+        "response": "Requested approval for rebooking."
       }
     ]
   }

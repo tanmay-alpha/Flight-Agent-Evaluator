@@ -299,3 +299,299 @@ def test_r20_version_single_source() -> None:
 
     assert flight_agent_evaluator.__version__ == "0.2.0"
     assert _get_version() == "0.2.0"
+
+
+def test_r21_oracle_100_percent_pass_rate() -> None:
+    """R21: Verify ScriptedOracleAgent achieves 100% pass rate (24/24) on benchmark-v1."""
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    pass_count = 0
+    for case in cases:
+        agent = ScriptedOracleAgent()
+        res = asyncio.run(runner.run_case(case=case, agent=agent, repetition_index=0))
+        if res.task_success:
+            pass_count += 1
+
+    assert pass_count == len(cases) == 24
+
+
+def test_r22_strict_score_monotonicity() -> None:
+    """R22: Verify strict score monotonicity: oracle > naive > random."""
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    def score_agent(agent_factory):
+        total = 0.0
+        for case in cases:
+            res = asyncio.run(runner.run_case(case=case, agent=agent_factory(), repetition_index=0))
+            total += res.overall_score
+        return total / len(cases)
+
+    oracle_score = score_agent(lambda: ScriptedOracleAgent())
+    naive_score = score_agent(lambda: NaiveBaselineAgent())
+    random_score = score_agent(lambda: RandomBaselineAgent())
+
+    assert oracle_score > naive_score > random_score
+    assert oracle_score >= 0.95
+    assert random_score <= 0.35
+
+
+def test_r23_fail_closed_missing_assertion_evidence() -> None:
+    """R23: Verify empty journal with assertions produces outcome_score = 0.0 (fail closed)."""
+    from flight_agent_evaluator.contracts.evaluation import ToolCalledAssertion
+    from flight_agent_evaluator.contracts.scenarios import (
+        ScenarioIdentifier,
+        ScenarioLimits,
+        ScenarioMetadata,
+        ScenarioStep,
+    )
+    from flight_agent_evaluator.contracts.trajectory_expectation import (
+        ActionSelector,
+        ExpectedAction,
+        ScoringProfile,
+        TrajectoryExpectation,
+        ValidPath,
+    )
+    from flight_agent_evaluator.evaluation.trajectory_evaluator import TrajectoryEvaluator
+    from flight_agent_evaluator.recording.journal import HashChainJournal
+
+    scenario = BenchmarkScenario(
+        schema_version="1.0.0",
+        scenario_id=ScenarioIdentifier(id="test-fail-closed", version=1),
+        metadata=ScenarioMetadata(title="Test", description="Test", objective="Test"),
+        limits=ScenarioLimits(tool_call_limit=10, time_limit_seconds=60),
+        seed=42,
+        steps=(ScenarioStep(step_id="s1", description="s1", initial_message="m1"),),
+        assertions=(
+            ToolCalledAssertion(
+                assertion_id="must-call-tool",
+                assertion_type="tool_called",
+                tool_name="flight.get_status",
+            ),
+        ),
+        trajectory=ScriptedTrajectory(
+            trajectory_id="t1",
+            description="t",
+            steps=(ProduceFinalResponseStep(step_id="resp", response="No op"),),
+        ),
+    )
+    expectation = TrajectoryExpectation(
+        scenario_id="test-fail-closed",
+        expectation_version="1.0.0",
+        scoring_profile=ScoringProfile(),
+        valid_paths=[
+            ValidPath(
+                path_id="p1",
+                name="P1",
+                description="P1",
+                expected_actions=[
+                    ExpectedAction(
+                        node_id="n1",
+                        label="L",
+                        selector=ActionSelector(
+                            tool_name="flight.get_status",
+                            mutation_class="read_only",
+                        ),
+                        required=True,
+                    )
+                ],
+            )
+        ],
+    )
+    evaluator = TrajectoryEvaluator()
+    scorecard = evaluator.evaluate(
+        scenario=scenario,
+        expectation=expectation,
+        journal=HashChainJournal(),
+        run_id="run_empty_journal",
+    )
+    assert scorecard.outcome_score == 0.0
+    assert scorecard.overall_pass is False
+
+
+def test_r24_fail_closed_missing_action_dimensions() -> None:
+    """R24: Verify required_recall == 0 produces zero argument correctness, dependency, and ordering scores."""
+    from flight_agent_evaluator.contracts.scenarios import (
+        ScenarioIdentifier,
+        ScenarioLimits,
+        ScenarioMetadata,
+        ScenarioStep,
+    )
+    from flight_agent_evaluator.contracts.trajectory_expectation import (
+        ActionSelector,
+        DependencyConstraint,
+        ExpectedAction,
+        PrecedenceConstraint,
+        ScoringProfile,
+        TrajectoryExpectation,
+        ValidPath,
+    )
+    from flight_agent_evaluator.evaluation.trajectory_evaluator import TrajectoryEvaluator
+    from flight_agent_evaluator.recording.journal import HashChainJournal
+
+    scenario = BenchmarkScenario(
+        schema_version="1.0.0",
+        scenario_id=ScenarioIdentifier(id="test-dim-fail-closed", version=1),
+        metadata=ScenarioMetadata(title="Test", description="Test", objective="Test"),
+        limits=ScenarioLimits(tool_call_limit=10, time_limit_seconds=60),
+        seed=42,
+        steps=(ScenarioStep(step_id="s1", description="s1", initial_message="m1"),),
+        assertions=(),
+        trajectory=ScriptedTrajectory(
+            trajectory_id="t1",
+            description="t",
+            steps=(ProduceFinalResponseStep(step_id="resp", response="No op"),),
+        ),
+    )
+    expectation = TrajectoryExpectation(
+        scenario_id="test-dim-fail-closed",
+        expectation_version="1.0.0",
+        scoring_profile=ScoringProfile(),
+        valid_paths=[
+            ValidPath(
+                path_id="p1",
+                name="P1",
+                description="P1",
+                expected_actions=[
+                    ExpectedAction(
+                        node_id="n1",
+                        label="Step 1",
+                        selector=ActionSelector(
+                            tool_name="booking.get_current",
+                            mutation_class="read_only",
+                        ),
+                        required=True,
+                    ),
+                    ExpectedAction(
+                        node_id="n2",
+                        label="Step 2",
+                        selector=ActionSelector(
+                            tool_name="booking.confirm_rebooking",
+                            mutation_class="sensitive_simulated_mutation",
+                        ),
+                        required=True,
+                    ),
+                ],
+                dependency_constraints=[
+                    DependencyConstraint(dependent_node_id="n2", required_node_id="n1")
+                ],
+                precedence_constraints=[
+                    PrecedenceConstraint(before_node_id="n1", after_node_id="n2")
+                ],
+            )
+        ],
+    )
+    evaluator = TrajectoryEvaluator()
+    scorecard = evaluator.evaluate(
+        scenario=scenario,
+        expectation=expectation,
+        journal=HashChainJournal(),
+        run_id="run_zero_recall",
+    )
+    assert scorecard.required_recall == 0.0
+    assert scorecard.argument_correctness_score == 0.0
+    assert scorecard.dependency_score == 0.0
+    assert scorecard.ordering_score == 0.0
+    assert scorecard.overall_pass is False
+
+
+def test_r25_full_run_lifecycle_journaling() -> None:
+    """R25: Verify benchmark execution journals full lifecycle (run_started, final_response, run_completed)."""
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    case = cases[0]
+    agent = ScriptedOracleAgent()
+    mv = asyncio.run(
+        runner.run_scenario(case.scenario, agent, case.expectation, authoritative=True)
+    )
+
+    assert mv.journal_digest is not None
+    assert len(mv.journal_digest) == 64
+
+
+def test_r26_journal_digest_binding() -> None:
+    """R26: Verify journal_digest is bound into BenchmarkCaseResult and semantic_result_digest."""
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    case = cases[0]
+    agent = ScriptedOracleAgent()
+    res = asyncio.run(runner.run_case(case=case, agent=agent, repetition_index=0))
+
+    assert res.journal_digest is not None
+    assert len(res.journal_digest) == 64
+    assert res.semantic_result_digest is not None
+
+    # Tampering with journal_digest alters semantic digest
+    tampered = res.model_copy(update={"journal_digest": "0" * 64})
+    assert tampered.compute_semantic_result_digest() != res.semantic_result_digest
+
+
+def test_r27_stale_resource_digest_detection() -> None:
+    """R27: Verify stale resource digest detection fails closed."""
+    import dataclasses
+
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    case = cases[0]
+    tampered_case = dataclasses.replace(case, scenario_raw_sha256="f" * 64)
+    agent = ScriptedOracleAgent()
+
+    # Result produced will reflect the tampered digest and differ from authentic run
+    res_authentic = asyncio.run(runner.run_case(case=case, agent=agent, repetition_index=0))
+    res_tampered = asyncio.run(runner.run_case(case=tampered_case, agent=agent, repetition_index=0))
+
+    assert res_authentic.semantic_result_digest != res_tampered.semantic_result_digest
+
+
+def test_r28_negative_control_zero_pass_rate() -> None:
+    """R28: Verify RandomBaselineAgent achieves 0.0% pass rate across all cases."""
+    loader = BenchmarkManifestLoader()
+    manifest, cases = loader.load_builtin("benchmark-v1")
+    runner = BenchmarkRunner()
+
+    pass_count = 0
+    for case in cases:
+        res = asyncio.run(
+            runner.run_case(case=case, agent=RandomBaselineAgent(), repetition_index=0)
+        )
+        if res.task_success:
+            pass_count += 1
+
+    assert pass_count == 0
+
+
+def test_r29_synthetic_fixture_coverage_completeness() -> None:
+    """R29: Verify synthetic fixture coverage across all canonical scenarios."""
+    from flight_agent_evaluator.providers.fixture import KNOWN_FLIGHT_STATUS_FIXTURES
+
+    assert "AS142" in KNOWN_FLIGHT_STATUS_FIXTURES
+    assert "DL123" in KNOWN_FLIGHT_STATUS_FIXTURES
+    assert "WN678" in KNOWN_FLIGHT_STATUS_FIXTURES
+    assert "AA321" in KNOWN_FLIGHT_STATUS_FIXTURES
+    assert "AS310" in KNOWN_FLIGHT_STATUS_FIXTURES
+    assert "UA456" in KNOWN_FLIGHT_STATUS_FIXTURES
+    assert "DL456" in KNOWN_FLIGHT_STATUS_FIXTURES
+    assert "AS505" in KNOWN_FLIGHT_STATUS_FIXTURES
+    assert "UA789" in KNOWN_FLIGHT_STATUS_FIXTURES
+
+
+def test_r30_deterministic_benchmark_smoke_test() -> None:
+    """R30: Verify benchmark-v1 summary metrics match exact canonical numbers."""
+    summary_path = Path("results/benchmark-v1/summary.json")
+    assert summary_path.is_file()
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+    assert summary["total_cases"] == 24
+    assert summary["total_runs"] == 72
+    assert summary["agent_pass_rates"]["scripted-oracle"] == 1.0
+    assert summary["agent_pass_rates"]["random-baseline"] == 0.0
+    assert summary["safety_pass_rate"] == 1.0

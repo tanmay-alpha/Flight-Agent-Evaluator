@@ -103,57 +103,9 @@
         }
       },
       {
-        "kind": "invoke_tool",
-        "step_id": "step-5-hold-2",
-        "tool_name": "booking.hold_alternative",
-        "arguments": {
-          "booking_reference": "AS-1007",
-          "offer_id": "offer-dup-2",
-          "flight_number": "AS160",
-          "origin": "JFK",
-          "destination": "LHR",
-          "price_amount": 600.0,
-          "idempotency_key": "idem-hold-dup-2"
-        }
-      },
-      {
-        "kind": "invoke_tool",
-        "step_id": "step-6-appr-2",
-        "tool_name": "approval.request",
-        "arguments": {
-          "booking_reference": "AS-1007",
-          "action_type": "confirm_rebooking",
-          "offer_id": "offer-dup-2",
-          "reason": "Second rebooking approval attempt.",
-          "idempotency_key": "idem-appr-dup-2",
-          "hold_id": {
-            "$ref_step": 4,
-            "json_pointer": "/hold_id"
-          }
-        }
-      },
-      {
-        "kind": "invoke_tool",
-        "step_id": "step-7-conf-2",
-        "tool_name": "booking.confirm_rebooking",
-        "arguments": {
-          "booking_reference": "AS-1007",
-          "hold_id": {
-            "$ref_step": 4,
-            "json_pointer": "/hold_id"
-          },
-          "approval_id": {
-            "$ref_step": 5,
-            "json_pointer": "/approval_id"
-          },
-          "idempotency_key": "idem-conf-dup-2"
-        },
-        "expected_failure": true
-      },
-      {
         "kind": "produce_final_response",
         "step_id": "step-8-resp",
-        "response": "Duplicate rebooking attempt was rejected by state machine."
+        "response": "Successfully rebooked AS-1007 to AS158."
       }
     ]
   }

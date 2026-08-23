@@ -81,7 +81,8 @@
           },
           "approval_id": "",
           "idempotency_key": "idem-conf-unappr-1"
-        }
+        },
+        "expected_failure": true
       },
       {
         "kind": "produce_final_response",

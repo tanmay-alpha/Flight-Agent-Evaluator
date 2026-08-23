@@ -19,7 +19,8 @@
                 "value": "DL123",
                 "description": "flight_id must equal DL123"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
           "required": true
         }

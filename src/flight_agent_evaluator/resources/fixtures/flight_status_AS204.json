@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_AS204",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "AS204",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "AS204",
+    "marketing_airline_iata": "AS",
+    "operating_airline_iata": "AS",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "LAX",
+    "name": "Los Angeles International Airport",
+    "city": "Los Angeles",
+    "country": "US",
+    "timezone": "America/Los_Angeles"
+  },
+  "destination": {
+    "iata_code": "SFO",
+    "name": "San Francisco International Airport",
+    "city": "San Francisco",
+    "country": "US",
+    "timezone": "America/Los_Angeles"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T14:00:00+00:00",
+    "estimated": "2026-07-28T14:00:00+00:00",
+    "actual": null,
+    "delay_minutes": 0
+  },
+  "arrival": {
+    "scheduled": "2026-07-28T15:30:00+00:00",
+    "estimated": "2026-07-28T15:30:00+00:00",
+    "actual": null,
+    "delay_minutes": 0
+  },
+  "status": {
+    "operational_status": "on_time",
+    "delay_minutes": 0,
+    "gate": "42A",
+    "terminal": "4",
+    "remarks": "On schedule"
+  },
+  "aircraft_type": "A321"
+}

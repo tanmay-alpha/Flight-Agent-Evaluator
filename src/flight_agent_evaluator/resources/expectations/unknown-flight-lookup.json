@@ -16,10 +16,12 @@
               {
                 "field_pointer": "/flight_id",
                 "operator": "equals",
-                "value": "XX999"
+                "value": "AS999"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
+          "expected_result_status": "error",
           "required": true
         }
       ]

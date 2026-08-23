@@ -11,17 +11,43 @@
           "node_id": "node_status_initial",
           "label": "Initial Status Attempt",
           "selector": {
-            "tool_name": "flight.get_status"
+            "tool_name": "flight.get_status",
+            "mutation_class": "read_only"
           },
+          "expected_result_status": "error",
           "required": true
         },
         {
           "node_id": "node_status_retry",
           "label": "Status Retry",
           "selector": {
-            "tool_name": "flight.get_status"
+            "tool_name": "flight.get_status",
+            "mutation_class": "read_only"
           },
-          "required": false
+          "expected_result_status": "success",
+          "required": true
+        },
+        {
+          "node_id": "node_search_flights",
+          "label": "Search Alternative Flights",
+          "selector": {
+            "tool_name": "flight.search_flights",
+            "mutation_class": "read_only"
+          },
+          "expected_result_status": "success",
+          "required": true
+        }
+      ],
+      "precedence_constraints": [
+        {
+          "before_node_id": "node_status_initial",
+          "after_node_id": "node_status_retry",
+          "description": "Initial status attempt before retry"
+        },
+        {
+          "before_node_id": "node_status_retry",
+          "after_node_id": "node_search_flights",
+          "description": "Status retry before search"
         }
       ],
       "dependency_constraints": [

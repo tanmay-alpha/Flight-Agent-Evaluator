@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_WN678",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "WN678",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "WN678",
+    "marketing_airline_iata": "WN",
+    "operating_airline_iata": "WN",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "BWI",
+    "name": "Baltimore/Washington International Airport",
+    "city": "Baltimore",
+    "country": "US",
+    "timezone": "America/New_York"
+  },
+  "destination": {
+    "iata_code": "MCO",
+    "name": "Orlando International Airport",
+    "city": "Orlando",
+    "country": "US",
+    "timezone": "America/New_York"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T16:00:00+00:00",
+    "estimated": "2026-07-28T16:45:00+00:00",
+    "actual": null,
+    "delay_minutes": 45
+  },
+  "arrival": {
+    "scheduled": "2026-07-28T18:30:00+00:00",
+    "estimated": "2026-07-28T19:15:00+00:00",
+    "actual": null,
+    "delay_minutes": 45
+  },
+  "status": {
+    "operational_status": "delayed",
+    "delay_minutes": 45,
+    "gate": "B3",
+    "terminal": "A",
+    "remarks": "Air traffic control hold"
+  },
+  "aircraft_type": "B738"
+}

@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_search_JFK_LAX_2026_07_28",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "origin": "JFK",
+    "destination": "LAX",
+    "departure_date": "2026-07-28"
+  },
+  "offers": [
+    {
+      "offer_id": "offer-jfk-lax-1",
+      "airline_iata": "AS",
+      "segments": [
+        {
+          "segment_index": 1,
+          "flight_id": {
+            "flight_number": "AS88",
+            "marketing_airline_iata": "AS",
+            "operating_airline_iata": "AS",
+            "is_codeshare": false
+          },
+          "departure_airport": "JFK",
+          "arrival_airport": "LAX",
+          "departure_time": "2026-07-28T14:00:00+00:00",
+          "arrival_time": "2026-07-28T17:30:00+00:00",
+          "cabin_class": "economy",
+          "aircraft_type": "B739"
+        }
+      ],
+      "total_price": {
+        "amount": 290.0,
+        "currency": "USD"
+      },
+      "booking_class": "V"
+    },
+    {
+      "offer_id": "offer-jfk-lax-2",
+      "airline_iata": "AS",
+      "segments": [
+        {
+          "segment_index": 1,
+          "flight_id": {
+            "flight_number": "AS90",
+            "marketing_airline_iata": "AS",
+            "operating_airline_iata": "AS",
+            "is_codeshare": false
+          },
+          "departure_airport": "JFK",
+          "arrival_airport": "LAX",
+          "departure_time": "2026-07-28T17:00:00+00:00",
+          "arrival_time": "2026-07-28T20:30:00+00:00",
+          "cabin_class": "economy",
+          "aircraft_type": "B739"
+        }
+      ],
+      "total_price": {
+        "amount": 320.0,
+        "currency": "USD"
+      },
+      "booking_class": "Q"
+    },
+    {
+      "offer_id": "offer-jfk-lax-3",
+      "airline_iata": "AS",
+      "segments": [
+        {
+          "segment_index": 1,
+          "flight_id": {
+            "flight_number": "AS92",
+            "marketing_airline_iata": "AS",
+            "operating_airline_iata": "AS",
+            "is_codeshare": false
+          },
+          "departure_airport": "JFK",
+          "arrival_airport": "LAX",
+          "departure_time": "2026-07-28T20:00:00+00:00",
+          "arrival_time": "2026-07-28T23:30:00+00:00",
+          "cabin_class": "economy",
+          "aircraft_type": "B739"
+        }
+      ],
+      "total_price": {
+        "amount": 350.0,
+        "currency": "USD"
+      },
+      "booking_class": "Y"
+    }
+  ]
+}

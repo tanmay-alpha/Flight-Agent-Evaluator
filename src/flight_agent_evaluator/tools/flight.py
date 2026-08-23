@@ -79,11 +79,11 @@ class FlightGetStatusHandler:
             raise ValueError("flight_id must be a non-empty string")
         if not isinstance(operating_day, str) or not operating_day:
             raise ValueError("operating_day must be a YYYY-MM-DD string")
-
+        carrier = flight_id[:2] if len(flight_id) >= 2 else "AS"
         identity = FlightIdentity(
             flight_number=flight_id,
-            marketing_airline_iata="AS",
-            operating_airline_iata="AS",
+            marketing_airline_iata=carrier,
+            operating_airline_iata=carrier,
         )
         query = FlightStatusQuery(
             flight_identity=identity,

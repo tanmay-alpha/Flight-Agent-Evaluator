@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_AS310",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "AS310",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "AS310",
+    "marketing_airline_iata": "AS",
+    "operating_airline_iata": "AS",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "DFW",
+    "name": "Dallas/Fort Worth International Airport",
+    "city": "Dallas",
+    "country": "US",
+    "timezone": "America/Chicago"
+  },
+  "destination": {
+    "iata_code": "DEN",
+    "name": "Denver International Airport",
+    "city": "Denver",
+    "country": "US",
+    "timezone": "America/Denver"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T13:00:00+00:00",
+    "estimated": null,
+    "actual": null,
+    "delay_minutes": 0
+  },
+  "arrival": {
+    "scheduled": "2026-07-28T14:30:00+00:00",
+    "estimated": null,
+    "actual": null,
+    "delay_minutes": 0
+  },
+  "status": {
+    "operational_status": "cancelled",
+    "delay_minutes": 0,
+    "gate": "E4",
+    "terminal": "E",
+    "remarks": "Cancelled due to severe thunderstorms"
+  },
+  "aircraft_type": "B738"
+}

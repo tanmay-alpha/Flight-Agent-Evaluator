@@ -18,7 +18,8 @@
                 "operator": "equals",
                 "value": "UA789"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
           "required": true
         },
@@ -33,7 +34,8 @@
                 "operator": "equals",
                 "value": "UA"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
           "required": false
         }
