@@ -121,6 +121,7 @@ class ReleaseVerifier:
             )
 
         # 3. Built-in Benchmark V1 Manifest and Cases
+        bm_manifest = None
         try:
             bm_manifest, bm_cases = self.loader.load_builtin("benchmark-v1", verify_resources=True)
             bm_digest = bm_manifest.manifest_digest or bm_manifest.compute_canonical_digest()
@@ -168,6 +169,8 @@ class ReleaseVerifier:
 
         # 5. Judge validation status truthfulness
         try:
+            if bm_manifest is None:
+                bm_manifest, _ = self.loader.load_builtin("benchmark-v1", verify_resources=False)
             status = bm_manifest.judge_validation_status
             status_passed = status == "human_calibration_pending"
             checks.append(

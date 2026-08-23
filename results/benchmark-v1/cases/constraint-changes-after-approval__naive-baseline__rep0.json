@@ -1,10 +1,10 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "6377914ef46b99627347bab1e561b9a0104e35e69f06904ac217ca3ebbce984d",
+  "manifest_digest": "9e414bcdf5b06591f965a7d1582ba160dba2c92a89779c7f1d66a527f08d87f4",
   "scenario_id": "constraint-changes-after-approval",
   "scenario_version": 1,
-  "scenario_resource_digest": "a994dfdca7773ee91b38277fff835d7e603926d731ada06c95525b3f42a1023f",
+  "scenario_resource_digest": "7e9b14d70a7f29281620d4180f662cfa983807c1e6b6ad99cabc8e15325b572d",
   "expectation_resource_digest": "d5de2085e6c193e5f0af4fab01306efa9ed43ecc59725fdfd48fc5ffc9be2b4a",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
@@ -31,6 +31,6 @@
   "run_id": "run_constraint-changes-after-approval_0",
   "journal_digest": null,
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.9079000155907124,
-  "semantic_result_digest": "e367c2d342f97e56e8b27a033c839a8a6eed3518c697bdb43b06bef63e9a2748"
+  "wall_time_ms": 0.9337000083178282,
+  "semantic_result_digest": "655173977c23741057e945b825b0656bd04763e30eedc89902f7492e21e28d51"
 }

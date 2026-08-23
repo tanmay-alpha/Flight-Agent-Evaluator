@@ -55,7 +55,7 @@
       "scenario_id": "approval-granted",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/approval-granted.json",
-      "scenario_sha256": "7a91f2ade6139e92b51c655b7ee51d0255d9c0e00579a19779b5315bf6d2fbab",
+      "scenario_sha256": "5ae1bb86eef94618f10d1f2e5178894a511d36d5f5409418933357930f5249f0",
       "expectation_path": "resources/expectations/transactional/approval-granted.json",
       "expectation_sha256": "2a9106b68c6b4043863ee357d72b5b1dec7b8e7a210b84ef5a9a1151acd1d268",
       "family": "transactional",
@@ -97,5 +97,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "95982ab7f8106925cfe8cdecbdfe4a180f7333c1c33ef5b59696eeb637317a7e"
+  "manifest_digest": "a2bcdb29822805ad9439ae6c4de9e5cf28907950f2dc3994782cdb3f74d18d64"
 }

@@ -1,7 +1,7 @@
-# Benchmark Run Report: `bm_run_b9a7c517e39ef609`
+# Benchmark Run Report: `bm_run_f58857a3fa1dc2b8`
 
 **Benchmark ID**: `benchmark-v1` (v1.0.0)
-**Manifest Digest**: `6377914ef46b99627347bab1e561b9a0104e35e69f06904ac217ca3ebbce984d`
+**Manifest Digest**: `9e414bcdf5b06591f965a7d1582ba160dba2c92a89779c7f1d66a527f08d87f4`
 **Scenario Count**: 24
 **Total Executions**: 72
 **Task Success Rate**: 6.9%

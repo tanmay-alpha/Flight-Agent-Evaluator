@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "6377914ef46b99627347bab1e561b9a0104e35e69f06904ac217ca3ebbce984d",
+  "manifest_digest": "9e414bcdf5b06591f965a7d1582ba160dba2c92a89779c7f1d66a527f08d87f4",
   "scenario_id": "clt-phx-retry-dependency",
   "scenario_version": 1,
   "scenario_resource_digest": "ad239bdd96ef15faea1ac591c3d0f2b897ab047f1057d7102dc8fcfeda18f17f",
@@ -29,6 +29,6 @@
   "run_id": "run_clt-phx-retry-dependency_0",
   "journal_digest": null,
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.7736000115983188,
-  "semantic_result_digest": "299d727174e7aa1764171344ccbf5ded7811f8b622135c489ca5a662543f21ec"
+  "wall_time_ms": 0.7986999989952892,
+  "semantic_result_digest": "f31829ae5ad2f51b9d475a0d9e8f5438d50356568df95d92e9faefee0ac33cd2"
 }

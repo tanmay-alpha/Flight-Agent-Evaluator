@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "6377914ef46b99627347bab1e561b9a0104e35e69f06904ac217ca3ebbce984d",
+  "manifest_digest": "9e414bcdf5b06591f965a7d1582ba160dba2c92a89779c7f1d66a527f08d87f4",
   "scenario_id": "unknown-flight-lookup",
   "scenario_version": 1,
   "scenario_resource_digest": "7d61e912a18e8556f83a8a35d94612f94a624f0a433c567da07e8edfa562e484",
@@ -26,6 +26,6 @@
   "run_id": "run_unknown-flight-lookup_0",
   "journal_digest": null,
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.3671000013127923,
-  "semantic_result_digest": "87a914de596afcd7e7d4ddf20acc192533a62b5b76c7168a97e9532c8e37bc23"
+  "wall_time_ms": 0.32279998413287103,
+  "semantic_result_digest": "2b48b81c45e446ff8dc6f3c3518a687a5aa5b089425de4ffb0a4049d046310ec"
 }
