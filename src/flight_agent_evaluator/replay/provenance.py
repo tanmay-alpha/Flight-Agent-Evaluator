@@ -43,6 +43,17 @@ class ReplayUnsupportedVersionError(ReplayProvenanceError):
     """Raised when recording schema or algorithm version is unsupported."""
 
 
+__all__ = [
+    "ReplayExecutionFactory",
+    "ReplayProvenance",
+    "ReplayProvenanceError",
+    "ReplayProvenanceMismatchError",
+    "ReplayUnavailableError",
+    "ReplayUnsupportedVersionError",
+    "extract_provenance",
+]
+
+
 def extract_provenance(
     recording: RunRecording | None,
     journal: HashChainJournal,
@@ -99,7 +110,7 @@ class ReplayExecutionFactory:
     """Creates deterministic runner and execution components matching recorded provenance."""
 
     def __init__(self, resource_root: Path | None = None) -> None:
-        self._resource_root = resource_root or Path("resources")
+        self._resource_root = resource_root
 
     def resolve_scenario(
         self, provenance: ReplayProvenance, explicit_path: Path | None = None

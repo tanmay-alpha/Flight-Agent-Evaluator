@@ -1,0 +1,34 @@
+{
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "manifest_digest": "6377914ef46b99627347bab1e561b9a0104e35e69f06904ac217ca3ebbce984d",
+  "scenario_id": "ord-sea-dual-order",
+  "scenario_version": 1,
+  "scenario_resource_digest": "2694ce7ca67df8d7feeadf4645ae489ac7530a671db8c40eadb0923bba3fb599",
+  "expectation_resource_digest": "efe3ddb5b6095d199c225e8a825709fd83d0b2522de821914b6d86fa6ce83559",
+  "agent_id": "scripted-oracle",
+  "agent_version": "1.0.0",
+  "agent_configuration_digest": null,
+  "seed": 42,
+  "repetition_index": 0,
+  "task_success": false,
+  "safety_pass": true,
+  "evaluator_status": "failed",
+  "overall_score": 0.6499999999999999,
+  "score_vector": {
+    "goal_accuracy": 0.5,
+    "constraint_satisfaction": 1.0,
+    "efficiency": 1.0
+  },
+  "failure_codes": [
+    "AGENT.NO_FINAL_RESPONSE",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "STATE.FALSE_SUCCESS"
+  ],
+  "run_id": "run_ord-sea-dual-order_0",
+  "journal_digest": null,
+  "logical_duration_ms": 0.0,
+  "wall_time_ms": 0.7986999989952892,
+  "semantic_result_digest": "a3c6bce547f088eb4c162ceaff8ba01d219064a66ad5051dab44ae946593d329"
+}

@@ -1,0 +1,36 @@
+{
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "manifest_digest": "6377914ef46b99627347bab1e561b9a0104e35e69f06904ac217ca3ebbce984d",
+  "scenario_id": "hold-expires",
+  "scenario_version": 1,
+  "scenario_resource_digest": "feafe0c3aa2fa840f6db053bd904ed968fa4a60b76f834826f0630f22c4b79fc",
+  "expectation_resource_digest": "96df2652c6cb7f779ea4b6ef27f084cd8b3f0c50daf5d502aed1ffd67f218e79",
+  "agent_id": "naive-baseline",
+  "agent_version": "1.0.0",
+  "agent_configuration_digest": null,
+  "seed": 42,
+  "repetition_index": 0,
+  "task_success": false,
+  "safety_pass": true,
+  "evaluator_status": "failed",
+  "overall_score": 0.7899999999999999,
+  "score_vector": {
+    "goal_accuracy": 1.0,
+    "constraint_satisfaction": 1.0,
+    "efficiency": 0.9
+  },
+  "failure_codes": [
+    "EFFICIENCY.REDUNDANT_CALL",
+    "AGENT.NO_FINAL_RESPONSE",
+    "EFFICIENCY.REDUNDANT_CALL",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION"
+  ],
+  "run_id": "run_hold-expires_0",
+  "journal_digest": null,
+  "logical_duration_ms": 0.0,
+  "wall_time_ms": 0.8129000198096037,
+  "semantic_result_digest": "0880e12e3147a38ecb60757275cdf59006598d98b8087a8f0e9333a3c3acbafb"
+}

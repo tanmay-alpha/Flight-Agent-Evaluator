@@ -1,7 +1,7 @@
 """CLI for the flight-agent-evaluator tool.
 
 Provides subcommands for scenario validation, run execution, replay verification, assertion evaluation,
-agent policies, and benchmark suite runs.
+agent policies, and canonical benchmark runs.
 """
 
 from __future__ import annotations
@@ -16,7 +16,11 @@ from pathlib import Path
 from typing import Any
 
 from flight_agent_evaluator.agent import AgentPolicy, ModelClient, ModelMode
-from flight_agent_evaluator.agent.baselines import NaiveBaselineAgent, ScriptedOracleAgent
+from flight_agent_evaluator.agent.baselines import (
+    NaiveBaselineAgent,
+    RandomBaselineAgent,
+    ScriptedOracleAgent,
+)
 from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
 from flight_agent_evaluator.agent.model_client import (
     OpenAIResponsesModelClient,
@@ -26,6 +30,7 @@ from flight_agent_evaluator.annotation import (
     AnnotationBundle,
     verify_bundle_digest,
 )
+from flight_agent_evaluator.contracts.model import ModelExchangeManifest
 from flight_agent_evaluator.contracts.trajectory_expectation import (
     TrajectoryExpectation,
     validate_trajectory_expectation,
@@ -74,16 +79,22 @@ def cmd_agents_list(args: argparse.Namespace) -> int:
     """List available agent policies."""
     agents_data = [
         {
-            "id": "oracle",
+            "id": "scripted-oracle",
             "name": "ScriptedOracleAgent",
             "type": "deterministic",
             "description": "Executes golden reference trajectory steps.",
         },
         {
-            "id": "naive",
+            "id": "naive-baseline",
             "name": "NaiveBaselineAgent",
             "type": "heuristic",
             "description": "Fixed status lookup and simple alternative search heuristic.",
+        },
+        {
+            "id": "random-baseline",
+            "name": "RandomBaselineAgent",
+            "type": "stochastic",
+            "description": "Executes random valid tool actions across available schemas.",
         },
         {
             "id": "model",
@@ -98,7 +109,7 @@ def cmd_agents_list(args: argparse.Namespace) -> int:
     else:
         print("Available Agents:")
         for a in agents_data:
-            print(f"  - {a['id']:<10} ({a['name']}): {a['description']}")
+            print(f"  - {a['id']:<17} ({a['name']}): {a['description']}")
     return 0
 
 
@@ -107,16 +118,40 @@ def cmd_agents_describe(args: argparse.Namespace) -> int:
     agent_id = args.agent
     descriptions = {
         "oracle": {
-            "id": "oracle",
+            "id": "scripted-oracle",
+            "class": "ScriptedOracleAgent",
+            "mode": "deterministic",
+            "capabilities": ["reference_trajectory_execution"],
+        },
+        "scripted-oracle": {
+            "id": "scripted-oracle",
             "class": "ScriptedOracleAgent",
             "mode": "deterministic",
             "capabilities": ["reference_trajectory_execution"],
         },
         "naive": {
-            "id": "naive",
+            "id": "naive-baseline",
             "class": "NaiveBaselineAgent",
             "mode": "heuristic",
             "capabilities": ["read_only_status", "retry_once", "alternative_search"],
+        },
+        "naive-baseline": {
+            "id": "naive-baseline",
+            "class": "NaiveBaselineAgent",
+            "mode": "heuristic",
+            "capabilities": ["read_only_status", "retry_once", "alternative_search"],
+        },
+        "random": {
+            "id": "random-baseline",
+            "class": "RandomBaselineAgent",
+            "mode": "stochastic",
+            "capabilities": ["random_valid_tool_invocations"],
+        },
+        "random-baseline": {
+            "id": "random-baseline",
+            "class": "RandomBaselineAgent",
+            "mode": "stochastic",
+            "capabilities": ["random_valid_tool_invocations"],
         },
         "model": {
             "id": "model",
@@ -156,14 +191,38 @@ def cmd_agent_run(args: argparse.Namespace) -> int:
     allow_live = bool(getattr(args, "allow_live_model", False))
 
     agent: AgentPolicy
-    if agent_type == "oracle":
+    if agent_type in ("oracle", "scripted-oracle", "scripted"):
         agent = ScriptedOracleAgent()
-    elif agent_type == "naive":
+    elif agent_type in ("naive", "naive-baseline"):
         agent = NaiveBaselineAgent()
+    elif agent_type in ("random", "random-baseline"):
+        agent = RandomBaselineAgent()
     elif agent_type == "model":
         client: ModelClient
         if model_mode == "replay":
-            client = ReplayModelClient(manifest_or_exchanges=[])
+            manifest_path = getattr(args, "model_replay_manifest", None)
+            if not manifest_path:
+                print(
+                    "Error: Model replay mode requires --model-replay-manifest PATH.",
+                    file=sys.stderr,
+                )
+                return 1
+            mp = Path(manifest_path)
+            if not mp.is_file():
+                print(
+                    f"Error: Model replay manifest not found: {manifest_path}",
+                    file=sys.stderr,
+                )
+                return 1
+            try:
+                manifest_data = json.loads(mp.read_text(encoding="utf-8"))
+                mem = ModelExchangeManifest.model_validate(manifest_data)
+                client = ReplayModelClient(mem)
+            except Exception as exc:
+                print(
+                    f"Error loading model replay manifest: {_sanitise_error(exc)}", file=sys.stderr
+                )
+                return 1
         else:
             client = OpenAIResponsesModelClient(
                 model_id=getattr(args, "model", "gpt-4o-mini"),
@@ -317,21 +376,15 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         if scenario_arg:
             loaded = loader.load_from_path(Path(scenario_arg))
         else:
-            candidates = [
-                Path(f"resources/scenarios/{recording.scenario_id}.json"),
-                Path(f"tests/fixtures/scenarios/{recording.scenario_id}.json"),
-            ]
-            for candidate in candidates:
-                if candidate.exists():
-                    try:
-                        loaded = loader.load_from_path(candidate)
-                        break
-                    except Exception as exc:
-                        logger.debug("Scenario candidate %s failed to load: %s", candidate, exc)
-                        continue
+            try:
+                loaded = loader.load_builtin(recording.scenario_id)
+            except Exception:
+                loaded = None
 
         if loaded is None:
-            raise ValueError(f"Originating scenario '{recording.scenario_id}' could not be found.")
+            raise ValueError(
+                f"Originating scenario '{recording.scenario_id}' could not be resolved."
+            )
 
         from flight_agent_evaluator.engine.state import StateProjector
 
@@ -436,11 +489,11 @@ def cmd_trajectory_score(args: argparse.Namespace) -> int:
         expectation = TrajectoryExpectation.model_validate(exp_data)
 
         scenario_loader = ScenarioLoader()
-        try:
+        scenario_arg = getattr(args, "scenario", None)
+        if scenario_arg:
+            loaded = scenario_loader.load_from_path(Path(scenario_arg))
+        else:
             loaded = scenario_loader.load_builtin(expectation.scenario_id)
-        except Exception:
-            sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
-            loaded = scenario_loader.load_from_path(sc_path)
 
         evaluator = TrajectoryEvaluator()
         scorecard = evaluator.evaluate(
@@ -487,11 +540,11 @@ def cmd_trajectory_explain(args: argparse.Namespace) -> int:
         expectation = TrajectoryExpectation.model_validate(exp_data)
 
         scenario_loader = ScenarioLoader()
-        try:
+        scenario_arg = getattr(args, "scenario", None)
+        if scenario_arg:
+            loaded = scenario_loader.load_from_path(Path(scenario_arg))
+        else:
             loaded = scenario_loader.load_builtin(expectation.scenario_id)
-        except Exception:
-            sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
-            loaded = scenario_loader.load_from_path(sc_path)
 
         evaluator = TrajectoryEvaluator()
         scorecard = evaluator.evaluate(
@@ -536,11 +589,11 @@ def cmd_trajectory_diagnose(args: argparse.Namespace) -> int:
         expectation = TrajectoryExpectation.model_validate(exp_data)
 
         scenario_loader = ScenarioLoader()
-        try:
+        scenario_arg = getattr(args, "scenario", None)
+        if scenario_arg:
+            loaded = scenario_loader.load_from_path(Path(scenario_arg))
+        else:
             loaded = scenario_loader.load_builtin(expectation.scenario_id)
-        except Exception:
-            sc_path = Path("resources/scenarios") / f"{expectation.scenario_id}.json"
-            loaded = scenario_loader.load_from_path(sc_path)
 
         evaluator = TrajectoryEvaluator()
         scorecard = evaluator.evaluate(
@@ -612,6 +665,7 @@ def cmd_benchmark_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_annotation_validate(args: argparse.Namespace) -> int:
+    """Validate an annotation bundle and verify its hash digest."""
     bundle_path = Path(args.bundle)
     if not bundle_path.is_file():
         print(f"Bundle file not found: {bundle_path.name}", file=sys.stderr)
@@ -644,265 +698,44 @@ def cmd_annotation_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_judge_score(args: argparse.Namespace) -> int:
+    """Score a judge evidence package using deterministic test double or recorded replay."""
     package_path = Path(args.package)
     if not package_path.is_file():
         print(f"Package file not found: {package_path.name}", file=sys.stderr)
         return 1
+
+    mode = getattr(args, "mode", "fake")
     try:
         data = json.loads(package_path.read_text(encoding="utf-8"))
         package = JudgeEvidencePackage.model_validate(data)
-        fake_client = FakeJudgeClient()
-        result = asyncio.run(fake_client.judge(package))
+
+        if mode == "replay":
+            manifest_p = getattr(args, "manifest", None)
+            if not manifest_p:
+                print("Error: Judge replay mode requires --manifest PATH.", file=sys.stderr)
+                return 1
+            from flight_agent_evaluator.judges.replay import ReplayJudgeClient
+
+            client = ReplayJudgeClient.from_manifest(Path(manifest_p))
+            result = asyncio.run(client.judge(package))
+        else:
+            # Deterministic test double
+            fake_client = FakeJudgeClient()
+            result = asyncio.run(fake_client.judge(package))
+
         if getattr(args, "json", False):
             print(json.dumps(result.model_dump(mode="json"), indent=2))
         else:
-            print(f"Judge Evaluation Result for Package: {package.package_id}")
-            print(f"Overall Score: {result.overall_score}")
-            print(f"Validation Status: {result.validation_status}")
+            print(f"Qualitative Judge Evaluation ({mode} mode): {package.package_id}")
+            print(f"Overall Score:     {result.overall_score:.2f} / 4.00 (0..4 ordinal scale)")
+            print(f"Validation Status: {result.validation_status} (human calibration pending)")
+            print("Criteria Scores (0..4):")
             for cr in result.criteria_results:
-                print(f"  - {cr.criterion.value}: {cr.score}/4 ({cr.rationale})")
+                print(f"  - {cr.criterion.value:<26}: {cr.score}/4 ({cr.rationale})")
         return 0
     except Exception as exc:
         print(f"Judge scoring failed: {_sanitise_error(exc)}", file=sys.stderr)
         return 1
-
-
-def _get_version() -> str:
-    try:
-        import importlib.metadata
-
-        return importlib.metadata.version("flight-agent-evaluator")
-    except Exception:
-        return "0.2.0"
-
-
-def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
-    json_parent = argparse.ArgumentParser(add_help=False)
-    json_parent.add_argument(
-        "--json", action="store_true", default=None, help="Output machine-readable JSON."
-    )
-
-    parser = argparse.ArgumentParser(
-        prog="flight-evaluator",
-        description="Evaluation, replay, and fault-injection platform for aviation AI agents.",
-        parents=[json_parent],
-    )
-    parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {_get_version()}")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # scenario subcommands
-    scenario_p = subparsers.add_parser(
-        "scenario", help="Scenario management.", parents=[json_parent]
-    )
-    scenario_sub = scenario_p.add_subparsers(dest="scenario_command", required=True)
-    val_p = scenario_sub.add_parser(
-        "validate", help="Validate a scenario file.", parents=[json_parent]
-    )
-    val_p.add_argument("scenario", help="Path to scenario JSON file.")
-    val_p.set_defaults(func=cmd_scenario_validate)
-
-    # agents subcommands
-    agents_p = subparsers.add_parser("agents", help="Agent management.", parents=[json_parent])
-    agents_sub = agents_p.add_subparsers(dest="agents_command", required=True)
-    list_p = agents_sub.add_parser("list", help="List available agents.", parents=[json_parent])
-    list_p.set_defaults(func=cmd_agents_list)
-    desc_p = agents_sub.add_parser("describe", help="Describe an agent.", parents=[json_parent])
-    desc_p.add_argument("agent", help="Agent identifier (oracle, naive, model).")
-    desc_p.set_defaults(func=cmd_agents_describe)
-
-    # agent run subcommand
-    ag_run_p = subparsers.add_parser("agent", help="Single agent execution.", parents=[json_parent])
-    ag_sub = ag_run_p.add_subparsers(dest="agent_command", required=True)
-    ar_p = ag_sub.add_parser("run", help="Run an agent against a scenario.", parents=[json_parent])
-    ar_p.add_argument("scenario", help="Path to scenario JSON file.")
-    ar_p.add_argument("--agent", choices=["oracle", "naive", "model"], default="oracle")
-    ar_p.add_argument("--model", default="gpt-4o-mini")
-    ar_p.add_argument("--model-mode", choices=["replay", "record", "live"], default="replay")
-    ar_p.add_argument(
-        "--allow-live-model", action="store_true", help="Explicitly permit network model execution."
-    )
-    ar_p.add_argument("--output", "-o", help="Recording output directory.")
-    ar_p.set_defaults(func=cmd_agent_run)
-
-    # trajectory subcommands
-    traj_p = subparsers.add_parser(
-        "trajectory", help="Trajectory expectation scoring and analysis.", parents=[json_parent]
-    )
-    traj_sub = traj_p.add_subparsers(dest="trajectory_command", required=True)
-
-    traj_val = traj_sub.add_parser(
-        "validate", help="Validate an expectation JSON graph.", parents=[json_parent]
-    )
-    traj_val.add_argument("expectation", help="Path to expectation JSON file.")
-    traj_val.set_defaults(func=cmd_trajectory_validate)
-
-    traj_score = traj_sub.add_parser(
-        "score", help="Score a run recording against an expectation graph.", parents=[json_parent]
-    )
-    traj_score.add_argument("recording", help="Path to run recording JSON file.")
-    traj_score.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
-    traj_score.set_defaults(func=cmd_trajectory_score)
-
-    traj_explain = traj_sub.add_parser(
-        "explain", help="Explain evidence attribution for a scored run.", parents=[json_parent]
-    )
-    traj_explain.add_argument("recording", help="Path to run recording JSON file.")
-    traj_explain.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
-    traj_explain.set_defaults(func=cmd_trajectory_explain)
-
-    traj_diag = traj_sub.add_parser(
-        "diagnose",
-        help="Diagnose evidence-backed failures for a scored run.",
-        parents=[json_parent],
-    )
-    traj_diag.add_argument("recording", help="Path to run recording JSON file.")
-    traj_diag.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
-    traj_diag.set_defaults(func=cmd_trajectory_diagnose)
-
-    # demo subcommand
-    demo_p = subparsers.add_parser(
-        "demo", help="Run interactive V1 evaluator demonstration.", parents=[json_parent]
-    )
-    demo_p.set_defaults(func=cmd_demo_run)
-
-    # benchmark subcommand
-    bm_p = subparsers.add_parser("benchmark", help="Benchmark execution.", parents=[json_parent])
-    bm_sub = bm_p.add_subparsers(dest="benchmark_command", required=True)
-
-    bm_list_p = bm_sub.add_parser(
-        "list", help="List available built-in benchmarks.", parents=[json_parent]
-    )
-    bm_list_p.set_defaults(func=cmd_benchmark_list)
-
-    bm_run_p = bm_sub.add_parser(
-        "run", help="Run benchmark suite across scenarios.", parents=[json_parent]
-    )
-    bm_run_p.add_argument(
-        "--manifest",
-        default="builtin:benchmark-v1",
-        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
-    )
-    bm_run_p.add_argument(
-        "--agents",
-        default="scripted-oracle,naive-baseline",
-        help="Comma-separated agent IDs to benchmark.",
-    )
-    bm_run_p.add_argument(
-        "--repetitions", type=int, default=1, help="Number of repetitions per case."
-    )
-    bm_run_p.add_argument("--scenarios", default=None, help="Deprecated alias for scenarios path.")
-    bm_run_p.add_argument("--output", "-o", help="Output directory for persistent artifacts.")
-    bm_run_p.set_defaults(func=cmd_benchmark_run)
-
-    bm_val_p = bm_sub.add_parser(
-        "validate",
-        help="Validate benchmark scenarios and expectation graphs against manifest.",
-        parents=[json_parent],
-    )
-    bm_val_p.add_argument(
-        "manifest_pos",
-        nargs="?",
-        default=None,
-        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
-    )
-    bm_val_p.add_argument(
-        "--manifest",
-        default="builtin:benchmark-v1",
-        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
-    )
-    bm_val_p.add_argument("--scenarios", default=None, help="Deprecated alias for scenarios path.")
-    bm_val_p.set_defaults(func=cmd_benchmark_validate)
-
-    bm_ab_p = bm_sub.add_parser(
-        "ablation", help="Run evaluator ablation study.", parents=[json_parent]
-    )
-    bm_ab_p.set_defaults(func=cmd_ablation_run)
-
-    bm_rep_p = bm_sub.add_parser(
-        "report",
-        help="Generate benchmark summary report from stored artifacts.",
-        parents=[json_parent],
-    )
-    bm_rep_p.add_argument(
-        "summary_file", nargs="?", default=None, help="Path to summary.json or run.json."
-    )
-    bm_rep_p.add_argument("--results", default=None, help="Path to result artifact or directory.")
-    bm_rep_p.set_defaults(func=cmd_benchmark_report)
-
-    bm_ver_p = bm_sub.add_parser(
-        "verify-release",
-        help="Verify release integrity across all quality gates.",
-        parents=[json_parent],
-    )
-    bm_ver_p.set_defaults(func=cmd_verify_release)
-
-    # annotation subcommand
-    ann_p = subparsers.add_parser(
-        "annotation", help="Annotation management.", parents=[json_parent]
-    )
-    ann_sub = ann_p.add_subparsers(dest="annotation_command", required=True)
-    ann_val = ann_sub.add_parser(
-        "validate", help="Validate an annotation bundle.", parents=[json_parent]
-    )
-    ann_val.add_argument("bundle", help="Path to annotation bundle JSON file.")
-    ann_val.set_defaults(func=cmd_annotation_validate)
-
-    # judge subcommand
-    jdg_p = subparsers.add_parser("judge", help="Judge evaluation.", parents=[json_parent])
-    jdg_sub = jdg_p.add_subparsers(dest="judge_command", required=True)
-    jdg_score = jdg_sub.add_parser(
-        "score", help="Score a judge evidence package.", parents=[json_parent]
-    )
-    jdg_score.add_argument("package", help="Path to judge evidence package JSON file.")
-    jdg_score.set_defaults(func=cmd_judge_score)
-
-    # run subcommand
-    run_p = subparsers.add_parser("run", help="Execute a scenario.", parents=[json_parent])
-    run_p.add_argument("scenario", help="Path to a scenario JSON file.")
-    run_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
-    run_p.set_defaults(func=cmd_run)
-
-    # replay subcommand
-    replay_p = subparsers.add_parser("replay", help="Replay a recorded run.", parents=[json_parent])
-    replay_p.add_argument("run_id", help="Run identifier.")
-    replay_p.add_argument(
-        "--output", "-o", help="Recording output directory.", default=".recordings"
-    )
-    replay_p.add_argument(
-        "--mode",
-        choices=["playback", "verify"],
-        default="playback",
-        help="Replay mode (playback or verify).",
-    )
-    replay_p.set_defaults(func=cmd_replay)
-
-    # verify subcommand
-    verify_p = subparsers.add_parser("verify", help="Verify a recorded run.")
-    verify_p.add_argument("run_id", help="Run identifier.")
-    verify_p.add_argument(
-        "--output", "-o", help="Recording output directory.", default=".recordings"
-    )
-    verify_p.set_defaults(func=cmd_verify)
-
-    # evaluate subcommand
-    eval_p = subparsers.add_parser("evaluate", help="Evaluate assertions for a recorded run.")
-    eval_p.add_argument("run_id", help="Run identifier.")
-    eval_p.add_argument("--scenario", help="Path to scenario JSON file.")
-    eval_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
-    eval_p.set_defaults(func=cmd_evaluate)
-
-    raw_argv = list(argv) if argv is not None else sys.argv[1:]
-    is_json_flag = "--json" in raw_argv
-
-    args = parser.parse_args(argv)
-    if is_json_flag:
-        args.json = True
-
-    func = getattr(args, "func", None)
-    if func is None:
-        parser.print_help(sys.stderr)
-        return 2
-    return int(func(args))
 
 
 def cmd_benchmark_list(args: argparse.Namespace) -> int:
@@ -1025,7 +858,7 @@ def cmd_benchmark_run(args: argparse.Namespace) -> int:
 
 
 def cmd_demo_run(args: argparse.Namespace) -> int:
-    """CLI handler for interactive V1 evaluator demonstration."""
+    """CLI handler for interactive portfolio demonstration."""
     loader = ScenarioLoader()
     try:
         loaded = loader.load_builtin("jfk-lhr-delay")
@@ -1041,20 +874,17 @@ def cmd_demo_run(args: argparse.Namespace) -> int:
         print(json.dumps(metric_vector.model_dump(mode="json"), indent=2))
         return 0 if metric_vector.task_success else 1
 
-    banner = """
+    banner = """================================================================================
+           FLIGHT AGENT EVALUATOR — PORTFOLIO DEMONSTRATION
 ================================================================================
-           FLIGHT AGENT EVALUATOR — V1 PORTFOLIO DEMONSTRATION
-================================================================================
-   Autonomous Multi-Model Benchmark & Failure Diagnostics Platform
-================================================================================
-"""
+   Deterministic Evaluation & Failure Diagnostics Platform
+================================================================================"""
     sys.stdout.write(banner + "\n")
     sys.stdout.write(
-        "[1/4] Loading packaged benchmark scenario 'builtin:scenarios/jfk-lhr-delay.json'...\n"
+        "[1/3] Loading packaged benchmark scenario 'builtin:scenarios/jfk-lhr-delay.json'...\n"
     )
-    sys.stdout.write("[2/4] Executing ScriptedOracleAgent in Simulated Airline Environment...\n")
-    sys.stdout.write("[3/4] Evaluating trajectory against constraint-graph expectations...\n")
-    sys.stdout.write("[4/4] Invoking Evidence-Grounded LLM Judge (rubric-v1)...\n\n")
+    sys.stdout.write("[2/3] Executing ScriptedOracleAgent in Simulated Airline Environment...\n")
+    sys.stdout.write("[3/3] Evaluating trajectory against constraint-graph expectations...\n\n")
 
     sys.stdout.write(
         "--------------------------------------------------------------------------------\n"
@@ -1068,20 +898,32 @@ def cmd_demo_run(args: argparse.Namespace) -> int:
         f"Status:                 {status_str} [{metric_vector.overall_score * 100:.1f}%]\n"
     )
     sys.stdout.write(f"Overall Score:          {metric_vector.overall_score:.3f} / 1.000\n")
+    goal_acc = metric_vector.score_vector.get("goal_accuracy")
     sys.stdout.write(
-        f"Goal Accuracy:          {metric_vector.score_vector.get('goal_accuracy', 1.0):.3f}\n"
+        f"Goal Accuracy:          {f'{goal_acc:.3f}' if goal_acc is not None else 'N/A'}\n"
     )
+    constraint_sc = metric_vector.score_vector.get("constraint_satisfaction")
     sys.stdout.write(
-        f"Constraint Score:       {metric_vector.score_vector.get('constraint_satisfaction', 1.0):.3f}\n"
+        f"Constraint Score:       {f'{constraint_sc:.3f}' if constraint_sc is not None else 'N/A'}\n"
+    )
+    eff_sc = metric_vector.score_vector.get("efficiency")
+    sys.stdout.write(
+        f"Efficiency Score:       {f'{eff_sc:.3f}' if eff_sc is not None else 'N/A'}\n"
     )
     sys.stdout.write(
         f"Side-Effect Safety:     {'PASSED' if metric_vector.safety_pass else 'FAILED'}\n"
     )
-    sys.stdout.write("LLM Judge Overall:      4.0 / 4.0 (Human calibration pending)\n")
+    sys.stdout.write(
+        "Qualitative Judge:      Not evaluated in this demo (Human calibration: pending)\n"
+    )
+    if metric_vector.failure_codes:
+        sys.stdout.write(f"Failure Diagnostics:    {', '.join(metric_vector.failure_codes)}\n")
+    else:
+        sys.stdout.write("Failure Diagnostics:    Clean execution (0 diagnostic failures)\n")
     sys.stdout.write(
         "--------------------------------------------------------------------------------\n"
     )
-    sys.stdout.write("V1 Benchmark Platform ready for evaluation.\n")
+    sys.stdout.write("Evaluation platform demonstration completed successfully.\n")
     return 0 if metric_vector.task_success else 1
 
 
@@ -1181,17 +1023,271 @@ def cmd_benchmark_report(args: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_ablation_run(args: argparse.Namespace) -> int:  # noqa: ARG001
-    """CLI handler for ablation run."""
-    from flight_agent_evaluator.benchmarks.ablations import AblationEngine
-    from flight_agent_evaluator.benchmarks.report import generate_ablation_report
+def _get_version() -> str:
+    try:
+        import importlib.metadata
 
-    scenarios = [{"id": f"sc-{i}", "version": 1} for i in range(1, 13)]
-    engine = AblationEngine()
-    report = engine.run_ablation_study(scenarios)
-    formatted = generate_ablation_report(report)
-    sys.stdout.write(formatted + "\n")
-    return 0
+        return importlib.metadata.version("flight-agent-evaluator")
+    except Exception:
+        return "0.2.0"
+
+
+def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
+    json_parent = argparse.ArgumentParser(add_help=False)
+    json_parent.add_argument(
+        "--json", action="store_true", default=None, help="Output machine-readable JSON."
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="flight-evaluator",
+        description="Evaluation, replay, and fault-injection platform for aviation AI agents.",
+        parents=[json_parent],
+    )
+    parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {_get_version()}")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # scenario subcommands
+    scenario_p = subparsers.add_parser(
+        "scenario", help="Scenario management.", parents=[json_parent]
+    )
+    scenario_sub = scenario_p.add_subparsers(dest="scenario_command", required=True)
+    val_p = scenario_sub.add_parser(
+        "validate", help="Validate a scenario file.", parents=[json_parent]
+    )
+    val_p.add_argument("scenario", help="Path to scenario JSON file.")
+    val_p.set_defaults(func=cmd_scenario_validate)
+
+    # agents subcommands
+    agents_p = subparsers.add_parser("agents", help="Agent management.", parents=[json_parent])
+    agents_sub = agents_p.add_subparsers(dest="agents_command", required=True)
+    list_p = agents_sub.add_parser("list", help="List available agents.", parents=[json_parent])
+    list_p.set_defaults(func=cmd_agents_list)
+    desc_p = agents_sub.add_parser("describe", help="Describe an agent.", parents=[json_parent])
+    desc_p.add_argument("agent", help="Agent identifier (oracle, naive, random, model).")
+    desc_p.set_defaults(func=cmd_agents_describe)
+
+    # agent run subcommand
+    ag_run_p = subparsers.add_parser("agent", help="Single agent execution.", parents=[json_parent])
+    ag_sub = ag_run_p.add_subparsers(dest="agent_command", required=True)
+    ar_p = ag_sub.add_parser("run", help="Run an agent against a scenario.", parents=[json_parent])
+    ar_p.add_argument("scenario", help="Path to scenario JSON file.")
+    ar_p.add_argument(
+        "--agent",
+        choices=[
+            "oracle",
+            "naive",
+            "random",
+            "model",
+            "scripted-oracle",
+            "naive-baseline",
+            "random-baseline",
+        ],
+        default="oracle",
+        help="Agent policy identifier to execute.",
+    )
+    ar_p.add_argument(
+        "--model", default="gpt-4o-mini", help="Model name for ModelToolCallingAgent."
+    )
+    ar_p.add_argument("--model-mode", choices=["replay", "record", "live"], default="replay")
+    ar_p.add_argument(
+        "--model-replay-manifest",
+        help="Path to recorded ModelExchangeManifest JSON file (required for model replay mode).",
+    )
+    ar_p.add_argument(
+        "--allow-live-model", action="store_true", help="Explicitly permit network model execution."
+    )
+    ar_p.add_argument("--output", "-o", help="Recording output directory.")
+    ar_p.set_defaults(func=cmd_agent_run)
+
+    # trajectory subcommands
+    traj_p = subparsers.add_parser(
+        "trajectory", help="Trajectory expectation scoring and analysis.", parents=[json_parent]
+    )
+    traj_sub = traj_p.add_subparsers(dest="trajectory_command", required=True)
+
+    traj_val = traj_sub.add_parser(
+        "validate", help="Validate an expectation JSON graph.", parents=[json_parent]
+    )
+    traj_val.add_argument("expectation", help="Path to expectation JSON file.")
+    traj_val.set_defaults(func=cmd_trajectory_validate)
+
+    traj_score = traj_sub.add_parser(
+        "score", help="Score a run recording against an expectation graph.", parents=[json_parent]
+    )
+    traj_score.add_argument("recording", help="Path to run recording JSON file.")
+    traj_score.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
+    traj_score.add_argument("--scenario", help="Optional explicit path to scenario JSON file.")
+    traj_score.set_defaults(func=cmd_trajectory_score)
+
+    traj_explain = traj_sub.add_parser(
+        "explain", help="Explain evidence attribution for a scored run.", parents=[json_parent]
+    )
+    traj_explain.add_argument("recording", help="Path to run recording JSON file.")
+    traj_explain.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
+    traj_explain.add_argument("--scenario", help="Optional explicit path to scenario JSON file.")
+    traj_explain.set_defaults(func=cmd_trajectory_explain)
+
+    traj_diag = traj_sub.add_parser(
+        "diagnose",
+        help="Diagnose evidence-backed failures for a scored run.",
+        parents=[json_parent],
+    )
+    traj_diag.add_argument("recording", help="Path to run recording JSON file.")
+    traj_diag.add_argument("--expectation", required=True, help="Path to expectation JSON file.")
+    traj_diag.add_argument("--scenario", help="Optional explicit path to scenario JSON file.")
+    traj_diag.set_defaults(func=cmd_trajectory_diagnose)
+
+    # demo subcommand
+    demo_p = subparsers.add_parser(
+        "demo", help="Run interactive portfolio demonstration.", parents=[json_parent]
+    )
+    demo_p.set_defaults(func=cmd_demo_run)
+
+    # benchmark subcommand
+    bm_p = subparsers.add_parser("benchmark", help="Benchmark execution.", parents=[json_parent])
+    bm_sub = bm_p.add_subparsers(dest="benchmark_command", required=True)
+
+    bm_list_p = bm_sub.add_parser(
+        "list", help="List available built-in benchmarks.", parents=[json_parent]
+    )
+    bm_list_p.set_defaults(func=cmd_benchmark_list)
+
+    bm_run_p = bm_sub.add_parser(
+        "run", help="Run canonical benchmark suite across scenarios.", parents=[json_parent]
+    )
+    bm_run_p.add_argument(
+        "--manifest",
+        default="builtin:benchmark-v1",
+        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
+    )
+    bm_run_p.add_argument(
+        "--agents",
+        default="scripted-oracle,naive-baseline",
+        help="Comma-separated agent IDs to benchmark.",
+    )
+    bm_run_p.add_argument(
+        "--repetitions", type=int, default=1, help="Number of repetitions per case."
+    )
+    bm_run_p.add_argument("--scenarios", default=None, help="Deprecated alias for scenarios path.")
+    bm_run_p.add_argument("--output", "-o", help="Output directory for persistent artifacts.")
+    bm_run_p.set_defaults(func=cmd_benchmark_run)
+
+    bm_val_p = bm_sub.add_parser(
+        "validate",
+        help="Validate benchmark scenarios and expectation graphs against manifest.",
+        parents=[json_parent],
+    )
+    bm_val_p.add_argument(
+        "manifest_pos",
+        nargs="?",
+        default=None,
+        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
+    )
+    bm_val_p.add_argument(
+        "--manifest",
+        default="builtin:benchmark-v1",
+        help="Path to benchmark manifest JSON or 'builtin:<id>'.",
+    )
+    bm_val_p.add_argument("--scenarios", default=None, help="Deprecated alias for scenarios path.")
+    bm_val_p.set_defaults(func=cmd_benchmark_validate)
+
+    bm_rep_p = bm_sub.add_parser(
+        "report",
+        help="Generate benchmark summary report from stored artifacts.",
+        parents=[json_parent],
+    )
+    bm_rep_p.add_argument(
+        "summary_file", nargs="?", default=None, help="Path to summary.json or run.json."
+    )
+    bm_rep_p.add_argument("--results", default=None, help="Path to result artifact or directory.")
+    bm_rep_p.set_defaults(func=cmd_benchmark_report)
+
+    bm_ver_p = bm_sub.add_parser(
+        "verify-release",
+        help="Verify release integrity across all quality gates.",
+        parents=[json_parent],
+    )
+    bm_ver_p.set_defaults(func=cmd_verify_release)
+
+    # annotation subcommand
+    ann_p = subparsers.add_parser(
+        "annotation", help="Annotation management.", parents=[json_parent]
+    )
+    ann_sub = ann_p.add_subparsers(dest="annotation_command", required=True)
+    ann_val = ann_sub.add_parser(
+        "validate", help="Validate an annotation bundle.", parents=[json_parent]
+    )
+    ann_val.add_argument("bundle", help="Path to annotation bundle JSON file.")
+    ann_val.set_defaults(func=cmd_annotation_validate)
+
+    # judge subcommand
+    jdg_p = subparsers.add_parser(
+        "judge", help="Qualitative judge evaluation.", parents=[json_parent]
+    )
+    jdg_sub = jdg_p.add_subparsers(dest="judge_command", required=True)
+    jdg_score = jdg_sub.add_parser(
+        "score", help="Score a judge evidence package.", parents=[json_parent]
+    )
+    jdg_score.add_argument("package", help="Path to judge evidence package JSON file.")
+    jdg_score.add_argument(
+        "--mode",
+        choices=["fake", "replay"],
+        default="fake",
+        help="Judge evaluation mode: 'fake' (deterministic test double) or 'replay' (recorded exchanges).",
+    )
+    jdg_score.add_argument(
+        "--manifest",
+        help="Path to recorded judge exchanges JSON (required when --mode replay).",
+    )
+    jdg_score.set_defaults(func=cmd_judge_score)
+
+    # run subcommand
+    run_p = subparsers.add_parser("run", help="Execute a scenario.", parents=[json_parent])
+    run_p.add_argument("scenario", help="Path to a scenario JSON file.")
+    run_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
+    run_p.set_defaults(func=cmd_run)
+
+    # replay subcommand
+    replay_p = subparsers.add_parser("replay", help="Replay a recorded run.", parents=[json_parent])
+    replay_p.add_argument("run_id", help="Run identifier.")
+    replay_p.add_argument(
+        "--output", "-o", help="Recording output directory.", default=".recordings"
+    )
+    replay_p.add_argument(
+        "--mode",
+        choices=["playback", "verify"],
+        default="playback",
+        help="Replay mode (playback or verify).",
+    )
+    replay_p.set_defaults(func=cmd_replay)
+
+    # verify subcommand
+    verify_p = subparsers.add_parser("verify", help="Verify a recorded run.")
+    verify_p.add_argument("run_id", help="Run identifier.")
+    verify_p.add_argument(
+        "--output", "-o", help="Recording output directory.", default=".recordings"
+    )
+    verify_p.set_defaults(func=cmd_verify)
+
+    # evaluate subcommand
+    eval_p = subparsers.add_parser("evaluate", help="Evaluate assertions for a recorded run.")
+    eval_p.add_argument("run_id", help="Run identifier.")
+    eval_p.add_argument("--scenario", help="Optional explicit path to scenario JSON file.")
+    eval_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
+    eval_p.set_defaults(func=cmd_evaluate)
+
+    raw_argv = list(argv) if argv is not None else sys.argv[1:]
+    is_json_flag = "--json" in raw_argv
+
+    args = parser.parse_args(argv)
+    if is_json_flag:
+        args.json = True
+
+    func = getattr(args, "func", None)
+    if func is None:
+        parser.print_help(sys.stderr)
+        return 2
+    return int(func(args))
 
 
 if __name__ == "__main__":

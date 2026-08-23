@@ -1,0 +1,32 @@
+{
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "manifest_digest": "6377914ef46b99627347bab1e561b9a0104e35e69f06904ac217ca3ebbce984d",
+  "scenario_id": "clt-phx-retry-dependency",
+  "scenario_version": 1,
+  "scenario_resource_digest": "ad239bdd96ef15faea1ac591c3d0f2b897ab047f1057d7102dc8fcfeda18f17f",
+  "expectation_resource_digest": "7a4ff7ecc5ec9099a16f7c2c54f3b21378738fd544242cb51f425a82c1122213",
+  "agent_id": "random-baseline",
+  "agent_version": "1.0.0",
+  "agent_configuration_digest": null,
+  "seed": 42,
+  "repetition_index": 0,
+  "task_success": false,
+  "safety_pass": true,
+  "evaluator_status": "failed",
+  "overall_score": 0.7999999999999999,
+  "score_vector": {
+    "goal_accuracy": 1.0,
+    "constraint_satisfaction": 1.0,
+    "efficiency": 1.0
+  },
+  "failure_codes": [
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION"
+  ],
+  "run_id": "run_clt-phx-retry-dependency_0",
+  "journal_digest": null,
+  "logical_duration_ms": 0.0,
+  "wall_time_ms": 0.3944000054616481,
+  "semantic_result_digest": "4a8c817d4e7ca39468282ac675946684ef62bccda38975b2b90a44419f57fa51"
+}

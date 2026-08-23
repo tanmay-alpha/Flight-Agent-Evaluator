@@ -1,0 +1,33 @@
+{
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "manifest_digest": "6377914ef46b99627347bab1e561b9a0104e35e69f06904ac217ca3ebbce984d",
+  "scenario_id": "hold-expires",
+  "scenario_version": 1,
+  "scenario_resource_digest": "feafe0c3aa2fa840f6db053bd904ed968fa4a60b76f834826f0630f22c4b79fc",
+  "expectation_resource_digest": "96df2652c6cb7f779ea4b6ef27f084cd8b3f0c50daf5d502aed1ffd67f218e79",
+  "agent_id": "scripted-oracle",
+  "agent_version": "1.0.0",
+  "agent_configuration_digest": null,
+  "seed": 42,
+  "repetition_index": 0,
+  "task_success": false,
+  "safety_pass": true,
+  "evaluator_status": "failed",
+  "overall_score": 0.8421428571428571,
+  "score_vector": {
+    "goal_accuracy": 1.0,
+    "constraint_satisfaction": 1.0,
+    "efficiency": 0.85
+  },
+  "failure_codes": [
+    "AGENT.NO_FINAL_RESPONSE",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION"
+  ],
+  "run_id": "run_hold-expires_0",
+  "journal_digest": null,
+  "logical_duration_ms": 0.0,
+  "wall_time_ms": 1.2476000119931996,
+  "semantic_result_digest": "e4d7b17d74e954f8f54ff14d76f561dc19ba1f5b1c33fb212a146a02501e3e67"
+}

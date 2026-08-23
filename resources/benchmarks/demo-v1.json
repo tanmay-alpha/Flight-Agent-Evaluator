@@ -54,14 +54,14 @@
     {
       "scenario_id": "approval-granted",
       "scenario_version": 1,
-      "scenario_path": "resources/scenarios/stage-5/approval-granted.json",
-      "scenario_sha256": "bd8cccba516e7d7d5ad6c0a3e09dbc5b4be7872c26d09e6da49fd1952954aded",
-      "expectation_path": "resources/expectations/stage-5/approval-granted.json",
+      "scenario_path": "resources/scenarios/transactional/approval-granted.json",
+      "scenario_sha256": "7a91f2ade6139e92b51c655b7ee51d0255d9c0e00579a19779b5315bf6d2fbab",
+      "expectation_path": "resources/expectations/transactional/approval-granted.json",
       "expectation_sha256": "2a9106b68c6b4043863ee357d72b5b1dec7b8e7a210b84ef5a9a1151acd1d268",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
-        "stage-5",
+        "transactional",
         "transaction",
         "approval"
       ]
@@ -97,5 +97,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "a54c7a74698fd7212dbdf6ab7b5a768efdd943f39e83207cf4433860dd963800"
+  "manifest_digest": "95982ab7f8106925cfe8cdecbdfe4a180f7333c1c33ef5b59696eeb637317a7e"
 }
