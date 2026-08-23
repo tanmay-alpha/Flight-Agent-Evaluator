@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,11 @@ from flight_agent_evaluator.engine.fault_engine import FaultEngine
 from flight_agent_evaluator.engine.scenario_loader import LoadedScenario
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
-from flight_agent_evaluator.recording.contracts import InvokeToolStep, RunRecording
+from flight_agent_evaluator.recording.contracts import (
+    InvokeToolStep,
+    RecordingBundleManifest,
+    RunRecording,
+)
 from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
@@ -36,9 +41,11 @@ class ScenarioRunner:
         if isinstance(target, LoadedScenario):
             scenario = target.scenario
             scenario_digest = target.digest
+            expectation_digest = getattr(target, "expectation_digest", None)
         else:
             scenario = target
-            scenario_digest = "0" * 64
+            scenario_digest = scenario.canonical_digest()
+            expectation_digest = None
 
         trajectory = scenario.trajectory
         trajectory_digest = trajectory.digest()
@@ -83,6 +90,7 @@ class ScenarioRunner:
         tool_calls_made = 0
         final_response: str | None = None
         checkpoints: list[str] = []
+        driver_error: str | None = None
 
         # Started
         started_at = clock.now()
@@ -159,15 +167,17 @@ class ScenarioRunner:
             final_response = driver_result.final_response
             checkpoints = list(driver_result.checkpoints)
         except Exception as exc:
-            # Log error safely; don't expose raw traceback
+            # Record driver failure; differentiate from normal completion
+            driver_error = f"{type(exc).__name__}: {exc}"
             journal.append_event(
                 "domain_event",
                 run_id=str(run_id),
                 correlation_id=str(id_factory.next("correlation", 3)),
                 time=clock.now().isoformat(),
                 payload={
+                    "event_type": "driver_failed",
                     "error_type": type(exc).__name__,
-                    "message": "Error occurred during execution",
+                    "error_message": str(exc),
                 },
             )
 
@@ -182,6 +192,7 @@ class ScenarioRunner:
                 "tool_calls_made": tool_calls_made,
                 "final_response": final_response,
                 "checkpoints": checkpoints,
+                "error": driver_error,
             },
         )
 
@@ -203,6 +214,15 @@ class ScenarioRunner:
             ended_at=completed_at,
         )
 
+        # If driver experienced an unexpected internal failure, override evaluation status to error
+        if driver_error is not None and evaluation is not None:
+            evaluation = evaluation.model_copy(
+                update={
+                    "status": "error",
+                    "error": driver_error,
+                }
+            )
+
         # Evaluation result
         if evaluation is not None:
             journal.append_event(
@@ -214,6 +234,7 @@ class ScenarioRunner:
                     "status": evaluation.status,
                     "passed": evaluation.summary.passed if evaluation.summary else 0,
                     "failed": evaluation.summary.failed if evaluation.summary else 0,
+                    "error": getattr(evaluation, "error", None),
                 },
             )
 
@@ -223,7 +244,10 @@ class ScenarioRunner:
             run_id=str(run_id),
             correlation_id=str(id_factory.next("correlation", 6)),
             time=clock.now().isoformat(),
-            payload={"tool_calls_made": tool_calls_made},
+            payload={
+                "tool_calls_made": tool_calls_made,
+                "run_status": "error" if driver_error else "completed",
+            },
         )
 
         # Write recording
@@ -242,9 +266,30 @@ class ScenarioRunner:
             evaluation=evaluation.model_dump() if evaluation else None,
         )
 
+        journal_bytes = journal.to_jsonl_string().encode("utf-8")
+        meta_bytes = (recording.model_dump_json(indent=2) + "\n").encode("utf-8")
+        bundle_manifest = RecordingBundleManifest(
+            run_id=str(run_id),
+            journal_file=f"{run_id}.jsonl",
+            journal_bytes_sha256=hashlib.sha256(journal_bytes).hexdigest(),
+            journal_chain_digest=journal.final_digest(),
+            journal_entry_count=len(journal.entries),
+            metadata_file=f"{run_id}.meta.json",
+            metadata_bytes_sha256=hashlib.sha256(meta_bytes).hexdigest(),
+            scenario_id=scenario.scenario_id.id,
+            scenario_version=scenario.scenario_id.version,
+            scenario_digest=scenario_digest,
+            expectation_digest=expectation_digest,
+            agent_id=getattr(driver, "agent_id", "scripted-oracle"),
+            seed=scenario.seed,
+            semantic_recording_digest=hashlib.sha256(
+                (journal.final_digest() + scenario_digest).encode("utf-8")
+            ).hexdigest(),
+        )
+
         out_path = output_dir or Path(".recordings")
         out_path.mkdir(parents=True, exist_ok=True)
         store = FileRecordingStore(out_path)
-        store.write_recording(str(run_id), journal, recording)
+        store.write_recording(str(run_id), journal, recording, manifest=bundle_manifest)
 
         return recording

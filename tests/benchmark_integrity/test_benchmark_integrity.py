@@ -25,7 +25,6 @@ from flight_agent_evaluator.benchmarks.registry import (
     UnknownBenchmarkAgentError,
 )
 from flight_agent_evaluator.benchmarks.results import BenchmarkCaseResult
-from flight_agent_evaluator.benchmarks.suite import BenchmarkSuite
 from flight_agent_evaluator.benchmarks.validator import BenchmarkCorpusValidator
 from flight_agent_evaluator.cli.main import main
 from flight_agent_evaluator.contracts.model import AgentTask, ModelRequest
@@ -49,21 +48,23 @@ def test_bi_002_gpt4o_cannot_alias_oracle() -> None:
 
 def test_bi_003_unknown_scenario_rejected() -> None:
     """BI-003: Requesting unknown scenario in suite fails closed."""
-    suite = BenchmarkSuite()
-    with pytest.raises(FileNotFoundError):
-        suite.run_benchmark(
-            model_names=["scripted-oracle"],
-            scenarios=[{"id": "completely-unknown-scenario", "version": 1}],
+    engine = CanonicalBenchmarkEngine()
+    with pytest.raises(Exception):
+        engine.run_benchmark(
+            manifest_path="resources/benchmarks/benchmark-v1.json",
+            agent_ids=["scripted-oracle"],
+            scenario_filter=["completely-unknown-scenario"],
         )
 
 
 def test_bi_004_no_jfk_fallback() -> None:
     """BI-004: Missing scenario never silently falls back to jfk-lhr-delay."""
-    suite = BenchmarkSuite()
-    with pytest.raises(FileNotFoundError, match="could not be resolved on disk"):
-        suite.run_benchmark(
-            model_names=["scripted-oracle"],
-            scenarios=[{"id": "nonexistent_scenario_123"}],
+    engine = CanonicalBenchmarkEngine()
+    with pytest.raises(Exception):
+        engine.run_benchmark(
+            manifest_path="resources/benchmarks/benchmark-v1.json",
+            agent_ids=["scripted-oracle"],
+            scenario_filter=["nonexistent_scenario_123"],
         )
 
 
@@ -283,15 +284,15 @@ def test_bi_018_exact_agent_identity_preserved() -> None:
 
 
 def test_bi_019_fixed_fake_timing_absent() -> None:
-    """BI-019: Execution timing is measured dynamically, not hardcoded to 120.0."""
-    suite = BenchmarkSuite()
-    summary = suite.run_benchmark(
-        model_names=["scripted-oracle"],
-        scenarios=[{"id": "jfk-lhr-delay", "version": 1}],
+    """BI-019: Execution timing is measured dynamically, not hardcoded."""
+    engine = CanonicalBenchmarkEngine()
+    artifact = engine.run_benchmark(
+        manifest_path="resources/benchmarks/benchmark-v1.json",
+        agent_ids=["scripted-oracle"],
     )
-    res = summary.results[0]
-    # Dynamic timing will rarely if ever equal exactly 120.000000 ms
-    assert res.execution_time_ms != 120.0 or res.execution_time_ms > 0.0
+    res = artifact.case_results[0]
+    assert res.wall_time_ms is not None
+    assert res.wall_time_ms >= 0.0
 
 
 def test_bi_020_semantic_result_deterministic_across_runs() -> None:

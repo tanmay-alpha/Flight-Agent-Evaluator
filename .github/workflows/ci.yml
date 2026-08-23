@@ -60,7 +60,10 @@ jobs:
             --cov-branch \
             --cov-report=term-missing:skip-covered \
             --cov-report=xml \
-            --cov-fail-under=90
+            --cov-fail-under=90.00
+
+      - name: Explicit coverage threshold report
+        run: uv run coverage report --precision=2 --fail-under=90.00
 
       - name: Build (wheel + sdist)
         run: uv build
@@ -88,3 +91,18 @@ jobs:
 
       - name: Deterministic fixture smoke test
         run: uv run python scripts/check.py smoke
+
+      - name: Transactional scenario smoke test
+        run: uv run python scripts/check.py transactional-smoke
+
+      - name: Benchmark manifest validation
+        run: uv run python scripts/check.py manifest
+
+      - name: CLI command verification
+        run: uv run python scripts/check.py cli
+
+      - name: Replay integrity verification
+        run: uv run python scripts/check.py replay
+
+      - name: Full release verifier
+        run: uv run flight-evaluator benchmark verify-release

@@ -1,48 +1,52 @@
-"""Unit tests for multi-model benchmark suite and evaluator ablation engine."""
+"""Unit tests for canonical benchmark execution, metrics, and report generator."""
 
 from __future__ import annotations
 
-from flight_agent_evaluator.benchmarks.ablations import AblationEngine
-from flight_agent_evaluator.benchmarks.contracts import (
-    ModelFamily,
-    ScenarioBenchmarkResult,
-)
+from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
 from flight_agent_evaluator.benchmarks.metrics import (
     compute_average_score,
-    compute_evaluator_value_add,
     compute_macro_f1,
     compute_pass_rate,
 )
 from flight_agent_evaluator.benchmarks.report import (
-    generate_ablation_report,
     generate_benchmark_report,
 )
-from flight_agent_evaluator.benchmarks.suite import BenchmarkSuite
+from flight_agent_evaluator.benchmarks.results import (
+    BenchmarkCaseResult,
+)
 
 
 def test_benchmark_metrics() -> None:
     results = [
-        ScenarioBenchmarkResult(
+        BenchmarkCaseResult(
+            benchmark_id="benchmark-v1",
+            benchmark_version="1.0.0",
             scenario_id="sc-1",
             scenario_version=1,
-            model_name="gpt-4o",
-            passed=True,
+            scenario_resource_digest="a" * 64,
+            expectation_resource_digest="b" * 64,
+            agent_id="scripted-oracle",
+            task_success=True,
+            safety_pass=True,
             overall_score=1.0,
             score_vector={"accuracy": 1.0},
             failure_codes=[],
-            execution_time_ms=100.0,
-            evaluator_overhead_ms=10.0,
+            run_id="run-1",
         ),
-        ScenarioBenchmarkResult(
+        BenchmarkCaseResult(
+            benchmark_id="benchmark-v1",
+            benchmark_version="1.0.0",
             scenario_id="sc-2",
             scenario_version=1,
-            model_name="gpt-4o",
-            passed=False,
+            scenario_resource_digest="c" * 64,
+            expectation_resource_digest="d" * 64,
+            agent_id="scripted-oracle",
+            task_success=False,
+            safety_pass=True,
             overall_score=0.5,
             score_vector={"accuracy": 0.5},
             failure_codes=["PLANNING.HALLUCINATED_TOOL"],
-            execution_time_ms=120.0,
-            evaluator_overhead_ms=12.0,
+            run_id="run-2",
         ),
     ]
 
@@ -55,38 +59,19 @@ def test_benchmark_metrics() -> None:
     )
     assert macro_f1 == 1.0
 
-    value_add = compute_evaluator_value_add(full_macro_f1=0.95, no_diagnostics_macro_f1=0.40)
-    assert value_add == 55.0
 
+def test_canonical_benchmark_engine_run() -> None:
+    engine = CanonicalBenchmarkEngine()
+    artifact = engine.run_benchmark(
+        manifest_path="resources/benchmarks/benchmark-v1.json",
+        agent_ids=["scripted-oracle"],
+        repetitions=1,
+    )
+    assert artifact.scenario_count == 24
+    assert artifact.total_runs == 24
+    assert "scripted-oracle" in artifact.executed_agents
+    assert artifact.metrics.task_success_rate >= 0.0
 
-def test_benchmark_suite_execution() -> None:
-    suite = BenchmarkSuite()
-    scenarios = [{"id": "jfk-lhr-delay", "version": 1}]
-    models = [ModelFamily.BASELINE_SCRIPTED, ModelFamily.BASELINE_RANDOM]
-
-    summary = suite.run_benchmark(models, scenarios)
-    assert summary.scenarios_count == 1
-    assert summary.total_runs == 2
-    assert "baseline-scripted" in summary.model_pass_rates
-    assert "baseline-random" in summary.model_pass_rates
-    assert summary.model_pass_rates["baseline-scripted"] == 1.0
-    assert summary.model_pass_rates["baseline-random"] == 0.0
-
-    report = generate_benchmark_report(summary)
+    report = generate_benchmark_report(artifact)
     assert "# Benchmark Run Report" in report
-    assert "`baseline-scripted`" in report
-
-
-def test_ablation_engine_execution() -> None:
-    engine = AblationEngine()
-    scenarios = [{"id": "jfk-lhr-delay", "version": 1}]
-    report = engine.run_ablation_study(scenarios, models=[ModelFamily.BASELINE_SCRIPTED])
-
-    assert report.baseline_pass_rate == 1.0
-    assert report.evaluator_value_add_score == 55.0
-    assert "full" in report.ablated_pass_rates
-    assert "no_diagnostics" in report.ablated_pass_rates
-
-    formatted = generate_ablation_report(report)
-    assert "# Evaluator Ablation Study Report" in formatted
-    assert "55.0%" in formatted
+    assert "`scripted-oracle`" in report

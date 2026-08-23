@@ -180,3 +180,66 @@ def test_confirm_rebooking_missing_or_expired_approval() -> None:
             idempotency_key="key-err-2",
             current_time=future,
         )
+
+
+def test_idempotency_registry_coverage() -> None:
+    from flight_agent_evaluator.environment.fixtures import (
+        get_default_approval_fixture,
+        get_default_booking_fixture,
+        get_default_hold_fixture,
+    )
+    from flight_agent_evaluator.environment.idempotency import IdempotencyKeyRegistry
+
+    now = datetime(2026, 8, 12, 12, 0, 0, tzinfo=UTC)
+    registry = IdempotencyKeyRegistry()
+
+    payload1 = {"flight": "AS101", "seat": "12A"}
+    payload2 = {"flight": "AS101", "seat": "14B"}
+    res1 = {"booking_id": "b-123"}
+
+    # Initially None
+    assert registry.get_record("k1") is None
+    assert registry.get_record("k1", tool_name="book") is None
+    assert (
+        registry.check_or_register(key="k1", tool_name="book", payload=payload1, registered_at=now)
+        is None
+    )
+
+    # Save
+    rec = registry.save_result(
+        key="k1", tool_name="book", payload=payload1, result_payload=res1, registered_at=now
+    )
+    assert rec.key == "k1"
+    assert registry.get_record("k1") is not None
+    assert registry.get_record("k1", tool_name="book") is not None
+
+    # Check same key, same payload -> returns cached
+    cached = registry.check_or_register(
+        key="k1", tool_name="book", payload=payload1, registered_at=now
+    )
+    assert cached is not None
+    assert cached.result_payload == res1
+
+    # Save same key, same payload -> idempotent return
+    rec_same = registry.save_result(
+        key="k1", tool_name="book", payload=payload1, result_payload=res1, registered_at=now
+    )
+    assert rec_same.key == "k1"
+
+    # Check same key, different payload -> conflict
+    with pytest.raises(IdempotencyConflictError):
+        registry.check_or_register(key="k1", tool_name="book", payload=payload2, registered_at=now)
+
+    # Save same key, different payload -> conflict
+    with pytest.raises(IdempotencyConflictError):
+        registry.save_result(
+            key="k1", tool_name="book", payload=payload2, result_payload=res1, registered_at=now
+        )
+
+    # Fixtures
+    b = get_default_booking_fixture()
+    assert b.booking_reference == "AS-1001"
+    h = get_default_hold_fixture()
+    assert h.hold_id == "hold-9901"
+    a = get_default_approval_fixture(mutation_payload={"custom": 123})
+    assert a.approval_id == "appr-7701"
