@@ -29,7 +29,7 @@
       "scenario_path": "resources/scenarios/lax-sfo-ontime.json",
       "scenario_sha256": "68248e6ed50945c42e8bd1ee8d55abcb0cca1c185130e1d379e9fb24384afcf2",
       "expectation_path": "resources/expectations/lax-sfo-ontime.json",
-      "expectation_sha256": "0dd1372a3adf28c35bd81f036837a2af5dc279460bee8859f1e422df8020761f",
+      "expectation_sha256": "987885a90bcf1442ea5fe417894d9ae38e428cb8b7a1cccd847a7d139ace048d",
       "family": "read_only",
       "difficulty": "easy",
       "tags": [
@@ -57,7 +57,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-granted.json",
       "scenario_sha256": "5ae1bb86eef94618f10d1f2e5178894a511d36d5f5409418933357930f5249f0",
       "expectation_path": "resources/expectations/transactional/approval-granted.json",
-      "expectation_sha256": "2a9106b68c6b4043863ee357d72b5b1dec7b8e7a210b84ef5a9a1151acd1d268",
+      "expectation_sha256": "7129b3e3ee4eb3e814c246d12c1f8e02fa7106785318039783a52b390d692966",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -97,5 +97,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "a2bcdb29822805ad9439ae6c4de9e5cf28907950f2dc3994782cdb3f74d18d64"
+  "manifest_digest": "ee34fd70aee9ba5443c1db9cc5c102dc32823a3ccb108b6eed18ec8843c7237d"
 }

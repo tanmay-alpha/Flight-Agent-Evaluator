@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_UA456",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "UA456",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "UA456",
+    "marketing_airline_iata": "UA",
+    "operating_airline_iata": "UA",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "IAD",
+    "name": "Washington Dulles International Airport",
+    "city": "Washington",
+    "country": "US",
+    "timezone": "America/New_York"
+  },
+  "destination": {
+    "iata_code": "ORD",
+    "name": "Chicago O'Hare International Airport",
+    "city": "Chicago",
+    "country": "US",
+    "timezone": "America/Chicago"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T17:00:00+00:00",
+    "estimated": "2026-07-28T18:00:00+00:00",
+    "actual": null,
+    "delay_minutes": 60
+  },
+  "arrival": {
+    "scheduled": "2026-07-28T18:30:00+00:00",
+    "estimated": "2026-07-28T19:30:00+00:00",
+    "actual": null,
+    "delay_minutes": 60
+  },
+  "status": {
+    "operational_status": "delayed",
+    "delay_minutes": 60,
+    "gate": "C14",
+    "terminal": "1",
+    "remarks": "Crew scheduling delay"
+  },
+  "aircraft_type": "B772"
+}

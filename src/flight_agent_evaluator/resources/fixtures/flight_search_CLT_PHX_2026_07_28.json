@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_search_CLT_PHX_2026_07_28",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "origin": "CLT",
+    "destination": "PHX",
+    "departure_date": "2026-07-28"
+  },
+  "offers": [
+    {
+      "offer_id": "offer-clt-1",
+      "airline_iata": "AA",
+      "segments": [
+        {
+          "segment_index": 1,
+          "flight_id": {
+            "flight_number": "AA325",
+            "marketing_airline_iata": "AA",
+            "operating_airline_iata": "AA",
+            "is_codeshare": false
+          },
+          "departure_airport": "CLT",
+          "arrival_airport": "PHX",
+          "departure_time": "2026-07-28T19:45:00+00:00",
+          "arrival_time": "2026-07-28T22:15:00+00:00",
+          "cabin_class": "economy",
+          "aircraft_type": "A321"
+        }
+      ],
+      "total_price": {
+        "amount": 340.0,
+        "currency": "USD"
+      },
+      "booking_class": "M"
+    }
+  ]
+}

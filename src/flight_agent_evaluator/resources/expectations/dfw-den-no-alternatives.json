@@ -16,9 +16,10 @@
               {
                 "field_pointer": "/flight_id",
                 "operator": "equals",
-                "value": "NK555"
+                "value": "AS310"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
           "required": true
         },
@@ -26,8 +27,10 @@
           "node_id": "node_search_flights",
           "label": "Search Flights",
           "selector": {
-            "tool_name": "flight.search_flights"
+            "tool_name": "flight.search_flights",
+            "mutation_class": "read_only"
           },
+          "expected_result_status": "any",
           "required": false
         }
       ]

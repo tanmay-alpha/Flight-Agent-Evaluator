@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_DL123",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "DL123",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "DL123",
+    "marketing_airline_iata": "DL",
+    "operating_airline_iata": "DL",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "ATL",
+    "name": "Hartsfield-Jackson Atlanta International Airport",
+    "city": "Atlanta",
+    "country": "US",
+    "timezone": "America/New_York"
+  },
+  "destination": {
+    "iata_code": "MIA",
+    "name": "Miami International Airport",
+    "city": "Miami",
+    "country": "US",
+    "timezone": "America/New_York"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T11:00:00+00:00",
+    "estimated": "2026-07-28T12:30:00+00:00",
+    "actual": null,
+    "delay_minutes": 90
+  },
+  "arrival": {
+    "scheduled": "2026-07-28T13:00:00+00:00",
+    "estimated": "2026-07-28T14:30:00+00:00",
+    "actual": null,
+    "delay_minutes": 90
+  },
+  "status": {
+    "operational_status": "delayed",
+    "delay_minutes": 90,
+    "gate": "A15",
+    "terminal": "S",
+    "remarks": "Maintenance delay"
+  },
+  "aircraft_type": "B739"
+}

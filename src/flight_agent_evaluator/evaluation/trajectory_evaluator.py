@@ -337,6 +337,8 @@ class TrajectoryEvaluator:
             )
             outcome_pass_count = sum(1 for o in eval_res.outcomes if o.passed)
             outcome_score = outcome_pass_count / total_assertions
+        elif total_assertions > 0:
+            outcome_score = 0.0
         else:
             outcome_score = 1.0
 
@@ -372,17 +374,16 @@ class TrajectoryEvaluator:
                 )
 
             profile = expectation.scoring_profile
+            # Gate 13: Precision, recall, and F1 calculations under trajectory-scoring-v1
             req_nodes = [n for n in path.expected_actions if n.required]
             req_total = len(req_nodes)
-
-            # Gate 13: Tool selection metrics
-            total_agent_calls = len(obs_traj.actions)
             satisfied_req_nodes = sum(
                 1 for n in req_nodes if n.node_id in alignment.satisfied_node_ids
             )
             required_recall = (satisfied_req_nodes / req_total) if req_total > 0 else 1.0
             required_recall = min(1.0, max(0.0, required_recall))
 
+            total_agent_calls = len(obs_traj.actions)
             matched_valid_calls = len(alignment.satisfied_node_ids)
             if total_agent_calls > 0:
                 tool_precision = min(1.0, max(0.0, matched_valid_calls / total_agent_calls))
@@ -402,15 +403,21 @@ class TrajectoryEvaluator:
             satisfied_deps = (
                 total_deps - len(alignment.dependency_violations) if total_deps > 0 else 0
             )
-            dep_score = (satisfied_deps / total_deps) if total_deps > 0 else 1.0
-            dep_score = min(1.0, max(0.0, dep_score))
-
             total_precs = len(path.precedence_constraints)
             satisfied_precs = (
                 total_precs - len(alignment.precedence_violations) if total_precs > 0 else 0
             )
-            ord_score = (satisfied_precs / total_precs) if total_precs > 0 else 1.0
-            ord_score = min(1.0, max(0.0, ord_score))
+
+            if required_recall == 0.0 and req_total > 0:
+                effective_arg_corr = 0.0
+                dep_score = 0.0
+                ord_score = 0.0
+            else:
+                effective_arg_corr = alignment.argument_correctness_score
+                dep_score = (satisfied_deps / total_deps) if total_deps > 0 else 1.0
+                dep_score = min(1.0, max(0.0, dep_score))
+                ord_score = (satisfied_precs / total_precs) if total_precs > 0 else 1.0
+                ord_score = min(1.0, max(0.0, ord_score))
 
             unmatched_penalty = (
                 len(alignment.unmatched_action_call_ids) * profile.unmatched_call_penalty
@@ -420,7 +427,7 @@ class TrajectoryEvaluator:
             comp = (
                 profile.weight_outcome * outcome_score
                 + profile.weight_tool_selection * tool_f1
-                + profile.weight_argument_correctness * alignment.argument_correctness_score
+                + profile.weight_argument_correctness * effective_arg_corr
                 + profile.weight_dependency * dep_score
                 + profile.weight_ordering * ord_score
                 + profile.weight_efficiency * efficiency_score
@@ -508,16 +515,22 @@ class TrajectoryEvaluator:
         f1_val = min(1.0, max(0.0, f1_val))
 
         total_deps = len(winning_path.dependency_constraints)
-        sat_deps = (
-            total_deps - len(winning_alignment.dependency_violations) if total_deps > 0 else 0
-        )
-        dep_score_val = (sat_deps / total_deps) if total_deps > 0 else 1.0
-
         total_precs = len(winning_path.precedence_constraints)
-        sat_precs = (
-            total_precs - len(winning_alignment.precedence_violations) if total_precs > 0 else 0
-        )
-        ord_score_val = (sat_precs / total_precs) if total_precs > 0 else 1.0
+
+        if rec_val == 0.0 and req_nodes_len > 0:
+            final_arg_corr = 0.0
+            dep_score_val = 0.0
+            ord_score_val = 0.0
+        else:
+            final_arg_corr = winning_alignment.argument_correctness_score
+            sat_deps = (
+                total_deps - len(winning_alignment.dependency_violations) if total_deps > 0 else 0
+            )
+            dep_score_val = (sat_deps / total_deps) if total_deps > 0 else 1.0
+            sat_precs = (
+                total_precs - len(winning_alignment.precedence_violations) if total_precs > 0 else 0
+            )
+            ord_score_val = (sat_precs / total_precs) if total_precs > 0 else 1.0
 
         eff_score_val = min(
             1.0,
@@ -539,7 +552,7 @@ class TrajectoryEvaluator:
             tool_precision=prec_val,
             required_recall=rec_val,
             tool_f1=f1_val,
-            argument_correctness_score=winning_alignment.argument_correctness_score,
+            argument_correctness_score=final_arg_corr,
             dependency_score=dep_score_val,
             ordering_score=ord_score_val,
             efficiency_score=eff_score_val,

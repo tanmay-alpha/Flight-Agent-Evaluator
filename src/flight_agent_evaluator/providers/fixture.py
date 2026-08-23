@@ -47,12 +47,102 @@ FIXTURE_URI_PREFIX: str = "fixture://flight_agent_evaluator/resources/fixtures/"
 
 # Known synthetic fixtures and their identities.
 KNOWN_FLIGHT_STATUS_FIXTURES: dict[str, dict[str, str]] = {
-    "AS142": {"carrier": "AS", "date": "2026-07-28", "origin": "JFK", "destination": "LHR"},
-    "AS505": {"carrier": "AS", "date": "2026-07-28", "origin": "JFK", "destination": "LHR"},
+    "AS142": {
+        "carrier": "AS",
+        "date": "2026-07-28",
+        "origin": "JFK",
+        "destination": "LHR",
+        "fixture_file": "flight_status_AS142.json",
+    },
+    "AS204": {
+        "carrier": "AS",
+        "date": "2026-07-28",
+        "origin": "LAX",
+        "destination": "SFO",
+        "fixture_file": "flight_status_AS204.json",
+    },
+    "DL123": {
+        "carrier": "DL",
+        "date": "2026-07-28",
+        "origin": "ATL",
+        "destination": "MIA",
+        "fixture_file": "flight_status_DL123.json",
+    },
+    "WN678": {
+        "carrier": "WN",
+        "date": "2026-07-28",
+        "origin": "BWI",
+        "destination": "MCO",
+        "fixture_file": "flight_status_WN678.json",
+    },
+    "AA321": {
+        "carrier": "AA",
+        "date": "2026-07-28",
+        "origin": "CLT",
+        "destination": "PHX",
+        "fixture_file": "flight_status_AA321.json",
+    },
+    "AS310": {
+        "carrier": "AS",
+        "date": "2026-07-28",
+        "origin": "DFW",
+        "destination": "DEN",
+        "fixture_file": "flight_status_AS310.json",
+    },
+    "UA456": {
+        "carrier": "UA",
+        "date": "2026-07-28",
+        "origin": "IAD",
+        "destination": "ORD",
+        "fixture_file": "flight_status_UA456.json",
+    },
+    "DL456": {
+        "carrier": "DL",
+        "date": "2026-07-28",
+        "origin": "ORD",
+        "destination": "SEA",
+        "fixture_file": "flight_status_DL456.json",
+    },
+    "AS505": {
+        "carrier": "AS",
+        "date": "2026-07-28",
+        "origin": "JFK",
+        "destination": "LHR",
+        "fixture_file": "flight_status_AS505.json",
+    },
+    "UA789": {
+        "carrier": "UA",
+        "date": "2026-07-28",
+        "origin": "SFO",
+        "destination": "BOS",
+        "fixture_file": "flight_status_UA789.json",
+    },
 }
 KNOWN_SEARCH_FIXTURES: dict[str, dict[str, str]] = {
-    "JFK-LAX-2026-07-28": {"origin": "JFK", "destination": "LAX", "date": "2026-07-28"},
-    "JFK-LHR-2026-07-28": {"origin": "JFK", "destination": "LHR", "date": "2026-07-28"},
+    "JFK-LAX-2026-07-28": {
+        "origin": "JFK",
+        "destination": "LAX",
+        "date": "2026-07-28",
+        "fixture_file": "flight_search_JFK_LAX_2026_07_28.json",
+    },
+    "JFK-LHR-2026-07-28": {
+        "origin": "JFK",
+        "destination": "LHR",
+        "date": "2026-07-28",
+        "fixture_file": "flight_search_JFK_LHR_2026_07_28.json",
+    },
+    "CLT-PHX-2026-07-28": {
+        "origin": "CLT",
+        "destination": "PHX",
+        "date": "2026-07-28",
+        "fixture_file": "flight_search_CLT_PHX_2026_07_28.json",
+    },
+    "DFW-DEN-2026-07-28": {
+        "origin": "DFW",
+        "destination": "DEN",
+        "date": "2026-07-28",
+        "fixture_file": "flight_search_DFW_DEN_2026_07_28.json",
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -231,7 +321,11 @@ def _load_fixture(fixture_name: str) -> tuple[bytes, dict[str, Any]]:
     Only allow-listed fixture names are accepted to prevent path traversal.
     Returns raw bytes and parsed JSON.
     """
-    allowed = {"flight_status_delayed.json", "alternative_flights.json"}
+    allowed_status = {v["fixture_file"] for v in KNOWN_FLIGHT_STATUS_FIXTURES.values()}
+    allowed_search = {v["fixture_file"] for v in KNOWN_SEARCH_FIXTURES.values()}
+    allowed = (
+        allowed_status | allowed_search | {"flight_status_delayed.json", "alternative_flights.json"}
+    )
     if fixture_name not in allowed:
         raise ProviderDataNotFoundError(
             provider=PROVIDER_NAME,
@@ -416,13 +510,14 @@ class FixtureFlightProvider:
             )
 
         # Load fixture and validate against strict wire model.
-        raw_bytes, raw = _load_fixture("flight_status_delayed.json")
+        fixture_file = fixture_identity["fixture_file"]
+        raw_bytes, raw = _load_fixture(fixture_file)
         try:
             wire = _WireFlightStatusPayload.model_validate(raw)
         except Exception as exc:
             raise ProviderInvalidResponseError(
                 provider=PROVIDER_NAME,
-                safe_message="Malformed flight-status fixture",
+                safe_message=f"Malformed flight-status fixture: {fixture_file}",
             ) from exc
 
         origin = _parse_airport(wire.origin)
@@ -445,7 +540,7 @@ class FixtureFlightProvider:
 
         status = _parse_status(wire.status)
 
-        source_meta = _source_metadata("flight_status_delayed.json", raw_bytes)
+        source_meta = _source_metadata(fixture_file, raw_bytes)
 
         return FlightStatusObservation(
             query=query,
@@ -466,8 +561,6 @@ class FixtureFlightProvider:
 
         Raises ProviderDataNotFoundError for unsupported route/date combos.
         """
-        raw_bytes, raw = _load_fixture("alternative_flights.json")
-
         # Strict lookup: validate route + date.
         search_key = f"{request.origin_iata}-{request.destination_iata}-{request.departure_date.strftime('%Y-%m-%d')}"
         known = KNOWN_SEARCH_FIXTURES.get(search_key)
@@ -481,13 +574,16 @@ class FixtureFlightProvider:
                 ),
             )
 
+        fixture_file = known["fixture_file"]
+        raw_bytes, raw = _load_fixture(fixture_file)
+
         # Parse via strict wire model.
         try:
             wire = _WireFlightSearchPayload.model_validate(raw)
         except Exception as exc:
             raise ProviderInvalidResponseError(
                 provider=PROVIDER_NAME,
-                safe_message="Malformed flight-search fixture",
+                safe_message=f"Malformed flight-search fixture: {fixture_file}",
             ) from exc
 
         def _seg(seg_data: _WireFlightOfferSegment) -> FlightOfferSegment:
@@ -524,7 +620,7 @@ class FixtureFlightProvider:
         # Deterministic ordering by offer_id.
         offers.sort(key=lambda o: o.offer_id)
 
-        source_meta = _source_metadata("alternative_flights.json", raw_bytes)
+        source_meta = _source_metadata(fixture_file, raw_bytes)
 
         return FlightSearchResult(
             schema_version=SCHEMA_VERSION,

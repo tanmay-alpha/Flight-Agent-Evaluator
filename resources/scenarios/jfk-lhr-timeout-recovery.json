@@ -59,7 +59,8 @@
         "arguments": {
           "flight_id": "AS142",
           "operating_day": "2026-07-28"
-        }
+        },
+        "expected_failure": true
       },
       {
         "kind": "invoke_tool",

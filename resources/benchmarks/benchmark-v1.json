@@ -29,7 +29,7 @@
       "scenario_path": "resources/scenarios/lax-sfo-ontime.json",
       "scenario_sha256": "68248e6ed50945c42e8bd1ee8d55abcb0cca1c185130e1d379e9fb24384afcf2",
       "expectation_path": "resources/expectations/lax-sfo-ontime.json",
-      "expectation_sha256": "0dd1372a3adf28c35bd81f036837a2af5dc279460bee8859f1e422df8020761f",
+      "expectation_sha256": "987885a90bcf1442ea5fe417894d9ae38e428cb8b7a1cccd847a7d139ace048d",
       "family": "read_only",
       "difficulty": "easy",
       "tags": [
@@ -43,7 +43,7 @@
       "scenario_path": "resources/scenarios/atl-mia-wrong-arguments.json",
       "scenario_sha256": "7abc71f93e21a9f05a2a7f39a7f8daa842f849347bf1af31e00db1c917fc2aaa",
       "expectation_path": "resources/expectations/atl-mia-wrong-arguments.json",
-      "expectation_sha256": "cba247c21b05086b5808a75e4219f76c5928a37d29d847d7f46926db48fc176a",
+      "expectation_sha256": "9ebb3b5dfb55fbca16930e4953864d4333d1cdaf53c80292cdec392465919fdb",
       "family": "read_only",
       "difficulty": "easy",
       "tags": [
@@ -71,7 +71,7 @@
       "scenario_path": "resources/scenarios/clt-phx-retry-dependency.json",
       "scenario_sha256": "ad239bdd96ef15faea1ac591c3d0f2b897ab047f1057d7102dc8fcfeda18f17f",
       "expectation_path": "resources/expectations/clt-phx-retry-dependency.json",
-      "expectation_sha256": "7a4ff7ecc5ec9099a16f7c2c54f3b21378738fd544242cb51f425a82c1122213",
+      "expectation_sha256": "a7048066e4bbeff2950716af2aa56a8948c428cac1d47b45bb2d2718d9a9e45b",
       "family": "read_only",
       "difficulty": "medium",
       "tags": [
@@ -83,9 +83,9 @@
       "scenario_id": "dfw-den-no-alternatives",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/dfw-den-no-alternatives.json",
-      "scenario_sha256": "be171c0dd96248005ca0b519a54dd43016de9d86deb0619c018428433b3585d5",
+      "scenario_sha256": "d3effad75a0b5f71e6041312cc7107f4ba106ca88ec5c5539762ead9655f4049",
       "expectation_path": "resources/expectations/dfw-den-no-alternatives.json",
-      "expectation_sha256": "70dddc888f1111d0aca9af3a0b76a79d0a61e261cf8d838305382bc1b9e1bd5e",
+      "expectation_sha256": "3195f9ac3d48a6e754271a5bde813734f4238762c29a3cfd45425a37ad6938e0",
       "family": "read_only",
       "difficulty": "medium",
       "tags": [
@@ -99,7 +99,7 @@
       "scenario_path": "resources/scenarios/iad-ord-redundant-lookup.json",
       "scenario_sha256": "8d49dd10589fe0710cbd47de75c650092442e6cdad312593dcc144eb3f884272",
       "expectation_path": "resources/expectations/iad-ord-redundant-lookup.json",
-      "expectation_sha256": "4b4f736bb8158b446e22f3bcbbf9254b66458ed4e1b82d62ae3aba4e886f4dc5",
+      "expectation_sha256": "acafcd471ac2ff7ef8c61f116fa60d1fc3f18c3bcafcd5596de04977aaab5ed1",
       "family": "read_only",
       "difficulty": "easy",
       "tags": [
@@ -113,7 +113,7 @@
       "scenario_path": "resources/scenarios/ord-sea-dual-order.json",
       "scenario_sha256": "2694ce7ca67df8d7feeadf4645ae489ac7530a671db8c40eadb0923bba3fb599",
       "expectation_path": "resources/expectations/ord-sea-dual-order.json",
-      "expectation_sha256": "efe3ddb5b6095d199c225e8a825709fd83d0b2522de821914b6d86fa6ce83559",
+      "expectation_sha256": "9c5f4e2cf6af1f67252860ee823005e8a007e17ced5eb831d6d7732e6e69a161",
       "family": "read_only",
       "difficulty": "medium",
       "tags": [
@@ -127,7 +127,7 @@
       "scenario_path": "resources/scenarios/prompt-injection-untrusted-output.json",
       "scenario_sha256": "b61bca7779fd985df53378432a793e5673a6f6932acc38cfdcb5e69f51b97983",
       "expectation_path": "resources/expectations/prompt-injection-untrusted-output.json",
-      "expectation_sha256": "88125d60252d47a46596d6cf49432ae74d7658f95b4f972213933e5f3d5d9b4c",
+      "expectation_sha256": "ee6bb81c8e5ba95da54bce9779769918bf73d4e8f282964051f0fc269960df5f",
       "family": "read_only",
       "difficulty": "hard",
       "tags": [
@@ -141,7 +141,7 @@
       "scenario_path": "resources/scenarios/sfo-bos-optional-lookup.json",
       "scenario_sha256": "303ec1a09cfb9a437874f4583baace6f8a9cc0808e936d23a5c01ddd2102b273",
       "expectation_path": "resources/expectations/sfo-bos-optional-lookup.json",
-      "expectation_sha256": "2ff838d2bed5769ce94c8fec1184b81727e583947ae98d5b09a8d1df98ca2d06",
+      "expectation_sha256": "c0ae3fceeb5ccda3852b7e67a52d47e36f8a15cfe3254cf7a339570e3d6fd724",
       "family": "read_only",
       "difficulty": "easy",
       "tags": [
@@ -152,9 +152,9 @@
       "scenario_id": "unknown-flight-lookup",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/unknown-flight-lookup.json",
-      "scenario_sha256": "7d61e912a18e8556f83a8a35d94612f94a624f0a433c567da07e8edfa562e484",
+      "scenario_sha256": "21e87e77e8144a5ee7f5f4994fc90f491432df1773e8456ae151cf3e33d84cdf",
       "expectation_path": "resources/expectations/unknown-flight-lookup.json",
-      "expectation_sha256": "fd2452df73ded2c249f1fe8daf1be23225e4b9bf507330a9ce5bd52faa3ded3e",
+      "expectation_sha256": "64036f2ef677104801bd04b56a0e215c78f02f8cfe1ff05351856361a689cb3e",
       "family": "read_only",
       "difficulty": "easy",
       "tags": [
@@ -165,9 +165,9 @@
       "scenario_id": "jfk-lhr-timeout-recovery",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/jfk-lhr-timeout-recovery.json",
-      "scenario_sha256": "89bc5614a83ae5dd2edb62b80c53b98e343cbc34339c979bf299a2791196b128",
+      "scenario_sha256": "3877cec44e76f1c64c56a7f31c80605105361ce32953965b2b193df22b207ca8",
       "expectation_path": "resources/expectations/jfk-lhr-timeout-recovery.json",
-      "expectation_sha256": "47d54ff290a945518bb8dd9048009390dabebabcc63910af5d4acbe35a6aa1ac",
+      "expectation_sha256": "78814cee6096d666c3b146e5e610abf8b57e4d68ac7a4c49066bf1e789ddd63b",
       "family": "read_only",
       "difficulty": "hard",
       "tags": [
@@ -181,7 +181,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-granted.json",
       "scenario_sha256": "5ae1bb86eef94618f10d1f2e5178894a511d36d5f5409418933357930f5249f0",
       "expectation_path": "resources/expectations/transactional/approval-granted.json",
-      "expectation_sha256": "2a9106b68c6b4043863ee357d72b5b1dec7b8e7a210b84ef5a9a1151acd1d268",
+      "expectation_sha256": "7129b3e3ee4eb3e814c246d12c1f8e02fa7106785318039783a52b390d692966",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -196,7 +196,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-denied.json",
       "scenario_sha256": "15ea84e84bec88230c821c8a8683d665d993e481fdee6d7b5a4f4f81b5df0a36",
       "expectation_path": "resources/expectations/transactional/approval-denied.json",
-      "expectation_sha256": "1ce233d608fc8d062531b08abf6440a8dead438a858a168f51bf0552b0ecafd0",
+      "expectation_sha256": "6d37b3e85f7a326ed72ad826ecb2261150fde7c6729ca502ac8203f77065737d",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -209,9 +209,9 @@
       "scenario_id": "approval-expires",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/approval-expires.json",
-      "scenario_sha256": "f13e610677195bef53d9cbf594340f909ea0d8807a4ee95458a7b43fc45d929f",
+      "scenario_sha256": "86390d72c9cc0cf4cbe1c36bde8711d06b56188acf036561fd669bebc82bf290",
       "expectation_path": "resources/expectations/transactional/approval-expires.json",
-      "expectation_sha256": "f3cb6c24be55a966d778bead5ec499af4a47133e5937eff3180f2247a0de41c8",
+      "expectation_sha256": "f54b20aa83e3ddef2de2ad11d45ad34ea7f5ce36a2301e9361a8d2fd9c3ec5b2",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -224,9 +224,9 @@
       "scenario_id": "mutation-without-approval",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/mutation-without-approval.json",
-      "scenario_sha256": "4249ab09ea4f852120e805fa85a2717230b28aa68bab6a246793f4426f223990",
+      "scenario_sha256": "a50259af19d4ffb769ba722468bd97d158150a9491ed7beb1ac782e38f82ef5e",
       "expectation_path": "resources/expectations/transactional/mutation-without-approval.json",
-      "expectation_sha256": "78dece2832b2d9d46574d548a7d78f4643964f7aeac04aa70c8c1efeab8c4f48",
+      "expectation_sha256": "fc29efb2a5e2be0c5df4b0b0c1ed0965f54cba4a85f5a36b077d088b0f9ab5f9",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -239,9 +239,9 @@
       "scenario_id": "payload-changes-after-approval",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/payload-changes-after-approval.json",
-      "scenario_sha256": "42be77da0a08bf7ecf639c01cce447ebb18dfa86d99b7057aa107cfe6a2e9d0e",
+      "scenario_sha256": "40cef2f27bb53610163b72ff5b2490f6988a0fc7d356b282bde3c9d59c10f98a",
       "expectation_path": "resources/expectations/transactional/payload-changes-after-approval.json",
-      "expectation_sha256": "c771917a431a00066969302d8df24dfd4ea31fcba61b0d046d8b1ba17eef5bea",
+      "expectation_sha256": "cde5f5f974992239491d30b3b8b40bf72dad5b744a9398038d0c75ada6adacab",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -256,7 +256,7 @@
       "scenario_path": "resources/scenarios/transactional/idempotent-retry-after-timeout.json",
       "scenario_sha256": "59ba30e550198fd3fcc31b9d7be2d5e6483051edbc9905a5e56e3cd35b19c8e1",
       "expectation_path": "resources/expectations/transactional/idempotent-retry-after-timeout.json",
-      "expectation_sha256": "b7c3054f7840201fa38d00dc9a3115ad57b585892e5f52fc07fe53f1b23907a7",
+      "expectation_sha256": "fcec7f104f1fb4485729d0d5843301e7caaee8dccf70e63d39a9d2f468d56028",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -269,9 +269,9 @@
       "scenario_id": "duplicate-rebooking-attempt",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/duplicate-rebooking-attempt.json",
-      "scenario_sha256": "f77ba511af7f5f4dc66b18896838d47f16c4598bd93c6dfec8e473a79dedcf58",
+      "scenario_sha256": "0e3fb35421d588835e76890850b78bce9dc72a78169838465054dd87054c2732",
       "expectation_path": "resources/expectations/transactional/duplicate-rebooking-attempt.json",
-      "expectation_sha256": "96ec764cf26c74f627650ebab7c551098c80a38a3c57ff59d53c4a959be7f36f",
+      "expectation_sha256": "041f7df86b02e747422696a18361afbb672234314174b3ea61da4fe282b26506",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -286,7 +286,7 @@
       "scenario_path": "resources/scenarios/transactional/hold-expires.json",
       "scenario_sha256": "165c9b09e36433b38d4e6ad7930d3d9933aab8cb425486b853827feb37f54f05",
       "expectation_path": "resources/expectations/transactional/hold-expires.json",
-      "expectation_sha256": "96df2652c6cb7f779ea4b6ef27f084cd8b3f0c50daf5d502aed1ffd67f218e79",
+      "expectation_sha256": "7c4fc4f474cd8647aa020b492e26aa14f6e08ec40f2ff13978a2f641520a250c",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -301,7 +301,7 @@
       "scenario_path": "resources/scenarios/transactional/mutation-success-response-lost.json",
       "scenario_sha256": "116996c78c68dee2141f12fb68afba2d6d5b6d76b74cc44d40ab090e05ab5af3",
       "expectation_path": "resources/expectations/transactional/mutation-success-response-lost.json",
-      "expectation_sha256": "c5f8d08dab85aff172ba0c16a85ec4b449db8b2bdb01b4469914b857ebc1713e",
+      "expectation_sha256": "6885d2384a8e926bde7076ff05ee47db599fb7b4e2500438ad8e7a8d2acdc174",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -314,9 +314,9 @@
       "scenario_id": "alternative-disappears-before-confirm",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/alternative-disappears-before-confirm.json",
-      "scenario_sha256": "3d14ebbfb249f6cfb44d3e9653788eefc5fd1c2033132a6df97627eef77667cf",
+      "scenario_sha256": "d6277de264b39c074d9aefbc0751c17a4ef40a76c216e624c39eaed47a5cb871",
       "expectation_path": "resources/expectations/transactional/alternative-disappears-before-confirm.json",
-      "expectation_sha256": "daba5751e0d3c597c497aa4f4fa074065620a98e3c41a35c3a66045f25b28108",
+      "expectation_sha256": "0a1068923cafe959c1710bd4a3f7033d7e3fdc59730152e4581446030ed49696",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -329,9 +329,9 @@
       "scenario_id": "approval-wrong-itinerary",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/approval-wrong-itinerary.json",
-      "scenario_sha256": "1515e33bc0781292fb43c562a920d3fbf1275b09a044ff7e000c08e7cb48927c",
+      "scenario_sha256": "7f9bce6a818c7d1964acb1d462f05e85a003c9a1fb061c1f93703d19464f10b1",
       "expectation_path": "resources/expectations/transactional/approval-wrong-itinerary.json",
-      "expectation_sha256": "411c717f05ab4f627538246d675ac77618bc8beaca49e151a235fcab921acfb0",
+      "expectation_sha256": "ff0c7f75cf1da771d3105e9bb159adcc58f853b74adf2f5f719386735a475bd0",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -344,9 +344,9 @@
       "scenario_id": "constraint-changes-after-approval",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/constraint-changes-after-approval.json",
-      "scenario_sha256": "7e9b14d70a7f29281620d4180f662cfa983807c1e6b6ad99cabc8e15325b572d",
+      "scenario_sha256": "92498bb5780e188f84cf20bdc7f3beda1e631eb8c5e2c2d342d7d193340a0fcd",
       "expectation_path": "resources/expectations/transactional/constraint-changes-after-approval.json",
-      "expectation_sha256": "d5de2085e6c193e5f0af4fab01306efa9ed43ecc59725fdfd48fc5ffc9be2b4a",
+      "expectation_sha256": "1933a1918fc9890abaa2541374fc6fd007c8f16bca70ddcb9cf4c33a49f61060",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -386,5 +386,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "9e414bcdf5b06591f965a7d1582ba160dba2c92a89779c7f1d66a527f08d87f4"
+  "manifest_digest": "9b5f21218c9e1de5629fe52d9cea6269372f24dcfa57bc1b3b4478e350164121"
 }

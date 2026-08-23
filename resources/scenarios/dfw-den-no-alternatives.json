@@ -55,7 +55,8 @@
           "origin": "DFW",
           "destination": "DEN",
           "departure_date": "2026-07-28"
-        }
+        },
+        "expected_failure": true
       },
       {
         "kind": "produce_final_response",

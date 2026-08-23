@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_AA321",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "AA321",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "AA321",
+    "marketing_airline_iata": "AA",
+    "operating_airline_iata": "AA",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "CLT",
+    "name": "Charlotte Douglas International Airport",
+    "city": "Charlotte",
+    "country": "US",
+    "timezone": "America/New_York"
+  },
+  "destination": {
+    "iata_code": "PHX",
+    "name": "Phoenix Sky Harbor International Airport",
+    "city": "Phoenix",
+    "country": "US",
+    "timezone": "America/Phoenix"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T15:00:00+00:00",
+    "estimated": "2026-07-28T17:00:00+00:00",
+    "actual": null,
+    "delay_minutes": 120
+  },
+  "arrival": {
+    "scheduled": "2026-07-28T17:30:00+00:00",
+    "estimated": "2026-07-28T19:30:00+00:00",
+    "actual": null,
+    "delay_minutes": 120
+  },
+  "status": {
+    "operational_status": "delayed",
+    "delay_minutes": 120,
+    "gate": "C8",
+    "terminal": "1",
+    "remarks": "Weather delay at origin"
+  },
+  "aircraft_type": "A321"
+}

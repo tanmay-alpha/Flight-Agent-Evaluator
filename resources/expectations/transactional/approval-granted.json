@@ -14,7 +14,10 @@
             "tool_name": "booking.get_current",
             "mutation_class": "read_only"
           },
-          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
@@ -22,9 +25,12 @@
           "label": "Hold Alternative Seats",
           "selector": {
             "tool_name": "booking.hold_alternative",
-            "mutation_class": "read_only"
+            "mutation_class": "simulated_mutation"
           },
-          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
@@ -32,9 +38,12 @@
           "label": "Request Approval",
           "selector": {
             "tool_name": "approval.request",
-            "mutation_class": "read_only"
+            "mutation_class": "simulated_mutation"
           },
-          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
@@ -42,9 +51,12 @@
           "label": "Confirm Rebooking",
           "selector": {
             "tool_name": "booking.confirm_rebooking",
-            "mutation_class": "transactional"
+            "mutation_class": "sensitive_simulated_mutation"
           },
-          "occurrence": { "min_occurs": 1, "max_occurs": 3 },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
@@ -54,7 +66,10 @@
             "tool_name": "notification.send_simulated",
             "mutation_class": "side_effecting"
           },
-          "occurrence": { "min_occurs": 0, "max_occurs": 3 },
+          "occurrence": {
+            "min_occurs": 0,
+            "max_occurs": 3
+          },
           "required": false
         }
       ],
