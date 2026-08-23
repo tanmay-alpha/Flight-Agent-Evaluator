@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "9b5f21218c9e1de5629fe52d9cea6269372f24dcfa57bc1b3b4478e350164121",
+  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
   "scenario_id": "jfk-lhr-delay",
   "scenario_version": 1,
   "scenario_resource_digest": "6b8291146ed529329bc8eb4fac13886e9ce202d336d6caca3c9f9ae8e694a66a",
@@ -24,6 +24,6 @@
   "run_id": "run_jfk-lhr-delay_0",
   "journal_digest": "9cde1e2c4241632ef7e3bf01ca8fffca9583a6159206dc54ff548298d06246c8",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 3.6000999971292913,
-  "semantic_result_digest": "908eb42d6016a5e037763eedc5d4ac91a268237536ec9f89a9afffc03862f813"
+  "wall_time_ms": 3.5056000051554292,
+  "semantic_result_digest": "44a6a77b0f26e1434fe9dc30b751b33677d94efbefa4152224e0b1a510a4ebf3"
 }

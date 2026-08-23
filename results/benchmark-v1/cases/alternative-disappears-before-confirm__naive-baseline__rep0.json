@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "9b5f21218c9e1de5629fe52d9cea6269372f24dcfa57bc1b3b4478e350164121",
+  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
   "scenario_id": "alternative-disappears-before-confirm",
   "scenario_version": 1,
-  "scenario_resource_digest": "d6277de264b39c074d9aefbc0751c17a4ef40a76c216e624c39eaed47a5cb871",
-  "expectation_resource_digest": "0a1068923cafe959c1710bd4a3f7033d7e3fdc59730152e4581446030ed49696",
+  "scenario_resource_digest": "5338d43b3a1032dae49c07579f1a7b6e894458679c101b9c3f645c7de5ce3c18",
+  "expectation_resource_digest": "092a63d5e9ce36257c59ba7839fc74dd777c95d87edc0ddb37fc7f1ffd13dc4e",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -33,6 +33,6 @@
   "run_id": "run_alternative-disappears-before-confirm_0",
   "journal_digest": "329c9c17e0fb1094d7a97ca16f2a17daca71653e93d1ad0fff8c8ca957f61b30",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.0156999924220145,
-  "semantic_result_digest": "2c04e72bb920e16897975942a4acb8163029e9de97f32ce9cc8ca043aff44313"
+  "wall_time_ms": 1.048199977958575,
+  "semantic_result_digest": "18d278f6b3f32238685e5c8af8c6abf2dba8b77a180597ff1fd1b524162d2ef5"
 }

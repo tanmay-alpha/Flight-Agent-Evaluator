@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "9b5f21218c9e1de5629fe52d9cea6269372f24dcfa57bc1b3b4478e350164121",
+  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
   "scenario_id": "mutation-success-response-lost",
   "scenario_version": 1,
   "scenario_resource_digest": "116996c78c68dee2141f12fb68afba2d6d5b6d76b74cc44d40ab090e05ab5af3",
-  "expectation_resource_digest": "6885d2384a8e926bde7076ff05ee47db599fb7b4e2500438ad8e7a8d2acdc174",
+  "expectation_resource_digest": "51c06b4f78c9ee75931e0a97e066563d9e462e723286446aa8820561c93dcef7",
   "agent_id": "random-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -32,6 +32,6 @@
   "run_id": "run_mutation-success-response-lost_0",
   "journal_digest": "92a94c71b95231d6e1341c06ddb5ff143aa0e173c166962ee9b8ec694b6b7ec6",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.0055000020656735,
-  "semantic_result_digest": "74653830225ba331ca900c2f221adfd12a767b8763e49903db9c87732195485f"
+  "wall_time_ms": 0.7787999929860234,
+  "semantic_result_digest": "eb7e521eedc5a118e24e9ec4865765dcf9bf7c6ffef2ad962b85976bd7ed3e85"
 }

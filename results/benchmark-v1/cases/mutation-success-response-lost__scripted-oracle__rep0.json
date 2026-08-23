@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "9b5f21218c9e1de5629fe52d9cea6269372f24dcfa57bc1b3b4478e350164121",
+  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
   "scenario_id": "mutation-success-response-lost",
   "scenario_version": 1,
   "scenario_resource_digest": "116996c78c68dee2141f12fb68afba2d6d5b6d76b74cc44d40ab090e05ab5af3",
-  "expectation_resource_digest": "6885d2384a8e926bde7076ff05ee47db599fb7b4e2500438ad8e7a8d2acdc174",
+  "expectation_resource_digest": "51c06b4f78c9ee75931e0a97e066563d9e462e723286446aa8820561c93dcef7",
   "agent_id": "scripted-oracle",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -27,6 +27,6 @@
   "run_id": "run_mutation-success-response-lost_0",
   "journal_digest": "285c0b30c76bc87ee118b610f14a5b7b30be10a9d95e6449636a17d84f1e1f9f",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.7536999948788434,
-  "semantic_result_digest": "a84b348dbec1981df19bf65b345c6e103dd1ebea7af360dfbc7878ea306bfd7d"
+  "wall_time_ms": 1.7478000081609935,
+  "semantic_result_digest": "6731b93915725ef1456929ab942c3ccceab70462fbe2a790376fa33cddc46caa"
 }
