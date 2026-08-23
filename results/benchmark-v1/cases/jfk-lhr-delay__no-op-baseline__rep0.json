@@ -1,12 +1,12 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
   "scenario_id": "jfk-lhr-delay",
   "scenario_version": 1,
   "scenario_resource_digest": "6b8291146ed529329bc8eb4fac13886e9ce202d336d6caca3c9f9ae8e694a66a",
   "expectation_resource_digest": "15c99ed1764ad198684472c4d4fa11c513b297cc1a55e89d7e1f567742f5e3c5",
-  "agent_id": "random-baseline",
+  "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
@@ -28,9 +28,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "run_jfk-lhr-delay_0",
-  "journal_digest": "d37031c7a98e5c5677927431c84a0aa4c878e4004e71287f4a7ad8f2857ae752",
+  "run_id": "a6213d43-14f6-5ecf-a6fa-638316bc9b59",
+  "journal_digest": "d2b96ff9e389fd6d3f3f62c7dad8878edd6c18a9f255d240905641c7f271fc42",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.6944000197108835,
-  "semantic_result_digest": "feb77ddcf612c18d981778c7fa35662ef243f0f30e997392c345325fb4d291e9"
+  "wall_time_ms": 0.6744999845977873,
+  "semantic_result_digest": "655316d90bb0b121913a11b0157137cc3a5ccfc6508b671a137ce8070d0415fe"
 }

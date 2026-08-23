@@ -408,7 +408,7 @@ def gate_leakage_scanner() -> bool:
 
 
 def gate_smoke() -> bool:
-    """Complete Stage 1 benchmark-safe agent smoke gate."""
+    """Deterministic benchmark agent smoke gate."""
     code = (
         "import asyncio, tempfile, pathlib; "
         "from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader; "
@@ -424,7 +424,7 @@ def gate_smoke() -> bool:
         "assert mv1.safety_pass; "
         "mv2 = asyncio.run(runner.run_scenario(sc2.scenario, NaiveBaselineAgent())); "
         "assert mv2.safety_pass; "
-        "print('Stage 1 benchmark agent smoke gate: OK')"
+        "print('Deterministic benchmark agent smoke gate: OK')"
     )
     return _run("deterministic benchmark agent smoke gate", ["uv", "run", "python", "-c", code])
 
@@ -534,6 +534,24 @@ def gate_replay_integrity() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Gate 21: Benchmark Result Bundle Consistency Verification
+# ---------------------------------------------------------------------------
+
+
+def gate_bundle_consistency() -> bool:
+    """Verify result bundle consistency between run.json, summary.json, README.md, and manifest."""
+    code = (
+        "import pathlib\n"
+        "from flight_agent_evaluator.benchmarks.consistency import validate_benchmark_bundle\n"
+        "bundle_dir = pathlib.Path('results/benchmark-v1')\n"
+        "manifest_path = pathlib.Path('resources/benchmarks/benchmark-v1.json')\n"
+        "validate_benchmark_bundle(bundle_dir, manifest_id_or_path=str(manifest_path))\n"
+        "print('Benchmark result bundle consistency gate: OK')\n"
+    )
+    return _run("benchmark result bundle consistency gate", ["uv", "run", "python", "-c", code])
+
+
+# ---------------------------------------------------------------------------
 # Specific gates
 # ---------------------------------------------------------------------------
 
@@ -558,6 +576,7 @@ SPECIFIC_GATES: dict[str, Callable[[], bool]] = {
     "manifest": gate_benchmark_manifest,
     "cli": gate_cli_registry,
     "replay": gate_replay_integrity,
+    "bundle-consistency": gate_bundle_consistency,
 }
 
 
@@ -592,6 +611,7 @@ def main() -> int:
         gate_benchmark_manifest,
         gate_cli_registry,
         gate_replay_integrity,
+        gate_bundle_consistency,
     ]
     all_passed = all(g() for g in gates)
     print(f"\n{'=' * 60}")

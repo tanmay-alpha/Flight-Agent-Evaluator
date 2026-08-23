@@ -69,11 +69,12 @@ def test_cli_agents_describe(capsys: pytest.CaptureFixture[str]) -> None:
     for agent in (
         "oracle",
         "naive",
-        "random",
+        "noop",
+        "no-op",
         "model",
         "scripted-oracle",
         "naive-baseline",
-        "random-baseline",
+        "no-op-baseline",
     ):
         args = argparse.Namespace(agent=agent, json=False)
         assert cmd_agents_describe(args) == 0
@@ -115,8 +116,8 @@ def test_cli_agent_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     args.json = False
     assert cmd_agent_run(args) in (0, 1)
 
-    # Random
-    args.agent = "random"
+    # No-op
+    args.agent = "noop"
     assert cmd_agent_run(args) in (0, 1)
 
     # Model in replay mode with manifest

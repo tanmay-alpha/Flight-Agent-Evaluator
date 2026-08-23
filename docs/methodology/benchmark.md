@@ -40,10 +40,10 @@ Benchmark V1 comprises 24 canonical scenarios (12 read-only disruption workflows
 |---|---|---|---|---|---|
 | **`scripted-oracle`** | Authoritative golden reference trajectories | **100.0%** (24/24) | 100.0% | **0.987** | 0.0% |
 | **`naive-baseline`** | Deterministic 2-step status query & simple search heuristic | **41.7%** (10/24) | 100.0% | **0.644** | 0.0% |
-| **`random-baseline`** | Negative control no-op / immediate failure policy | **0.0%** (0/24) | 100.0% | **0.250** | 0.0% |
+| **`no-op-baseline`** | Deterministic negative control performing no task actions | **0.0%** (0/24) | 100.0% | **0.250** | 0.0% |
 
 ### Strict Score Monotonicity
 
-$$\text{Score}(\text{scripted-oracle}) > \text{Score}(\text{naive-baseline}) > \text{Score}(\text{random-baseline})$$
+$$\text{Score}(\text{scripted-oracle}) > \text{Score}(\text{naive-baseline}) > \text{Score}(\text{no-op-baseline})$$
 
 The baseline results exhibit strict monotonicity across all evaluated dimensions, proving that the benchmark rewards sound domain reasoning and penalizes omissions without unearned free credit.

@@ -8,7 +8,7 @@ import pytest
 
 from flight_agent_evaluator.agent.baselines import (
     NaiveBaselineAgent,
-    RandomBaselineAgent,
+    NoOpBaselineAgent,
     ScriptedOracleAgent,
 )
 from flight_agent_evaluator.benchmarks.loader import (
@@ -37,15 +37,16 @@ def test_registry_registered_agents() -> None:
     agents = [a["agent_id"] for a in registry.list_agents()]
     assert "scripted-oracle" in agents
     assert "naive-baseline" in agents
-    assert "random-baseline" in agents
+    assert "no-op-baseline" in agents
 
     assert isinstance(registry.resolve("scripted-oracle"), ScriptedOracleAgent)
     assert isinstance(registry.resolve("naive-baseline"), NaiveBaselineAgent)
-    assert isinstance(registry.resolve("random-baseline"), RandomBaselineAgent)
+    assert isinstance(registry.resolve("no-op-baseline"), NoOpBaselineAgent)
     # Compatibility aliases
     assert isinstance(registry.resolve("oracle"), ScriptedOracleAgent)
     assert isinstance(registry.resolve("naive"), NaiveBaselineAgent)
-    assert isinstance(registry.resolve("random"), RandomBaselineAgent)
+    assert isinstance(registry.resolve("noop"), NoOpBaselineAgent)
+    assert isinstance(registry.resolve("no-op"), NoOpBaselineAgent)
 
 
 def test_registry_custom_registration() -> None:

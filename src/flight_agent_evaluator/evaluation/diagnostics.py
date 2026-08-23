@@ -1,7 +1,7 @@
 """Evidence-backed agent failure classification and diagnosis engine.
 
-This module implements the complete Stage 3 diagnostic validity specification
-(Gates 1-15).  It replaces the earlier scaffolding with:
+This module implements the diagnostic validity specification.
+It provides:
 
 - Stable hierarchical :class:`FailureCode` taxonomy (v1)
 - :class:`FailureOrigin` attribution
