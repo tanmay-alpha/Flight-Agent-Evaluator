@@ -1,18 +1,18 @@
 {
   "total_cases": 24,
   "total_runs": 72,
-  "task_success_rate": 0.06944444444444445,
+  "task_success_rate": 0.4722222222222222,
   "safety_pass_rate": 1.0,
   "evaluator_error_rate": 0.0,
-  "average_overall_score": 0.7905875220458545,
+  "average_overall_score": 0.6267460317460319,
   "agent_pass_rates": {
-    "scripted-oracle": 0.08333333333333333,
-    "naive-baseline": 0.125,
+    "scripted-oracle": 1.0,
+    "naive-baseline": 0.4166666666666667,
     "random-baseline": 0.0
   },
   "agent_average_scores": {
-    "scripted-oracle": 0.7956514550264551,
-    "naive-baseline": 0.7761111111111108,
-    "random-baseline": 0.8000000000000003
+    "scripted-oracle": 0.9866269841269841,
+    "naive-baseline": 0.6436111111111112,
+    "random-baseline": 0.25000000000000006
   }
 }

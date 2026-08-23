@@ -49,6 +49,7 @@ class BenchmarkMetricVector(BaseModel):
     false_transaction_claims: int = 0
     replay_success: bool | None = None
     total_tokens: int = 0
+    journal_digest: str | None = None
 
 
 class BenchmarkSuiteResult(BaseModel):
@@ -119,6 +120,7 @@ class BenchmarkRunner:
             score_vector=mv.score_vector,
             failure_codes=mv.failure_codes,
             run_id=f"run_{case.manifest_entry.scenario_id}_{repetition_index}",
+            journal_digest=mv.journal_digest,
             wall_time_ms=elapsed_ms,
         )
         computed_digest = case_res.compute_semantic_result_digest()
@@ -217,6 +219,7 @@ class BenchmarkRunner:
         registry = build_registry_for_scenario(scenario, env=airline_env)
         executor = ToolExecutor(
             registry=registry,
+            faults=tuple(scenario.faults),
             clock=clock,
             id_factory=id_factory,
             journal=journal,
@@ -230,6 +233,19 @@ class BenchmarkRunner:
             ),
         )
         state = StateSnapshot()
+
+        # Lifecycle Gate: record run_started event
+        journal.append_event(
+            entry_type="run_started",
+            run_id=str(run_id),
+            correlation_id=context.correlation_id,
+            time=clock.now(),
+            payload={
+                "scenario_id": scenario.scenario_id.id,
+                "agent_id": getattr(agent, "agent_id", str(agent)),
+                "start_time": clock.now().isoformat(),
+            },
+        )
 
         # Extract golden steps if agent is ScriptedOracleAgent
         if isinstance(agent, ScriptedOracleAgent) and not agent._golden_steps:
@@ -256,6 +272,24 @@ class BenchmarkRunner:
             context=context,
         )
 
+        # Lifecycle Gate: record final_response event
+        if agent_result.final_response is not None:
+            journal.append_event(
+                entry_type="final_response",
+                run_id=str(run_id),
+                correlation_id=context.correlation_id,
+                time=clock.now(),
+                payload={
+                    "response": agent_result.final_response,
+                    "stop_reason": (
+                        agent_result.stop_reason.value
+                        if hasattr(agent_result.stop_reason, "value")
+                        else str(agent_result.stop_reason)
+                    ),
+                    "tool_call_count": agent_result.tool_call_count,
+                },
+            )
+
         # Trajectory evaluation
         if expectation is not None:
             exp = expectation
@@ -274,6 +308,7 @@ class BenchmarkRunner:
             expectation=exp,
             journal=journal,
             run_id=str(run_id),
+            final_response=agent_result.final_response,
         )
 
         # Failure diagnostics
@@ -294,6 +329,20 @@ class BenchmarkRunner:
             and scorecard.evaluator_error is None
         )
 
+        # Lifecycle Gate: record run_completed event
+        journal.append_event(
+            entry_type="run_completed",
+            run_id=str(run_id),
+            correlation_id=context.correlation_id,
+            time=clock.now(),
+            payload={
+                "task_success": task_success,
+                "safety_pass": safety_pass,
+                "overall_pass": scorecard.overall_pass,
+                "composite_score": scorecard.composite_score,
+            },
+        )
+
         failure_codes = [
             f.failure_code.value if hasattr(f.failure_code, "value") else str(f.failure_code)
             for f in report.failures
@@ -302,6 +351,8 @@ class BenchmarkRunner:
             failure_codes.append("safety_violation")
         if scorecard.evaluator_error and scorecard.evaluator_error not in failure_codes:
             failure_codes.append(scorecard.evaluator_error)
+
+        journal_digest = journal.final_digest()
 
         return BenchmarkMetricVector(
             scenario_id=scenario.scenario_id.id,
@@ -323,6 +374,7 @@ class BenchmarkRunner:
             false_transaction_claims=0,
             replay_success=None,
             total_tokens=agent_result.usage.total_tokens,
+            journal_digest=journal_digest,
         )
 
     def _build_development_expectation(self, scenario: BenchmarkScenario) -> TrajectoryExpectation:

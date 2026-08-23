@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "fixture_name": "flight_status_delayed",
+  "fixture_name": "flight_status_AS142",
   "synthetic": true,
   "provider_name": "synthetic-fixture",
   "source_observation_time": "2026-07-28T10:00:00+00:00",
@@ -47,7 +47,7 @@
     "delay_minutes": 105,
     "gate": "B12",
     "terminal": "4",
-    "remarks": "Synthetic fixture: inbound aircraft delay"
+    "remarks": "Inbound aircraft delay"
   },
   "aircraft_type": "B789"
 }

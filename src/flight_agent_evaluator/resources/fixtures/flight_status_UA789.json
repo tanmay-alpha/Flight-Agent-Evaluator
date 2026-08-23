@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_UA789",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "UA789",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "UA789",
+    "marketing_airline_iata": "UA",
+    "operating_airline_iata": "UA",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "SFO",
+    "name": "San Francisco International Airport",
+    "city": "San Francisco",
+    "country": "US",
+    "timezone": "America/Los_Angeles"
+  },
+  "destination": {
+    "iata_code": "BOS",
+    "name": "Boston Logan International Airport",
+    "city": "Boston",
+    "country": "US",
+    "timezone": "America/New_York"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T08:00:00+00:00",
+    "estimated": "2026-07-28T09:50:00+00:00",
+    "actual": null,
+    "delay_minutes": 110
+  },
+  "arrival": {
+    "scheduled": "2026-07-28T16:30:00+00:00",
+    "estimated": "2026-07-28T18:20:00+00:00",
+    "actual": null,
+    "delay_minutes": 110
+  },
+  "status": {
+    "operational_status": "delayed",
+    "delay_minutes": 110,
+    "gate": "88",
+    "terminal": "3",
+    "remarks": "Equipment change"
+  },
+  "aircraft_type": "B752"
+}

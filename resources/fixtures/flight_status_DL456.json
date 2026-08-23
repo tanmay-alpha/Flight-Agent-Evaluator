@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_name": "flight_status_DL456",
+  "synthetic": true,
+  "provider_name": "synthetic-fixture",
+  "source_observation_time": "2026-07-28T10:00:00+00:00",
+  "local_receipt_time": "2026-07-28T10:00:00+00:00",
+  "source_timezone": "UTC",
+  "query": {
+    "flight_number": "DL456",
+    "date": "2026-07-28"
+  },
+  "flight_identity": {
+    "flight_number": "DL456",
+    "marketing_airline_iata": "DL",
+    "operating_airline_iata": "DL",
+    "is_codeshare": false
+  },
+  "origin": {
+    "iata_code": "ORD",
+    "name": "Chicago O'Hare International Airport",
+    "city": "Chicago",
+    "country": "US",
+    "timezone": "America/Chicago"
+  },
+  "destination": {
+    "iata_code": "SEA",
+    "name": "Seattle-Tacoma International Airport",
+    "city": "Seattle",
+    "country": "US",
+    "timezone": "America/Los_Angeles"
+  },
+  "departure": {
+    "scheduled": "2026-07-28T19:00:00+00:00",
+    "estimated": "2026-07-28T20:15:00+00:00",
+    "actual": null,
+    "delay_minutes": 75
+  },
+  "arrival": {
+    "scheduled": "2026-07-28T21:30:00+00:00",
+    "estimated": "2026-07-28T22:45:00+00:00",
+    "actual": null,
+    "delay_minutes": 75
+  },
+  "status": {
+    "operational_status": "delayed",
+    "delay_minutes": 75,
+    "gate": "M8",
+    "terminal": "5",
+    "remarks": "Inbound flight delayed"
+  },
+  "aircraft_type": "A339"
+}

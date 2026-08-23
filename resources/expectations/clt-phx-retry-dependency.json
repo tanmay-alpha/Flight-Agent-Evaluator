@@ -18,7 +18,8 @@
                 "operator": "equals",
                 "value": "AA321"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
           "required": true
         },
@@ -33,7 +34,8 @@
                 "operator": "equals",
                 "value": "CLT"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
           "required": true
         }

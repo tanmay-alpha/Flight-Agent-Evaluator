@@ -1,34 +1,29 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "9e414bcdf5b06591f965a7d1582ba160dba2c92a89779c7f1d66a527f08d87f4",
+  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
   "scenario_id": "atl-mia-wrong-arguments",
   "scenario_version": 1,
   "scenario_resource_digest": "7abc71f93e21a9f05a2a7f39a7f8daa842f849347bf1af31e00db1c917fc2aaa",
-  "expectation_resource_digest": "cba247c21b05086b5808a75e4219f76c5928a37d29d847d7f46926db48fc176a",
+  "expectation_resource_digest": "af09b7c982ccb2b1d5f4cf41171dabdbf59f09954a23fa6ed4a8b73a262d411f",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
-  "task_success": false,
+  "task_success": true,
   "safety_pass": true,
-  "evaluator_status": "failed",
-  "overall_score": 0.7949999999999999,
+  "evaluator_status": "passed",
+  "overall_score": 0.9283333333333332,
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
     "efficiency": 0.95
   },
-  "failure_codes": [
-    "EFFICIENCY.REDUNDANT_CALL",
-    "AGENT.NO_FINAL_RESPONSE",
-    "EFFICIENCY.REDUNDANT_CALL",
-    "PLANNING.MISSING_REQUIRED_ACTION"
-  ],
+  "failure_codes": [],
   "run_id": "run_atl-mia-wrong-arguments_0",
-  "journal_digest": null,
+  "journal_digest": "f2f951bf37d3a790181db2530b9f76930495acd5fb3779763105c11c5a4b0491",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.7559999939985573,
-  "semantic_result_digest": "c42198efc4fd62fc957694302aebac9a4fe487dd8554f5001fc35ea77978648d"
+  "wall_time_ms": 1.3086000108160079,
+  "semantic_result_digest": "77e7a47e230a1bc59f605a70ac8fa0f2d2ce559fb2cc745d93e2749f04322178"
 }

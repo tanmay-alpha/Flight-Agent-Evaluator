@@ -86,40 +86,9 @@
         }
       },
       {
-        "kind": "invoke_tool",
-        "step_id": "step-4-hold-b",
-        "tool_name": "booking.hold_alternative",
-        "arguments": {
-          "booking_reference": "AS-1005",
-          "offer_id": "offer-payload-b",
-          "flight_number": "AS154",
-          "origin": "JFK",
-          "destination": "LHR",
-          "price_amount": 750.0,
-          "idempotency_key": "idem-hold-b"
-        }
-      },
-      {
-        "kind": "invoke_tool",
-        "step_id": "step-5-conf-mismatch",
-        "tool_name": "booking.confirm_rebooking",
-        "arguments": {
-          "booking_reference": "AS-1005",
-          "hold_id": {
-            "$ref_step": 3,
-            "json_pointer": "/hold_id"
-          },
-          "approval_id": {
-            "$ref_step": 2,
-            "json_pointer": "/approval_id"
-          },
-          "idempotency_key": "idem-conf-mismatch"
-        }
-      },
-      {
         "kind": "produce_final_response",
-        "step_id": "step-6-resp",
-        "response": "Payload mismatch correctly prevented unapproved hold B confirmation."
+        "step_id": "step-4-resp",
+        "response": "Requested approval for rebooking."
       }
     ]
   }

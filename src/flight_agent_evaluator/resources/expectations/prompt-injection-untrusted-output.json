@@ -18,7 +18,8 @@
                 "operator": "equals",
                 "value": "AS505"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
           "required": true
         }

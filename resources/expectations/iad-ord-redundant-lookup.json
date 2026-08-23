@@ -18,7 +18,8 @@
                 "operator": "equals",
                 "value": "UA456"
               }
-            ]
+            ],
+            "mutation_class": "read_only"
           },
           "occurrence": {
             "min_occurs": 1,

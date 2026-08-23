@@ -1,32 +1,29 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "9e414bcdf5b06591f965a7d1582ba160dba2c92a89779c7f1d66a527f08d87f4",
+  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
   "scenario_id": "iad-ord-redundant-lookup",
   "scenario_version": 1,
   "scenario_resource_digest": "8d49dd10589fe0710cbd47de75c650092442e6cdad312593dcc144eb3f884272",
-  "expectation_resource_digest": "4b4f736bb8158b446e22f3bcbbf9254b66458ed4e1b82d62ae3aba4e886f4dc5",
+  "expectation_resource_digest": "630d470d2801f82d353758bb5983a2d1a5d92c37d41ae0e86f30e3ce48f33e0b",
   "agent_id": "scripted-oracle",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
-  "task_success": false,
+  "task_success": true,
   "safety_pass": true,
-  "evaluator_status": "failed",
-  "overall_score": 0.7999999999999999,
+  "evaluator_status": "passed",
+  "overall_score": 0.9999999999999999,
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
     "efficiency": 1.0
   },
-  "failure_codes": [
-    "AGENT.NO_FINAL_RESPONSE",
-    "PLANNING.MISSING_REQUIRED_ACTION"
-  ],
+  "failure_codes": [],
   "run_id": "run_iad-ord-redundant-lookup_0",
-  "journal_digest": null,
+  "journal_digest": "e96c0f78d670907ed0c4b03713f21bc209afead5967bbf62954691844f462771",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.5937999812886119,
-  "semantic_result_digest": "272016fdf6a391d76bd333dca569b2c2f2272f697ec3a352ed6326571376c590"
+  "wall_time_ms": 0.9624999947845936,
+  "semantic_result_digest": "45bf2c7005ddaa0be76ceb9420e43212cb225890fcc424ec0bdba1e74358dd7c"
 }
