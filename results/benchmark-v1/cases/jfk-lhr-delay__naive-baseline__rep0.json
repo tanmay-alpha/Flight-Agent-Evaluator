@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
   "scenario_id": "jfk-lhr-delay",
   "scenario_version": 1,
   "scenario_resource_digest": "6b8291146ed529329bc8eb4fac13886e9ce202d336d6caca3c9f9ae8e694a66a",
@@ -21,9 +21,9 @@
     "efficiency": 1.0
   },
   "failure_codes": [],
-  "run_id": "run_jfk-lhr-delay_0",
+  "run_id": "a6213d43-14f6-5ecf-a6fa-638316bc9b59",
   "journal_digest": "6736bdca3fb698cbe40cd4d66930bce4d363bb8d4531faacfef8b6e9b8d2344b",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.8994999991264194,
-  "semantic_result_digest": "6782386f8f3a444af88139b4824abd3d22928bfa33c3a308192677c2a1d98412"
+  "wall_time_ms": 1.7973000067286193,
+  "semantic_result_digest": "68e28e1df79c6a18ec232a21eafbf3b49b3b022deae6f895f2d895388a7bc810"
 }

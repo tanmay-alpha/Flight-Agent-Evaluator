@@ -8,11 +8,11 @@
   "agent_pass_rates": {
     "scripted-oracle": 1.0,
     "naive-baseline": 0.4166666666666667,
-    "random-baseline": 0.0
+    "no-op-baseline": 0.0
   },
   "agent_average_scores": {
     "scripted-oracle": 0.9866269841269841,
     "naive-baseline": 0.6436111111111112,
-    "random-baseline": 0.25000000000000006
+    "no-op-baseline": 0.25000000000000006
   }
 }

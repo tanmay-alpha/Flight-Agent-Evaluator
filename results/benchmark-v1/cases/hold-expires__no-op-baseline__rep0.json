@@ -1,12 +1,12 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
-  "scenario_id": "approval-denied",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "scenario_id": "hold-expires",
   "scenario_version": 1,
-  "scenario_resource_digest": "15ea84e84bec88230c821c8a8683d665d993e481fdee6d7b5a4f4f81b5df0a36",
-  "expectation_resource_digest": "bd2cbcade9ca5360c2d52538595e966dd12949ef8d69a679b384ef484c72af0f",
-  "agent_id": "random-baseline",
+  "scenario_resource_digest": "165c9b09e36433b38d4e6ad7930d3d9933aab8cb425486b853827feb37f54f05",
+  "expectation_resource_digest": "49d924b817224fc568f891873d803958a5b45eaa103de23442259346015f047a",
+  "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
@@ -28,9 +28,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "run_approval-denied_0",
-  "journal_digest": "4e16fc79198a34a43cb4f93ec66ceea5560e93b259286873edf0f0ebb070b255",
+  "run_id": "578c413e-dd82-546a-8c15-9bbd794d2243",
+  "journal_digest": "211fa8d64c438f4794054e865f3263272b3f22f788aeb7c50d2cbdacebd2cf20",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.7523999956902117,
-  "semantic_result_digest": "10084140e892bf3c95307df40a1b36eea775a07ad1fbe9e7fbb5ca3d737b784f"
+  "wall_time_ms": 1.1394000030122697,
+  "semantic_result_digest": "107586a061c94d0eff054e883ce3ee2ede4ad442e0ee1ba34fe1a66e49cf3bf0"
 }

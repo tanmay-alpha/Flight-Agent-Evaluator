@@ -1,12 +1,12 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
   "scenario_id": "mutation-success-response-lost",
   "scenario_version": 1,
   "scenario_resource_digest": "116996c78c68dee2141f12fb68afba2d6d5b6d76b74cc44d40ab090e05ab5af3",
   "expectation_resource_digest": "51c06b4f78c9ee75931e0a97e066563d9e462e723286446aa8820561c93dcef7",
-  "agent_id": "random-baseline",
+  "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
@@ -29,9 +29,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "run_mutation-success-response-lost_0",
-  "journal_digest": "92a94c71b95231d6e1341c06ddb5ff143aa0e173c166962ee9b8ec694b6b7ec6",
+  "run_id": "564bd924-1e9c-5780-b5c3-8c9d4fcfefc2",
+  "journal_digest": "3bfb3fa3d271365c24ee634c5fdf5313d7ee13b368b9b89b55c6e3fa6d1b2be9",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.7787999929860234,
-  "semantic_result_digest": "eb7e521eedc5a118e24e9ec4865765dcf9bf7c6ffef2ad962b85976bd7ed3e85"
+  "wall_time_ms": 1.0037000174634159,
+  "semantic_result_digest": "4de3ed0720d0b9e0ed05d6979b6a028994bcaeea559eea1b4f3274c8a43ab6a6"
 }

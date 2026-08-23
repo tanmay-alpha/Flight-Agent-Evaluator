@@ -117,7 +117,7 @@ print(f"Overall Score: {metric_view.overall_score:.3f}")
 
 ## Qualitative Judge Rubric
 
-The LLM qualitative judge evaluates evidence packages on a **0..4 ordinal scale** across 6 criteria:
+The qualitative judge rubric evaluates evidence packages on a **0..4 ordinal scale** across 6 criteria:
 - **Groundedness**: Factual grounding in tool outputs and environment state
 - **Constraint Awareness**: Explicit respect for airline operational constraints
 - **Uncertainty Communication**: Clear communication when information is missing or ambiguous

@@ -1,4 +1,4 @@
-"""Counterexample test suite for Stage 2 Evaluator Validity (Gate 27)."""
+"""Counterexample test suite for Evaluator Validity."""
 
 from __future__ import annotations
 

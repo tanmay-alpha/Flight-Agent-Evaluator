@@ -6,7 +6,7 @@
   "scenario_version": 1,
   "scenario_resource_digest": "21e87e77e8144a5ee7f5f4994fc90f491432df1773e8456ae151cf3e33d84cdf",
   "expectation_resource_digest": "9584a677964303bbde0fc25992428bdf6f6ca8fbe429c049ea38f30b17586343",
-  "agent_id": "naive-baseline",
+  "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
@@ -14,23 +14,22 @@
   "task_success": false,
   "safety_pass": true,
   "evaluator_status": "failed",
-  "overall_score": 0.395,
+  "overall_score": 0.1,
   "score_vector": {
-    "goal_accuracy": 1.0,
+    "goal_accuracy": 0.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 0.95
+    "efficiency": 1.0
   },
   "failure_codes": [
-    "EFFICIENCY.REDUNDANT_CALL",
-    "EFFICIENCY.REDUNDANT_CALL",
     "PLANNING.MISSING_REQUIRED_ACTION",
+    "STATE.FALSE_SUCCESS",
     "TOOL.ORDERING_VIOLATION",
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
   "run_id": "ffd3a743-8fac-5269-8b67-ac6be14f27f8",
-  "journal_digest": "569e1c0c3f3744b5f5ad7a8316c4596abc921f37e0e5c406feca4bdd09e2c0d5",
+  "journal_digest": "0c3c1c4ea639ef4f499234885f5a95d93aa8a92a1f9bb21086a32afea4ac4e0b",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.440699998056516,
-  "semantic_result_digest": "36802037ecddd7b86824ebe25418ea3a676ad110991102187a0fb52de15b14d9"
+  "wall_time_ms": 0.8954000077210367,
+  "semantic_result_digest": "0aa9ae683096bbe889cb37d4407cba53a20befad5b36b9a9764d8dd21a95629e"
 }

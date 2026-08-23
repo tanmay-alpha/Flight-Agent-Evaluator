@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "4ae9cb2fd6c4ef97c40d6425196715172045e19a8400866e6295d138a241587b",
+  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
   "scenario_id": "bwi-mco-forbidden-mutation",
   "scenario_version": 1,
   "scenario_resource_digest": "c402bd6e1873fadba640d598d033467f48e90df517c61f86b1cdabf7302a04ba",
@@ -21,9 +21,9 @@
     "efficiency": 1.0
   },
   "failure_codes": [],
-  "run_id": "run_bwi-mco-forbidden-mutation_0",
+  "run_id": "cb4c12da-038e-5e9d-a998-87ab011680ad",
   "journal_digest": "ebee441954d1d85f8db2078d5f5cf8440439739bb3b4d7d0ed72e48b62e42c52",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.964100006967783,
-  "semantic_result_digest": "2ba9d1197a3b56aaa257949982f1b58c2a14f2c396ffde222e5a49ab8e29a03b"
+  "wall_time_ms": 1.1273999989498407,
+  "semantic_result_digest": "6291ea3fa61e6b84e9774cd66c7a58925a0da4370c86d12575e405a493427b9c"
 }

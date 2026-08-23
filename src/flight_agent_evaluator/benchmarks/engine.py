@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from flight_agent_evaluator.agent.protocol import AgentPolicy
 from flight_agent_evaluator.benchmarks.loader import (
+    BenchmarkCase,
     BenchmarkManifestLoader,
 )
 from flight_agent_evaluator.benchmarks.registry import (
@@ -21,9 +23,89 @@ from flight_agent_evaluator.benchmarks.results import (
     BenchmarkCaseResult,
     BenchmarkRunArtifact,
 )
+from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
 
 logger = logging.getLogger(__name__)
+
+
+def _get_git_commit_sha() -> str | None:
+    """Attempt to retrieve the current git commit SHA without failing outside a git repo."""
+    try:
+        res = subprocess.run(  # noqa: S603
+            ["git", "rev-parse", "HEAD"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2.0,
+        )
+        if res.returncode == 0:
+            sha = res.stdout.strip()
+            if len(sha) == 40 and all(c in "0123456789abcdefABCDEF" for c in sha):
+                return sha.lower()
+    except Exception:  # noqa: S110
+        pass
+    return None
+
+
+def compute_run_semantic_id(
+    manifest_digest: str,
+    benchmark_id: str,
+    benchmark_version: str,
+    environment_version: str,
+    evaluator_version: str,
+    taxonomy_version: str,
+    scoring_profile_version: str,
+    selected_scenarios: Sequence[BenchmarkCase],
+    executed_agents: Sequence[tuple[str, AgentPolicy, dict[str, Any]]],
+    run_policy: dict[str, Any],
+) -> str:
+    """Compute deterministic content-addressed run semantic ID from authoritative execution parameters."""
+    semantic_data: dict[str, Any] = {
+        "manifest_digest": manifest_digest,
+        "benchmark_id": benchmark_id,
+        "benchmark_version": benchmark_version,
+        "environment_version": environment_version,
+        "evaluator_version": evaluator_version,
+        "taxonomy_version": taxonomy_version,
+        "scoring_profile_version": scoring_profile_version,
+        # Sort scenario IDs to guarantee ordering independence for identical sets
+        "selected_scenarios": sorted(
+            [
+                {
+                    "scenario_id": c.manifest_entry.scenario_id,
+                    "scenario_version": str(c.manifest_entry.scenario_version),
+                    "scenario_sha256": c.scenario_raw_sha256,
+                    "expectation_sha256": c.expectation_raw_sha256,
+                }
+                for c in selected_scenarios
+            ],
+            key=lambda x: str(x["scenario_id"]),
+        ),
+        "executed_agents": sorted(
+            [
+                {
+                    "agent_id": aid,
+                    "agent_version": getattr(
+                        agent, "agent_version", meta.get("agent_version", "1.0.0")
+                    ),
+                    "configuration_digest": meta.get("configuration_digest"),
+                }
+                for aid, agent, meta in executed_agents
+            ],
+            key=lambda x: str(x["agent_id"]),
+        ),
+        "run_policy": {
+            "repetitions": run_policy.get("repetitions", 1),
+            "seeds": sorted(run_policy.get("seeds", [42])),
+            "network_allowed": run_policy.get("network_allowed", False),
+            "judge_policy": run_policy.get("judge_policy", "offline_rubric"),
+            "replay_policy": run_policy.get("replay_policy", "deterministic"),
+            "failure_policy": run_policy.get("failure_policy", "fail_closed"),
+        },
+    }
+    digest = canonical_hash(semantic_data)
+    return f"bm_run_{digest[:16]}"
 
 
 class CanonicalBenchmarkEngine:
@@ -67,17 +149,20 @@ class CanonicalBenchmarkEngine:
         if not selected_agent_ids:
             raise UnknownBenchmarkAgentError("No benchmark agents specified or found in manifest.")
 
-        # Resolve exact agent policies
-        resolved_agents: list[tuple[str, AgentPolicy]] = []
+        # Resolve exact agent policies and metadata
+        resolved_agents: list[tuple[str, AgentPolicy, dict[str, Any]]] = []
         for aid in selected_agent_ids:
             agent_policy = self.registry.resolve(aid)
-            resolved_agents.append((aid, agent_policy))
+            meta = self.registry.get_metadata(aid)
+            resolved_agents.append((aid, agent_policy, meta))
 
         rep_count = repetitions if repetitions is not None else manifest.run_policy.repetitions
         case_results: list[BenchmarkCaseResult] = []
 
+        manifest_digest = manifest.manifest_digest or manifest.compute_canonical_digest()
+
         # Execute all cases across agents and repetitions
-        for aid, agent in resolved_agents:
+        for aid, agent, meta in resolved_agents:
             for rep_idx in range(rep_count):
                 for case in cases:
                     case_res = asyncio.run(
@@ -87,12 +172,15 @@ class CanonicalBenchmarkEngine:
                             repetition_index=rep_idx,
                         )
                     )
-                    # Bind manifest digest and exact agent ID
-                    m_digest = manifest.manifest_digest or manifest.compute_canonical_digest()
+                    # Bind manifest digest, agent ID, and agent metadata
                     updated_case = case_res.model_copy(
                         update={
-                            "manifest_digest": m_digest,
+                            "manifest_digest": manifest_digest,
                             "agent_id": aid,
+                            "agent_version": getattr(
+                                agent, "agent_version", meta.get("agent_version", "1.0.0")
+                            ),
+                            "agent_configuration_digest": meta.get("configuration_digest"),
                         }
                     )
                     final_digest = updated_case.compute_semantic_result_digest()
@@ -122,7 +210,7 @@ class CanonicalBenchmarkEngine:
 
         agent_pass_rates: dict[str, float] = {}
         agent_avg_scores: dict[str, float] = {}
-        for aid in selected_agent_ids:
+        for aid, _, _ in resolved_agents:
             a_results = [r for r in case_results if r.agent_id == aid]
             if a_results:
                 agent_pass_rates[aid] = sum(1 for r in a_results if r.task_success) / len(a_results)
@@ -142,10 +230,26 @@ class CanonicalBenchmarkEngine:
             agent_average_scores=agent_avg_scores,
         )
 
-        manifest_digest = manifest.manifest_digest or manifest.compute_canonical_digest()
-        run_semantic_str = f"{manifest_digest}:{','.join(sorted(selected_agent_ids))}:{rep_count}"
-        run_semantic_id = (
-            f"bm_run_{hashlib.sha256(run_semantic_str.encode('utf-8')).hexdigest()[:16]}"
+        run_policy_dict = {
+            "repetitions": rep_count,
+            "seeds": list(manifest.run_policy.seeds),
+            "network_allowed": manifest.run_policy.network_allowed,
+            "judge_policy": manifest.run_policy.judge_policy,
+            "replay_policy": manifest.run_policy.replay_policy,
+            "failure_policy": manifest.run_policy.failure_policy,
+        }
+
+        run_semantic_id = compute_run_semantic_id(
+            manifest_digest=manifest_digest,
+            benchmark_id=manifest.benchmark_id,
+            benchmark_version=manifest.benchmark_version,
+            environment_version=manifest.environment_version,
+            evaluator_version=manifest.evaluator_version,
+            taxonomy_version=manifest.taxonomy_version,
+            scoring_profile_version=manifest.scoring_profile_version,
+            selected_scenarios=cases,
+            executed_agents=resolved_agents,
+            run_policy=run_policy_dict,
         )
 
         artifact = BenchmarkRunArtifact(
@@ -153,7 +257,15 @@ class CanonicalBenchmarkEngine:
             benchmark_id=manifest.benchmark_id,
             benchmark_version=manifest.benchmark_version,
             manifest_digest=manifest_digest,
+            package_version="0.2.0",
+            source_commit_sha=_get_git_commit_sha(),
+            environment_version=manifest.environment_version,
+            evaluator_version=manifest.evaluator_version,
+            taxonomy_version=manifest.taxonomy_version,
+            scoring_profile_version=manifest.scoring_profile_version,
+            selected_scenario_ids=[c.manifest_entry.scenario_id for c in cases],
             executed_agents=list(selected_agent_ids),
+            run_policy=run_policy_dict,
             scenario_count=len(cases),
             total_runs=total_runs,
             metrics=metrics,

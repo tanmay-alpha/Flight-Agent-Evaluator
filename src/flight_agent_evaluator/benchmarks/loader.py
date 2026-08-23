@@ -43,6 +43,9 @@ class BenchmarkCase:
     expectation: TrajectoryExpectation
     scenario_raw_sha256: str
     expectation_raw_sha256: str
+    benchmark_id: str = "benchmark-v1"
+    benchmark_version: str = "1.0.0"
+    manifest_digest: str | None = None
 
     def __post_init__(self) -> None:
         if self.scenario.scenario_id.id != self.manifest_entry.scenario_id:
@@ -201,6 +204,9 @@ class BenchmarkManifestLoader:
                     expectation=expectation,
                     scenario_raw_sha256=entry.scenario_sha256,
                     expectation_raw_sha256=entry.expectation_sha256,
+                    benchmark_id=manifest.benchmark_id,
+                    benchmark_version=manifest.benchmark_version,
+                    manifest_digest=manifest.manifest_digest or computed_digest,
                 )
                 cases.append(case)
 
@@ -322,6 +328,9 @@ class BenchmarkManifestLoader:
                     expectation=expectation,
                     scenario_raw_sha256=entry.scenario_sha256,
                     expectation_raw_sha256=entry.expectation_sha256,
+                    benchmark_id=manifest.benchmark_id,
+                    benchmark_version=manifest.benchmark_version,
+                    manifest_digest=manifest.manifest_digest or computed_digest,
                 )
                 cases.append(case)
 

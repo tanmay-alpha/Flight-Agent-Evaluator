@@ -2,7 +2,7 @@
   "benchmark_id": "demo-v1",
   "benchmark_version": "1.0.0",
   "title": "Flight Agent Evaluator Demo V1",
-  "description": "Curated demo suite of 4 representative scenarios spanning read-only disruption and Stage 5 transactional safety.",
+  "description": "Curated demo suite of 4 representative scenarios spanning read-only disruption and transactional safety.",
   "environment_version": "1.0.0",
   "evaluator_version": "1.0.0",
   "taxonomy_version": "1.0.0",
@@ -81,9 +81,9 @@
       "configuration_digest": null
     },
     {
-      "agent_id": "random-baseline",
+      "agent_id": "no-op-baseline",
       "agent_version": "1.0.0",
-      "implementation": "flight_agent_evaluator.agent.baselines.RandomBaselineAgent",
+      "implementation": "flight_agent_evaluator.agent.baselines.NoOpBaselineAgent",
       "configuration_digest": null
     }
   ],
@@ -97,5 +97,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "beea8cf3aea17982cf9bdc4b7851c6c394e13f8a390e940666514e73db15f80e"
+  "manifest_digest": "01dba01c7fba6a395925ba06277d3acf8fe7580f93e2aff30fb27512388dbd6a"
 }

@@ -49,6 +49,7 @@ class BenchmarkMetricVector(BaseModel):
     false_transaction_claims: int = 0
     replay_success: bool | None = None
     total_tokens: int = 0
+    run_id: str | None = None
     journal_digest: str | None = None
 
 
@@ -102,15 +103,22 @@ class BenchmarkRunner:
         )
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
+        b_id = getattr(case, "benchmark_id", "benchmark-v1")
+        b_ver = getattr(case, "benchmark_version", "1.0.0")
+        m_digest = getattr(case, "manifest_digest", None)
+        agent_ver = getattr(agent, "agent_version", "1.0.0")
+        actual_run_id = mv.run_id or f"run_{case.manifest_entry.scenario_id}_{repetition_index}"
+
         case_res = BenchmarkCaseResult(
-            benchmark_id="benchmark-v1",
-            benchmark_version="1.0.0",
+            benchmark_id=b_id,
+            benchmark_version=b_ver,
+            manifest_digest=m_digest,
             scenario_id=case.manifest_entry.scenario_id,
             scenario_version=case.manifest_entry.scenario_version,
             scenario_resource_digest=case.scenario_raw_sha256,
             expectation_resource_digest=case.expectation_raw_sha256,
             agent_id=getattr(agent, "agent_id", str(agent)),
-            agent_version="1.0.0",
+            agent_version=agent_ver,
             seed=scenario.seed,
             repetition_index=repetition_index,
             task_success=mv.task_success,
@@ -119,7 +127,7 @@ class BenchmarkRunner:
             overall_score=mv.overall_score,
             score_vector=mv.score_vector,
             failure_codes=mv.failure_codes,
-            run_id=f"run_{case.manifest_entry.scenario_id}_{repetition_index}",
+            run_id=actual_run_id,
             journal_digest=mv.journal_digest,
             wall_time_ms=elapsed_ms,
         )
@@ -374,6 +382,7 @@ class BenchmarkRunner:
             false_transaction_claims=0,
             replay_success=None,
             total_tokens=agent_result.usage.total_tokens,
+            run_id=str(context.run_id),
             journal_digest=journal_digest,
         )
 
