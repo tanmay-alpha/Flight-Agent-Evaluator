@@ -3,7 +3,7 @@
 [![CI](https://github.com/tanmay-alpha/Flight-Agent-Evaluator/actions/workflows/ci.yml/badge.svg)](https://github.com/tanmay-alpha/Flight-Agent-Evaluator/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Release](https://img.shields.io/badge/release-v0.2.0-green.svg)](https://github.com/tanmay-alpha/Flight-Agent-Evaluator/releases)
+[![Package](https://img.shields.io/badge/package-source--install-blue.svg)](https://github.com/tanmay-alpha/Flight-Agent-Evaluator)
 
 An evaluation, causal failure diagnostics, and cryptographic replay platform for testing AI agents against complex aviation operational tasks.
 
@@ -25,11 +25,10 @@ Flight Agent Evaluator provides a self-contained framework for rigorously testin
 ## Installation
 
 ```bash
-# Using uv (recommended)
-uv pip install flight-agent-evaluator
-
-# Using pip
-pip install flight-agent-evaluator
+# Clone and install from this repository (recommended until public publishing)
+git clone https://github.com/tanmay-alpha/Flight-Agent-Evaluator.git
+cd Flight-Agent-Evaluator
+uv sync --locked --all-groups
 ```
 
 Requires Python 3.11+.

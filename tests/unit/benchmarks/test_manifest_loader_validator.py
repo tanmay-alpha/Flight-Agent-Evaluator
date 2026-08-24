@@ -23,6 +23,7 @@ from flight_agent_evaluator.benchmarks.report import (
     generate_benchmark_report,
 )
 from flight_agent_evaluator.benchmarks.results import (
+    BenchmarkAgentExecutionProvenance,
     BenchmarkAggregateMetrics,
     BenchmarkCaseResult,
     BenchmarkRunArtifact,
@@ -122,7 +123,16 @@ def test_results_persistence_atomic(tmp_path: Path) -> None:
         benchmark_id="benchmark-v1",
         benchmark_version="1.0.0",
         executed_agents=["scripted-oracle"],
+        agent_provenance=[
+            BenchmarkAgentExecutionProvenance(
+                agent_id="scripted-oracle",
+                agent_version="1.0.0",
+                implementation="test",
+            )
+        ],
         manifest_digest="1" * 64,
+        package_version="0.2.0",
+        source_tree_digest="d" * 64,
         scenario_count=1,
         total_runs=1,
         metrics=metrics,
@@ -169,7 +179,16 @@ def test_report_generation() -> None:
         benchmark_id="benchmark-v1",
         benchmark_version="1.0.0",
         executed_agents=["scripted-oracle"],
+        agent_provenance=[
+            BenchmarkAgentExecutionProvenance(
+                agent_id="scripted-oracle",
+                agent_version="1.0.0",
+                implementation="test",
+            )
+        ],
         manifest_digest="1" * 64,
+        package_version="0.2.0",
+        source_tree_digest="d" * 64,
         scenario_count=1,
         total_runs=1,
         metrics=metrics,

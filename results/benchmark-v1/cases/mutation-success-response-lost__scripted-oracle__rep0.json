@@ -24,9 +24,9 @@
     "EFFICIENCY.REDUNDANT_CALL",
     "EFFICIENCY.REDUNDANT_CALL"
   ],
-  "run_id": "564bd924-1e9c-5780-b5c3-8c9d4fcfefc2",
-  "journal_digest": "285c0b30c76bc87ee118b610f14a5b7b30be10a9d95e6449636a17d84f1e1f9f",
+  "run_id": "92e28045-cfbd-5bf3-868f-4c4925a02173",
+  "journal_digest": "c23fdb532c8686b102362779fc93e5169131d1e32d4d469afa7a1bf6fc45ba87",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 2.0875000045634806,
-  "semantic_result_digest": "19d783b463bb3887403b5cdb028a54c7fff15987527b443645f6587f7869c74f"
+  "wall_time_ms": 1.6392999968957156,
+  "semantic_result_digest": "28e9fc7f8e7e6db814c442bb65fb0d168d38fcec095cb66f8473fc14f054b8cb"
 }
