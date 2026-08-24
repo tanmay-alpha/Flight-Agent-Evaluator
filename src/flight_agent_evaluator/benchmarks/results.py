@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import tarfile
 import uuid
+from io import BytesIO
 from pathlib import Path
+from shutil import which
 from typing import Any
 
 from pydantic import Field
@@ -36,14 +39,29 @@ def _semantic_source_paths(root: Path) -> list[str]:
 
 
 def compute_source_tree_digest(root: Path | str = ".") -> str | None:
-    """Hash exact bytes of the versioned tracked runtime-source closure."""
+    """Hash Git blob bytes of the versioned tracked runtime-source closure."""
     base = Path(root).resolve()
+    git_path = which("git")
+    if git_path is None:
+        return None
     try:
-        entries = [
-            {"path": path, "sha256": hashlib.sha256((base / path).read_bytes()).hexdigest()}
-            for path in _semantic_source_paths(base)
-        ]
-    except (FileNotFoundError, subprocess.SubprocessError):
+        source_paths = _semantic_source_paths(base)
+        archive = subprocess.run(  # noqa: S603
+            [git_path, "-C", str(base), "archive", "--format=tar", "HEAD", "--", *source_paths],
+            check=True,
+            capture_output=True,
+            timeout=5.0,
+        )
+        with tarfile.open(fileobj=BytesIO(archive.stdout), mode="r:") as source_tree:
+            entries = []
+            for path in source_paths:
+                file_obj = source_tree.extractfile(path)
+                if file_obj is None:
+                    raise FileNotFoundError(path)
+                entries.append(
+                    {"path": path, "sha256": hashlib.sha256(file_obj.read()).hexdigest()}
+                )
+    except (FileNotFoundError, subprocess.SubprocessError, tarfile.TarError):
         return None
     return canonical_hash({"version": SOURCE_TREE_DIGEST_VERSION, "files": entries})
 
