@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import subprocess
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +12,75 @@ from pydantic import Field
 
 from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.base import ContractModel
+
+SOURCE_TREE_DIGEST_VERSION = "source-tree-v1"
+_SEMANTIC_SOURCE_PREFIXES = ("src/flight_agent_evaluator/", "resources/")
+_SEMANTIC_SOURCE_FILES = {"pyproject.toml", "uv.lock"}
+
+
+def _semantic_source_paths(root: Path) -> list[str]:
+    """Return the versioned, tracked semantic source closure in deterministic order."""
+    result = subprocess.run(  # noqa: S603
+        ["git", "-C", str(root), "ls-files", "-z"],  # noqa: S607
+        capture_output=True,
+        check=True,
+        timeout=5.0,
+    )
+    return sorted(
+        path
+        for path in result.stdout.decode("utf-8").split("\0")
+        if path
+        if path.startswith(_SEMANTIC_SOURCE_PREFIXES) or path in _SEMANTIC_SOURCE_FILES
+    )
+
+
+def compute_source_tree_digest(root: Path | str = ".") -> str:
+    """Hash exact bytes of the versioned tracked runtime-source closure."""
+    base = Path(root).resolve()
+    entries = [
+        {"path": path, "sha256": hashlib.sha256((base / path).read_bytes()).hexdigest()}
+        for path in _semantic_source_paths(base)
+    ]
+    return canonical_hash({"version": SOURCE_TREE_DIGEST_VERSION, "files": entries})
+
+
+def semantic_sources_clean(root: Path | str = ".") -> bool:
+    """Report whether the semantic source closure has staged or unstaged changes."""
+    base = Path(root).resolve()
+    paths = [*_SEMANTIC_SOURCE_PREFIXES, *_SEMANTIC_SOURCE_FILES]
+    for cached in (False, True):
+        command = ["git", "-C", str(base), "diff", "--quiet"]
+        if cached:
+            command.append("--cached")
+        command.extend(["--", *paths])
+        if subprocess.run(command, check=False, timeout=5.0).returncode != 0:  # noqa: S603, S607
+            return False
+    return True
+
+
+class BenchmarkExecutionIdentity(ContractModel):
+    """Canonical, machine-independent identity for one authoritative case execution."""
+
+    benchmark_id: str
+    benchmark_version: str
+    manifest_digest: str
+    scenario_id: str
+    scenario_version: int | str
+    scenario_resource_digest: str
+    expectation_resource_digest: str
+    agent_id: str
+    agent_version: str
+    agent_configuration_digest: str | None = None
+    execution_seed: int
+    repetition_index: int
+
+    def semantic_digest(self) -> str:
+        """Return the content-addressed execution digest."""
+        return canonical_hash(self.model_dump(mode="json"))
+
+    def deterministic_run_id(self) -> str:
+        """Return a stable UUID derived from this exact semantic execution."""
+        return str(uuid.uuid5(uuid.UUID(int=0), self.semantic_digest()))
 
 
 class BenchmarkCaseResult(ContractModel):
@@ -84,6 +156,15 @@ class BenchmarkAggregateMetrics(ContractModel):
     agent_average_scores: dict[str, float] = Field(default_factory=dict)
 
 
+class BenchmarkAgentExecutionProvenance(ContractModel):
+    """Declared and executed identity of one canonical benchmark agent."""
+
+    agent_id: str
+    agent_version: str
+    implementation: str
+    configuration_digest: str | None = None
+
+
 class BenchmarkRunArtifact(ContractModel):
     """Complete, self-contained artifact recording an authoritative benchmark execution run."""
 
@@ -91,7 +172,8 @@ class BenchmarkRunArtifact(ContractModel):
     benchmark_id: str
     benchmark_version: str
     manifest_digest: str
-    package_version: str = "0.2.0"
+    package_version: str
+    source_tree_digest: str
     source_commit_sha: str | None = None
 
     environment_version: str = "1.0.0"
@@ -101,6 +183,7 @@ class BenchmarkRunArtifact(ContractModel):
 
     selected_scenario_ids: list[str] = Field(default_factory=list)
     executed_agents: list[str] = Field(default_factory=list)
+    agent_provenance: list[BenchmarkAgentExecutionProvenance]
     run_policy: dict[str, Any] = Field(default_factory=dict)
 
     scenario_count: int
@@ -151,6 +234,7 @@ def render_benchmark_report(artifact: BenchmarkRunArtifact) -> str:
         "",
         f"- **Benchmark ID**: `{artifact.benchmark_id}` (v{artifact.benchmark_version})",
         f"- **Package Version**: `{artifact.package_version}`",
+        f"- **Source Tree Digest**: `{artifact.source_tree_digest}` ({SOURCE_TREE_DIGEST_VERSION})",
     ]
     if artifact.source_commit_sha:
         lines.append(f"- **Source Commit SHA**: `{artifact.source_commit_sha}`")
