@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
 from flight_agent_evaluator.agent.protocol import AgentPolicy
-from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
 from flight_agent_evaluator.contracts.model import AgentRunResult, AgentStopReason, AgentTask
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.contracts.trajectory_expectation import TrajectoryExpectation
@@ -86,7 +85,7 @@ class BenchmarkRunner:
         """Run an authoritative, cryptographically bound BenchmarkCase against an agent policy."""
         import time
 
-        from flight_agent_evaluator.benchmarks.loader import BenchmarkCase
+        from flight_agent_evaluator.benchmarks.loader import BenchmarkCase, BenchmarkIntegrityError
         from flight_agent_evaluator.benchmarks.results import BenchmarkCaseResult
 
         if not isinstance(case, BenchmarkCase):
@@ -164,7 +163,9 @@ class BenchmarkRunner:
     ) -> BenchmarkMetricVector:
         """Run a single benchmark scenario against an agent policy."""
         if authoritative and expectation is None:
-            raise ValueError(
+            from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
+
+            raise BenchmarkIntegrityError(
                 f"Authoritative benchmark run for scenario '{scenario.scenario_id.id}' requires an explicit authored expectation."
             )
 
@@ -303,6 +304,8 @@ class BenchmarkRunner:
             context=context,
         )
         if authoritative and agent_result.run_id != str(context.run_id):
+            from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
+
             raise BenchmarkIntegrityError("AgentRunResult run_id does not match RunContext run_id.")
 
         # Lifecycle Gate: record final_response event

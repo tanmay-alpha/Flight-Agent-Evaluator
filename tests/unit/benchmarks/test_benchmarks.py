@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
 from flight_agent_evaluator.benchmarks.metrics import (
     compute_average_score,
@@ -86,3 +88,14 @@ def test_cross_agent_execution_run_ids_are_unique() -> None:
     )
 
     assert len({case.run_id for case in artifact.case_results}) == 2
+
+
+def test_cli_module_import_is_cycle_safe() -> None:
+    """Benchmark identity support must not introduce an import cycle in the CLI."""
+    completed = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", "import flight_agent_evaluator.cli.main"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
