@@ -67,6 +67,9 @@ id_ed25519
 # Claude local settings (must not be tracked)
 .claude/settings.local.json
 
+# Local Git worktrees
+.worktrees/
+
 # Coverage artifacts
 coverage.xml
 coverage.json

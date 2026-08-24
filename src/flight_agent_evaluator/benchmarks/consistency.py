@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from shutil import which
 from typing import Any
 
 from flight_agent_evaluator.benchmarks.engine import compute_run_semantic_id
@@ -16,6 +18,7 @@ from flight_agent_evaluator.benchmarks.registry import BenchmarkAgentRegistry
 from flight_agent_evaluator.benchmarks.results import (
     BenchmarkAggregateMetrics,
     BenchmarkCaseResult,
+    BenchmarkExecutionIdentity,
     BenchmarkRunArtifact,
     compute_source_tree_digest,
     render_benchmark_report,
@@ -211,6 +214,141 @@ class ResultBundleConsistencyVerifier:
             )
         )
 
+        # Every recorded run ID must independently derive from authoritative execution inputs.
+        try:
+            identity_cases = {case.manifest_entry.scenario_id: case for case in manifest_cases}
+            identity_registry = BenchmarkAgentRegistry()
+            execution_identity_matches = True
+            execution_identity_details = f"All {len(run_artifact.case_results)} run IDs match deterministic execution identities."
+            for case_result in run_artifact.case_results:
+                manifest_case = identity_cases.get(case_result.scenario_id)
+                if manifest_case is None:
+                    execution_identity_matches = False
+                    execution_identity_details = (
+                        f"Unknown scenario coordinate: {case_result.scenario_id!r}"
+                    )
+                    break
+                metadata = identity_registry.get_metadata(case_result.agent_id)
+                expected_run_id = BenchmarkExecutionIdentity(
+                    benchmark_id=manifest.benchmark_id,
+                    benchmark_version=manifest.benchmark_version,
+                    manifest_digest=computed_m_digest,
+                    scenario_id=manifest_case.manifest_entry.scenario_id,
+                    scenario_version=manifest_case.manifest_entry.scenario_version,
+                    scenario_resource_digest=manifest_case.scenario_raw_sha256,
+                    expectation_resource_digest=manifest_case.expectation_raw_sha256,
+                    agent_id=case_result.agent_id,
+                    agent_version=metadata["agent_version"],
+                    agent_configuration_digest=metadata.get("configuration_digest"),
+                    execution_seed=case_result.seed,
+                    repetition_index=case_result.repetition_index,
+                ).deterministic_run_id()
+                if case_result.run_id != expected_run_id:
+                    execution_identity_matches = False
+                    execution_identity_details = (
+                        f"{case_result.scenario_id}__{case_result.agent_id}: "
+                        f"recorded={case_result.run_id}, expected={expected_run_id}"
+                    )
+                    break
+        except Exception as exc:
+            execution_identity_matches = False
+            execution_identity_details = f"Unable to reconstruct execution identity: {exc}"
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-15-EXECUTION-IDENTITY",
+                description="Every case run ID equals its deterministic execution identity",
+                passed=execution_identity_matches,
+                details=execution_identity_details,
+            )
+        )
+
+        # Case coordinates and metadata must be drawn from the declared execution policy.
+        try:
+            declared_case_ids = set(run_artifact.selected_scenario_ids)
+            declared_cases = {
+                case.manifest_entry.scenario_id: case
+                for case in manifest_cases
+                if case.manifest_entry.scenario_id in declared_case_ids
+            }
+            policy_seeds = set(run_artifact.run_policy["seeds"])
+            policy_repetitions = run_artifact.run_policy["repetitions"]
+            domain_registry = BenchmarkAgentRegistry()
+            domain_matches = len(declared_cases) == len(declared_case_ids)
+            domain_details = "All case execution coordinates are declared by the manifest, registry, and run policy."
+            for case_result in run_artifact.case_results:
+                declared_case = declared_cases.get(case_result.scenario_id)
+                domain_metadata = (
+                    domain_registry.get_metadata(case_result.agent_id)
+                    if case_result.agent_id in run_artifact.executed_agents
+                    else None
+                )
+                if (
+                    declared_case is None
+                    or domain_metadata is None
+                    or case_result.seed not in policy_seeds
+                    or not 0 <= case_result.repetition_index < policy_repetitions
+                    or case_result.scenario_resource_digest != declared_case.scenario_raw_sha256
+                    or case_result.expectation_resource_digest
+                    != declared_case.expectation_raw_sha256
+                    or case_result.agent_version != domain_metadata["agent_version"]
+                    or case_result.agent_configuration_digest
+                    != domain_metadata.get("configuration_digest")
+                ):
+                    domain_matches = False
+                    domain_details = (
+                        f"Undeclared execution coordinate: {case_result.scenario_id}__"
+                        f"{case_result.agent_id}__seed{case_result.seed}__"
+                        f"rep{case_result.repetition_index}"
+                    )
+                    break
+        except Exception as exc:
+            domain_matches = False
+            domain_details = f"Unable to validate case execution domain: {exc}"
+            declared_cases = {}
+            policy_seeds = set()
+            policy_repetitions = 0
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-16-CASE-EXECUTION-DOMAIN",
+                description="Every case coordinate and provenance field is declared by the execution policy",
+                passed=domain_matches,
+                details=domain_details,
+            )
+        )
+
+        try:
+            expected_execution_keys = {
+                (scenario_id, agent_id, seed, repetition_index)
+                for scenario_id in declared_cases
+                for agent_id in run_artifact.executed_agents
+                for seed in policy_seeds
+                for repetition_index in range(policy_repetitions)
+            }
+            actual_execution_keys = [
+                (case.scenario_id, case.agent_id, case.seed, case.repetition_index)
+                for case in run_artifact.case_results
+            ]
+            actual_execution_key_set = set(actual_execution_keys)
+            matrix_matches = actual_execution_key_set == expected_execution_keys and len(
+                actual_execution_keys
+            ) == len(actual_execution_key_set)
+            matrix_details = (
+                f"missing={sorted(expected_execution_keys - actual_execution_key_set)}, "
+                f"extra={sorted(actual_execution_key_set - expected_execution_keys)}, "
+                f"duplicates={len(actual_execution_keys) - len(actual_execution_key_set)}"
+            )
+        except Exception as exc:
+            matrix_matches = False
+            matrix_details = f"Unable to validate execution matrix: {exc}"
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-17-EXECUTION-MATRIX",
+                description="Case results equal the exact scenario-agent-seed-repetition execution matrix",
+                passed=matrix_matches,
+                details=matrix_details,
+            )
+        )
+
         # Recompute content-addressed selection identity independently of run.json and README.
         try:
             selected_case_ids = set(run_artifact.selected_scenario_ids)
@@ -268,6 +406,86 @@ class ResultBundleConsistencyVerifier:
                 description="Recorded source tree digest matches exact current semantic runtime sources",
                 passed=source_digest_matches,
                 details=source_details,
+            )
+        )
+
+        # A source-release artifact may be followed only by evidence commits, never semantic code drift.
+        if run_artifact.source_commit_sha is None:
+            source_commit_matches = True
+            source_commit_details = (
+                "Source commit provenance is unavailable for this non-release execution."
+            )
+        else:
+            semantic_paths = [
+                "src/flight_agent_evaluator",
+                "resources",
+                "pyproject.toml",
+                "uv.lock",
+            ]
+            try:
+                git_path = which("git")
+                if git_path is None:
+                    raise FileNotFoundError("git executable is unavailable")
+                exists = (
+                    subprocess.run(  # noqa: S603, S607
+                        [
+                            git_path,
+                            "cat-file",
+                            "-e",
+                            f"{run_artifact.source_commit_sha}^{{commit}}",
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=5.0,
+                    ).returncode
+                    == 0
+                )
+                ancestor = (
+                    exists
+                    and subprocess.run(  # noqa: S603, S607
+                        [
+                            git_path,
+                            "merge-base",
+                            "--is-ancestor",
+                            run_artifact.source_commit_sha,
+                            "HEAD",
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=5.0,
+                    ).returncode
+                    == 0
+                )
+                no_semantic_diff = (
+                    ancestor
+                    and subprocess.run(  # noqa: S603, S607
+                        [
+                            git_path,
+                            "diff",
+                            "--quiet",
+                            f"{run_artifact.source_commit_sha}..HEAD",
+                            "--",
+                            *semantic_paths,
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=5.0,
+                    ).returncode
+                    == 0
+                )
+                source_commit_matches = bool(exists and ancestor and no_semantic_diff)
+                source_commit_details = (
+                    f"exists={exists}, ancestor={ancestor}, semantic_diff={not no_semantic_diff}"
+                )
+            except (FileNotFoundError, subprocess.SubprocessError) as exc:
+                source_commit_matches = False
+                source_commit_details = f"Git source commit provenance unavailable: {exc}"
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-18-SOURCE-COMMIT-PROVENANCE",
+                description="Source commit exists, is an ancestor, and has no later semantic-source diff",
+                passed=source_commit_matches,
+                details=source_commit_details,
             )
         )
 

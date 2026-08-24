@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
+from pathlib import Path
 
 from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
 from flight_agent_evaluator.benchmarks.metrics import (
@@ -15,8 +17,14 @@ from flight_agent_evaluator.benchmarks.report import (
     generate_benchmark_report,
 )
 from flight_agent_evaluator.benchmarks.results import (
+    SOURCE_TREE_DIGEST_VERSION,
     BenchmarkCaseResult,
+    BenchmarkInvocation,
+    compute_source_tree_digest,
+    render_reproduction_command,
+    semantic_sources_clean,
 )
+from flight_agent_evaluator.canonical import canonical_hash
 
 
 def test_benchmark_metrics() -> None:
@@ -102,15 +110,106 @@ def test_cli_module_import_is_cycle_safe() -> None:
     assert completed.returncode == 0, completed.stderr
 
 
-def test_canonical_artifact_has_portable_generation_command() -> None:
-    """Evidence contains its actual portable canonical reproduction command."""
+def test_filtered_artifact_does_not_claim_full_cli_reproduction() -> None:
+    """A library-only scenario filter cannot claim to reproduce the full suite."""
     artifact = CanonicalBenchmarkEngine().run_benchmark(
         manifest_path="resources/benchmarks/benchmark-v1.json",
         agent_ids=["scripted-oracle"],
         scenario_filter=["jfk-lhr-delay"],
     )
 
+    assert artifact.generation_command is None
+    assert artifact.reproduction_method == "python-api"
+
+
+def test_builtin_full_artifact_has_portable_generation_command() -> None:
+    """A complete built-in invocation records an exact portable CLI command."""
+    artifact = CanonicalBenchmarkEngine().run_benchmark(
+        manifest_path="builtin:benchmark-v1",
+        agent_ids=["scripted-oracle"],
+    )
+
     assert artifact.generation_command == (
         "flight-evaluator benchmark run --manifest builtin:benchmark-v1 "
         "--agents scripted-oracle --output results/benchmark-v1"
     )
+
+
+def test_reproduction_renderer_preserves_repetition_and_rejects_external_cli_claims() -> None:
+    """Only a representable built-in invocation receives a CLI reproduction command."""
+    repeated = BenchmarkInvocation(
+        manifest_reference="builtin:benchmark-v1",
+        agent_ids=["scripted-oracle"],
+        repetitions=2,
+    )
+    external = BenchmarkInvocation(
+        manifest_reference="C:/external/benchmark.json",
+        agent_ids=["scripted-oracle"],
+    )
+
+    assert render_reproduction_command(repeated) == (
+        "flight-evaluator benchmark run --manifest builtin:benchmark-v1 "
+        "--agents scripted-oracle --repetitions 2 --output results/benchmark-v1"
+    )
+    assert render_reproduction_command(external) is None
+
+
+def test_non_git_source_tree_has_no_authoritative_digest(tmp_path: Path) -> None:
+    """A non-Git directory never receives a hash pretending to inspect source closure."""
+    source_root = tmp_path / "source-without-git"
+    source_root.mkdir()
+
+    assert compute_source_tree_digest(source_root) is None
+
+
+def test_source_tree_digest_uses_committed_blob_bytes(tmp_path: Path) -> None:
+    """Checkout line endings cannot alter the digest of a clean committed source tree."""
+    source_root = tmp_path / "git-source"
+    package = source_root / "src" / "flight_agent_evaluator"
+    package.mkdir(parents=True)
+    source_file = package / "tracked.py"
+    committed_bytes = b"VALUE = 'tracked'\n"
+    source_file.write_bytes(committed_bytes)
+    for command in (
+        ["git", "init"],
+        ["git", "config", "user.email", "test@example.invalid"],
+        ["git", "config", "user.name", "Test User"],
+        ["git", "add", "src"],
+        ["git", "commit", "-m", "initial source"],
+    ):
+        subprocess.run(command, cwd=source_root, check=True, capture_output=True)  # noqa: S603
+
+    source_file.write_bytes(b"VALUE = 'tracked'\r\n")
+    expected = canonical_hash(
+        {
+            "version": SOURCE_TREE_DIGEST_VERSION,
+            "files": [
+                {
+                    "path": "src/flight_agent_evaluator/tracked.py",
+                    "sha256": hashlib.sha256(committed_bytes).hexdigest(),
+                }
+            ],
+        }
+    )
+
+    assert compute_source_tree_digest(source_root) == expected
+
+
+def test_untracked_semantic_source_marks_tree_unclean(tmp_path: Path) -> None:
+    """Release provenance includes untracked Python files in the semantic source closure."""
+    source_root = tmp_path / "git-source"
+    package = source_root / "src" / "flight_agent_evaluator"
+    package.mkdir(parents=True)
+    (package / "tracked.py").write_text("VALUE = 'tracked'\n", encoding="utf-8")
+    for command in (
+        ["git", "init"],
+        ["git", "config", "user.email", "test@example.invalid"],
+        ["git", "config", "user.name", "Test User"],
+        ["git", "add", "src"],
+        ["git", "commit", "-m", "initial source"],
+    ):
+        subprocess.run(command, cwd=source_root, check=True, capture_output=True)  # noqa: S603
+
+    assert semantic_sources_clean(source_root) is True
+    (package / "_untracked_semantic_probe.py").write_text("VALUE = 'probe'\n", encoding="utf-8")
+    assert semantic_sources_clean(source_root) is False

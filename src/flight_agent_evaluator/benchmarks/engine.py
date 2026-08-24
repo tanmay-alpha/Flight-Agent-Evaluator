@@ -25,8 +25,10 @@ from flight_agent_evaluator.benchmarks.results import (
     BenchmarkAggregateMetrics,
     BenchmarkCaseResult,
     BenchmarkExecutionIdentity,
+    BenchmarkInvocation,
     BenchmarkRunArtifact,
     compute_source_tree_digest,
+    render_reproduction_command,
     semantic_sources_clean,
 )
 from flight_agent_evaluator.canonical import canonical_hash
@@ -94,9 +96,7 @@ def compute_run_semantic_id(
             [
                 {
                     "agent_id": aid,
-                    "agent_version": getattr(
-                        agent, "agent_version", meta.get("agent_version", "1.0.0")
-                    ),
+                    "agent_version": meta["agent_version"],
                     "configuration_digest": meta.get("configuration_digest"),
                 }
                 for aid, agent, meta in executed_agents
@@ -104,12 +104,12 @@ def compute_run_semantic_id(
             key=lambda x: str(x["agent_id"]),
         ),
         "run_policy": {
-            "repetitions": run_policy.get("repetitions", 1),
-            "seeds": sorted(run_policy.get("seeds", [42])),
-            "network_allowed": run_policy.get("network_allowed", False),
-            "judge_policy": run_policy.get("judge_policy", "offline_rubric"),
-            "replay_policy": run_policy.get("replay_policy", "deterministic"),
-            "failure_policy": run_policy.get("failure_policy", "fail_closed"),
+            "repetitions": run_policy["repetitions"],
+            "seeds": sorted(run_policy["seeds"]),
+            "network_allowed": run_policy["network_allowed"],
+            "judge_policy": run_policy["judge_policy"],
+            "replay_policy": run_policy["replay_policy"],
+            "failure_policy": run_policy["failure_policy"],
         },
     }
     digest = canonical_hash(semantic_data)
@@ -137,6 +137,7 @@ class CanonicalBenchmarkEngine:
         scenario_filter: Sequence[str] | None = None,
         output_dir: Path | str | None = None,
         repetitions: int | None = None,
+        require_source_provenance: bool = False,
     ) -> BenchmarkRunArtifact:
         """Execute authoritative benchmark run across verified manifest cases and exact agents."""
         manifest, cases = self.loader.load_manifest(manifest_path, verify_resources=True)
@@ -219,9 +220,11 @@ class CanonicalBenchmarkEngine:
                             }
                         )
                         final_digest = updated_case.compute_semantic_result_digest()
-                        case_results.append(
-                            updated_case.model_copy(update={"semantic_result_digest": final_digest})
+                        final_case = updated_case.model_copy(
+                            update={"semantic_result_digest": final_digest}
                         )
+                        final_case.validate_authoritative()
+                        case_results.append(final_case)
 
         total_runs = len(case_results)
         if total_runs > 0:
@@ -287,19 +290,34 @@ class CanonicalBenchmarkEngine:
             run_policy=run_policy_dict,
         )
 
+        source_tree_digest = compute_source_tree_digest()
+        source_commit_sha = _get_git_commit_sha()
+        if require_source_provenance and (
+            source_tree_digest is None or source_commit_sha is None or not semantic_sources_clean()
+        ):
+            raise BenchmarkIntegrityError(
+                "Source-release generation requires a clean Git semantic source tree and commit provenance."
+            )
+        invocation = BenchmarkInvocation(
+            manifest_reference=str(manifest_path),
+            agent_ids=list(selected_agent_ids),
+            scenario_ids=[case.manifest_entry.scenario_id for case in cases]
+            if scenario_filter
+            else None,
+            repetitions=repetitions,
+        )
+        generation_command = render_reproduction_command(invocation)
         artifact = BenchmarkRunArtifact(
             run_semantic_id=run_semantic_id,
             benchmark_id=manifest.benchmark_id,
             benchmark_version=manifest.benchmark_version,
             manifest_digest=manifest_digest,
             package_version=importlib.metadata.version("flight-agent-evaluator"),
-            source_tree_digest=compute_source_tree_digest(),
-            generation_command=(
-                "flight-evaluator benchmark run "
-                f"--manifest builtin:{manifest.benchmark_id} "
-                f"--agents {','.join(selected_agent_ids)} --output results/{manifest.benchmark_id}"
-            ),
-            source_commit_sha=_get_git_commit_sha(),
+            source_tree_digest=source_tree_digest,
+            invocation=invocation,
+            generation_command=generation_command,
+            reproduction_method="cli" if generation_command else "python-api",
+            source_commit_sha=source_commit_sha,
             environment_version=manifest.environment_version,
             evaluator_version=manifest.evaluator_version,
             taxonomy_version=manifest.taxonomy_version,
