@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+
 from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
 from flight_agent_evaluator.benchmarks.metrics import (
     compute_average_score,

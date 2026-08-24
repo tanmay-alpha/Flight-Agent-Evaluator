@@ -163,9 +163,7 @@ class BenchmarkRunner:
     ) -> BenchmarkMetricVector:
         """Run a single benchmark scenario against an agent policy."""
         if authoritative and expectation is None:
-            from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
-
-            raise BenchmarkIntegrityError(
+            raise ValueError(
                 f"Authoritative benchmark run for scenario '{scenario.scenario_id.id}' requires an explicit authored expectation."
             )
 
