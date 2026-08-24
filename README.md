@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Package](https://img.shields.io/badge/package-source--install-blue.svg)](https://github.com/tanmay-alpha/Flight-Agent-Evaluator)
 
-An evaluation, causal failure diagnostics, and cryptographic replay platform for testing AI agents against complex aviation operational tasks.
+An evaluation, causal failure diagnostics, and tamper-evident semantic replay platform for testing AI agents against complex aviation operational tasks.
 
 ---
 
@@ -16,7 +16,7 @@ Flight Agent Evaluator provides a self-contained framework for rigorously testin
 - **Simulated Airline Environment** — Stateful in-memory engine modeling bookings, seat holds, flight schedules, idempotency keys, and human approval flows. No external GDS dependency.
 - **Constraint Graph Trajectory Evaluation** — Scores agent tool-call sequences against a DAG of expected steps using a branch-and-bound matcher across 6 weighted dimensions.
 - **Causal Failure Diagnostics** — Produces structured causal graphs linking root causes to downstream symptoms across 40+ hierarchical failure codes.
-- **Cryptographic Recording & Replay** — Hash-chained append-only journals with tamper detection; semantic replay comparator verifies behavioral consistency across re-executions.
+- **Tamper-Evident Recording & Semantic Replay** — Hash-chained append-only journals with tamper detection; semantic replay comparator verifies behavioral consistency across re-executions.
 - **Evidence-Grounded Qualitative Judge** — 0..4 ordinal rubric evaluation across 6 criteria (`groundedness`, `constraint_awareness`, `uncertainty_communication`, `completeness`, `helpfulness`, `clarity`) with deterministic test double (`FakeJudgeClient`) and offline replay (`ReplayJudgeClient`).
 - **Packaged Offline Benchmark Suite** — 24 canonical scenarios across `read_only` and `transactional` operational domains, bundled into the wheel via `importlib.resources`. Runs fully offline.
 
