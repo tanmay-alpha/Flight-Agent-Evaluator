@@ -14,6 +14,7 @@ from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.base import ContractModel
 
 SOURCE_TREE_DIGEST_VERSION = "source-tree-v1"
+CASE_RESULT_DIGEST_VERSION = "benchmark-case-result-v2"
 _SEMANTIC_SOURCE_PREFIXES = ("src/flight_agent_evaluator/", "resources/")
 _SEMANTIC_SOURCE_FILES = {"pyproject.toml", "uv.lock"}
 
@@ -34,30 +35,42 @@ def _semantic_source_paths(root: Path) -> list[str]:
     )
 
 
-def compute_source_tree_digest(root: Path | str = ".") -> str:
+def compute_source_tree_digest(root: Path | str = ".") -> str | None:
     """Hash exact bytes of the versioned tracked runtime-source closure."""
     base = Path(root).resolve()
-    if not (base / ".git").exists():
-        return canonical_hash({"version": SOURCE_TREE_DIGEST_VERSION, "mode": "unavailable"})
-    entries = [
-        {"path": path, "sha256": hashlib.sha256((base / path).read_bytes()).hexdigest()}
-        for path in _semantic_source_paths(base)
-    ]
+    try:
+        entries = [
+            {"path": path, "sha256": hashlib.sha256((base / path).read_bytes()).hexdigest()}
+            for path in _semantic_source_paths(base)
+        ]
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
     return canonical_hash({"version": SOURCE_TREE_DIGEST_VERSION, "files": entries})
 
 
 def semantic_sources_clean(root: Path | str = ".") -> bool:
-    """Report whether the semantic source closure has staged or unstaged changes."""
+    """Report whether tracked or untracked semantic sources are clean in Git."""
     base = Path(root).resolve()
     paths = [*_SEMANTIC_SOURCE_PREFIXES, *_SEMANTIC_SOURCE_FILES]
-    for cached in (False, True):
-        command = ["git", "-C", str(base), "diff", "--quiet"]
-        if cached:
-            command.append("--cached")
-        command.extend(["--", *paths])
-        if subprocess.run(command, check=False, timeout=5.0).returncode != 0:  # noqa: S603, S607
-            return False
-    return True
+    try:
+        result = subprocess.run(  # noqa: S603, S607
+            [  # noqa: S607
+                "git",
+                "-C",
+                str(base),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+                "--",
+                *paths,
+            ],
+            capture_output=True,
+            check=False,
+            timeout=5.0,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and not result.stdout.strip()
 
 
 class BenchmarkExecutionIdentity(ContractModel):
@@ -119,9 +132,23 @@ class BenchmarkCaseResult(ContractModel):
 
     semantic_result_digest: str | None = None
 
+    def validate_authoritative(self) -> None:
+        """Require complete provenance before a canonical result is persisted."""
+        required = {
+            "manifest_digest": self.manifest_digest,
+            "agent_version": self.agent_version,
+            "run_id": self.run_id,
+            "journal_digest": self.journal_digest,
+            "semantic_result_digest": self.semantic_result_digest,
+        }
+        missing = sorted(name for name, value in required.items() if value is None or value == "")
+        if missing:
+            raise ValueError(f"Authoritative benchmark case is missing provenance: {', '.join(missing)}")
+
     def compute_semantic_result_digest(self) -> str:
         """Compute deterministic SHA-256 digest of semantic execution outcome (excluding wall-clock timing)."""
         data: dict[str, Any] = {
+            "digest_version": CASE_RESULT_DIGEST_VERSION,
             "benchmark_id": self.benchmark_id,
             "benchmark_version": self.benchmark_version,
             "manifest_digest": self.manifest_digest,
@@ -140,6 +167,7 @@ class BenchmarkCaseResult(ContractModel):
             "overall_score": round(self.overall_score, 4),
             "score_vector": {k: round(v, 4) for k, v in sorted(self.score_vector.items())},
             "failure_codes": sorted(self.failure_codes),
+            "run_id": self.run_id,
             "journal_digest": self.journal_digest,
         }
         return canonical_hash(data)
@@ -167,6 +195,30 @@ class BenchmarkAgentExecutionProvenance(ContractModel):
     configuration_digest: str | None = None
 
 
+class BenchmarkInvocation(ContractModel):
+    """Durable benchmark selection inputs used for truthful reproduction metadata."""
+
+    manifest_reference: str
+    agent_ids: list[str]
+    scenario_ids: list[str] | None = None
+    repetitions: int | None = None
+
+
+def render_reproduction_command(invocation: BenchmarkInvocation) -> str | None:
+    """Render an exact portable CLI command, or None when CLI cannot express the invocation."""
+    if not invocation.manifest_reference.startswith("builtin:") or invocation.scenario_ids:
+        return None
+    command = (
+        "flight-evaluator benchmark run "
+        f"--manifest {invocation.manifest_reference} "
+        f"--agents {','.join(invocation.agent_ids)}"
+    )
+    if invocation.repetitions is not None:
+        command += f" --repetitions {invocation.repetitions}"
+    benchmark_id = invocation.manifest_reference.removeprefix("builtin:")
+    return f"{command} --output results/{benchmark_id}"
+
+
 class BenchmarkRunArtifact(ContractModel):
     """Complete, self-contained artifact recording an authoritative benchmark execution run."""
 
@@ -175,8 +227,10 @@ class BenchmarkRunArtifact(ContractModel):
     benchmark_version: str
     manifest_digest: str
     package_version: str
-    source_tree_digest: str
-    generation_command: str
+    source_tree_digest: str | None
+    invocation: BenchmarkInvocation | None = None
+    generation_command: str | None = None
+    reproduction_method: str = "python-api"
     source_commit_sha: str | None = None
 
     environment_version: str = "1.0.0"
@@ -246,8 +300,11 @@ def render_benchmark_report(artifact: BenchmarkRunArtifact) -> str:
         f"- **Benchmark ID**: `{artifact.benchmark_id}` (v{artifact.benchmark_version})",
         f"- **Package Version**: `{artifact.package_version}`",
         f"- **Source Tree Digest**: `{artifact.source_tree_digest}` ({SOURCE_TREE_DIGEST_VERSION})",
-        f"- **Canonical Generation Command**: `{artifact.generation_command}`",
     ]
+    if artifact.generation_command:
+        lines.append(f"- **Canonical Generation Command**: `{artifact.generation_command}`")
+    else:
+        lines.append(f"- **Reproduction Method**: `{artifact.reproduction_method}`")
     if artifact.source_commit_sha:
         lines.append(f"- **Source Commit SHA**: `{artifact.source_commit_sha}`")
     lines.extend(
