@@ -6,10 +6,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from flight_agent_evaluator.benchmarks.engine import compute_run_semantic_id
 from flight_agent_evaluator.benchmarks.loader import (
     BenchmarkIntegrityError,
     BenchmarkManifestLoader,
 )
+from flight_agent_evaluator.benchmarks.registry import BenchmarkAgentRegistry
 from flight_agent_evaluator.benchmarks.results import (
     BenchmarkAggregateMetrics,
     BenchmarkCaseResult,
@@ -150,7 +152,9 @@ class ResultBundleConsistencyVerifier:
 
         # 3. Manifest parity
         try:
-            manifest, _ = self.loader.load_manifest(manifest_id_or_path, verify_resources=False)
+            manifest, manifest_cases = self.loader.load_manifest(
+                manifest_id_or_path, verify_resources=True
+            )
             computed_m_digest = manifest.manifest_digest or manifest.compute_canonical_digest()
             manifest_match = (
                 run_artifact.manifest_digest.lower() == computed_m_digest.lower()
@@ -174,6 +178,78 @@ class ResultBundleConsistencyVerifier:
                     details=f"Manifest load error: {exc}",
                 )
             )
+
+        # Recorded agent provenance must agree with both manifest and executable registry metadata.
+        try:
+            manifest_agents = {agent.agent_id: agent for agent in manifest.agents}
+            registry = BenchmarkAgentRegistry()
+            agent_provenance_matches = all(
+                provenance.agent_id in manifest_agents
+                and provenance.agent_version == manifest_agents[provenance.agent_id].agent_version
+                and provenance.implementation == manifest_agents[provenance.agent_id].implementation
+                and provenance.configuration_digest
+                == manifest_agents[provenance.agent_id].configuration_digest
+                and provenance.agent_version
+                == registry.get_metadata(provenance.agent_id)["agent_version"]
+                and provenance.implementation
+                == registry.get_metadata(provenance.agent_id)["implementation"]
+                for provenance in run_artifact.agent_provenance
+            ) and {provenance.agent_id for provenance in run_artifact.agent_provenance} == set(
+                run_artifact.executed_agents
+            )
+            agent_provenance_details = "Artifact, manifest, and registry agent provenance agree."
+        except Exception as exc:
+            agent_provenance_matches = False
+            agent_provenance_details = f"Unable to verify agent provenance: {exc}"
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-12-AGENT-PROVENANCE",
+                description="Executed agent provenance matches manifest declarations and registry metadata",
+                passed=agent_provenance_matches,
+                details=agent_provenance_details,
+            )
+        )
+
+        # Recompute content-addressed selection identity independently of run.json and README.
+        try:
+            selected_case_ids = set(run_artifact.selected_scenario_ids)
+            selected_cases = [
+                case
+                for case in manifest_cases
+                if case.manifest_entry.scenario_id in selected_case_ids
+            ]
+            registry = BenchmarkAgentRegistry()
+            resolved_agents = [
+                (agent_id, registry.resolve(agent_id), registry.get_metadata(agent_id))
+                for agent_id in run_artifact.executed_agents
+            ]
+            computed_run_id = compute_run_semantic_id(
+                manifest_digest=run_artifact.manifest_digest,
+                benchmark_id=run_artifact.benchmark_id,
+                benchmark_version=run_artifact.benchmark_version,
+                environment_version=run_artifact.environment_version,
+                evaluator_version=run_artifact.evaluator_version,
+                taxonomy_version=run_artifact.taxonomy_version,
+                scoring_profile_version=run_artifact.scoring_profile_version,
+                selected_scenarios=selected_cases,
+                executed_agents=resolved_agents,
+                run_policy=run_artifact.run_policy,
+            )
+            run_semantic_matches = computed_run_id == run_artifact.run_semantic_id
+            run_semantic_details = (
+                f"recorded={run_artifact.run_semantic_id}, computed={computed_run_id}"
+            )
+        except Exception as exc:
+            run_semantic_matches = False
+            run_semantic_details = f"Unable to recompute run semantic ID: {exc}"
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-10-RUN-SEMANTIC-ID",
+                description="Run semantic ID recomputes from manifest selection, agent provenance, and policy",
+                passed=run_semantic_matches,
+                details=run_semantic_details,
+            )
+        )
 
         # Source-tree provenance is authoritative even when Git commit topology changes.
         try:

@@ -100,3 +100,17 @@ def test_cli_module_import_is_cycle_safe() -> None:
         check=False,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_canonical_artifact_has_portable_generation_command() -> None:
+    """Evidence contains its actual portable canonical reproduction command."""
+    artifact = CanonicalBenchmarkEngine().run_benchmark(
+        manifest_path="resources/benchmarks/benchmark-v1.json",
+        agent_ids=["scripted-oracle"],
+        scenario_filter=["jfk-lhr-delay"],
+    )
+
+    assert artifact.generation_command == (
+        "flight-evaluator benchmark run --manifest builtin:benchmark-v1 "
+        "--agents scripted-oracle --output results/benchmark-v1"
+    )

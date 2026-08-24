@@ -294,6 +294,11 @@ class CanonicalBenchmarkEngine:
             manifest_digest=manifest_digest,
             package_version=importlib.metadata.version("flight-agent-evaluator"),
             source_tree_digest=compute_source_tree_digest(),
+            generation_command=(
+                "flight-evaluator benchmark run "
+                f"--manifest builtin:{manifest.benchmark_id} "
+                f"--agents {','.join(selected_agent_ids)} --output results/{manifest.benchmark_id}"
+            ),
             source_commit_sha=_get_git_commit_sha(),
             environment_version=manifest.environment_version,
             evaluator_version=manifest.evaluator_version,
@@ -318,6 +323,9 @@ class CanonicalBenchmarkEngine:
         )
 
         if output_dir is not None:
-            artifact.persist_atomic(output_dir)
+            artifact.persist_verified_bundle(output_dir)
+            from flight_agent_evaluator.benchmarks.consistency import validate_benchmark_bundle
+
+            validate_benchmark_bundle(output_dir, manifest_id_or_path=manifest_path)
 
         return artifact

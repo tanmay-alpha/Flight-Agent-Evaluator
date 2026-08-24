@@ -176,6 +176,7 @@ class BenchmarkRunArtifact(ContractModel):
     manifest_digest: str
     package_version: str
     source_tree_digest: str
+    generation_command: str
     source_commit_sha: str | None = None
 
     environment_version: str = "1.0.0"
@@ -198,8 +199,8 @@ class BenchmarkRunArtifact(ContractModel):
         """Render authoritative markdown report for README.md directly from artifact state."""
         return render_benchmark_report(self)
 
-    def persist_atomic(self, output_dir: Path | str) -> None:
-        """Atomically persist run artifacts to disk, including run.json, summary.json, README.md, and cases/*.json."""
+    def persist_verified_bundle(self, output_dir: Path | str) -> None:
+        """Persist an exact case set with atomic individual writes; caller verifies the completed bundle."""
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
         cases_dir = out_path / "cases"
@@ -209,6 +210,14 @@ class BenchmarkRunArtifact(ContractModel):
             tmp_path = file_path.with_suffix(f"{file_path.suffix}.tmp")
             tmp_path.write_text(content, encoding="utf-8")
             tmp_path.replace(file_path)
+
+        expected_case_files = {
+            f"{res.scenario_id}__{res.agent_id}__rep{res.repetition_index}.json"
+            for res in self.case_results
+        }
+        for stale_file in cases_dir.glob("*.json"):
+            if stale_file.name not in expected_case_files:
+                stale_file.unlink()
 
         # 1. Write individual case results
         for res in self.case_results:
@@ -237,6 +246,7 @@ def render_benchmark_report(artifact: BenchmarkRunArtifact) -> str:
         f"- **Benchmark ID**: `{artifact.benchmark_id}` (v{artifact.benchmark_version})",
         f"- **Package Version**: `{artifact.package_version}`",
         f"- **Source Tree Digest**: `{artifact.source_tree_digest}` ({SOURCE_TREE_DIGEST_VERSION})",
+        f"- **Canonical Generation Command**: `{artifact.generation_command}`",
     ]
     if artifact.source_commit_sha:
         lines.append(f"- **Source Commit SHA**: `{artifact.source_commit_sha}`")

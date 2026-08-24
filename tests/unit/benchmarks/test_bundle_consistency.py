@@ -166,3 +166,29 @@ def test_tampered_disk_case_fails_bundle_verification(tmp_path: Path) -> None:
     assert "BND-09-DISK-CASE-SEMANTIC-PARITY" in [
         check.check_id for check in report.checks if not check.passed
     ]
+
+
+def test_tampered_run_semantic_id_fails_even_when_readme_is_regenerated(tmp_path: Path) -> None:
+    """README parity cannot substitute for independent semantic-ID recomputation."""
+    from flight_agent_evaluator.benchmarks.results import (
+        BenchmarkRunArtifact,
+        render_benchmark_report,
+    )
+
+    shutil.copytree("results/benchmark-v1", tmp_path / "bundle")
+    run_file = tmp_path / "bundle" / "run.json"
+    artifact = BenchmarkRunArtifact.model_validate_json(run_file.read_text(encoding="utf-8"))
+    forged = artifact.model_copy(update={"run_semantic_id": "bm_run_forged"})
+    run_file.write_text(forged.model_dump_json(indent=2), encoding="utf-8")
+    (tmp_path / "bundle" / "README.md").write_text(
+        render_benchmark_report(forged), encoding="utf-8"
+    )
+
+    report = ResultBundleConsistencyVerifier().verify_bundle(
+        tmp_path / "bundle", manifest_id_or_path="resources/benchmarks/benchmark-v1.json"
+    )
+
+    assert report.valid is False
+    assert "BND-10-RUN-SEMANTIC-ID" in [
+        check.check_id for check in report.checks if not check.passed
+    ]
