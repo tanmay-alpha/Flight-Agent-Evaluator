@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import subprocess
-from shutil import which
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from shutil import which
 from typing import Any
 
 from flight_agent_evaluator.benchmarks.engine import compute_run_semantic_id
@@ -428,7 +428,12 @@ class ResultBundleConsistencyVerifier:
                     raise FileNotFoundError("git executable is unavailable")
                 exists = (
                     subprocess.run(  # noqa: S603, S607
-                        [git_path, "cat-file", "-e", f"{run_artifact.source_commit_sha}^{{commit}}"],
+                        [
+                            git_path,
+                            "cat-file",
+                            "-e",
+                            f"{run_artifact.source_commit_sha}^{{commit}}",
+                        ],
                         check=False,
                         capture_output=True,
                         timeout=5.0,
