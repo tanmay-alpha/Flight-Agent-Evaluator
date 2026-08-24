@@ -330,9 +330,16 @@ def test_case_digest_binds_run_id_and_declares_its_version(tmp_path: Path) -> No
     assert (
         changed_run_id.compute_semantic_result_digest() != original.compute_semantic_result_digest()
     )
-    assert changed_agent.compute_semantic_result_digest() != original.compute_semantic_result_digest()
-    assert changed_seed.compute_semantic_result_digest() != original.compute_semantic_result_digest()
-    assert changed_journal.compute_semantic_result_digest() != original.compute_semantic_result_digest()
+    assert (
+        changed_agent.compute_semantic_result_digest() != original.compute_semantic_result_digest()
+    )
+    assert (
+        changed_seed.compute_semantic_result_digest() != original.compute_semantic_result_digest()
+    )
+    assert (
+        changed_journal.compute_semantic_result_digest()
+        != original.compute_semantic_result_digest()
+    )
     assert (
         changed_wall_time.compute_semantic_result_digest()
         == original.compute_semantic_result_digest()
