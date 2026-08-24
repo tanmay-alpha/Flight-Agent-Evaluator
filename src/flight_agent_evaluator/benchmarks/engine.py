@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
 import logging
 import subprocess
 from collections.abc import Sequence
@@ -12,6 +13,7 @@ from typing import Any
 from flight_agent_evaluator.agent.protocol import AgentPolicy
 from flight_agent_evaluator.benchmarks.loader import (
     BenchmarkCase,
+    BenchmarkIntegrityError,
     BenchmarkManifestLoader,
 )
 from flight_agent_evaluator.benchmarks.registry import (
@@ -19,9 +21,13 @@ from flight_agent_evaluator.benchmarks.registry import (
     UnknownBenchmarkAgentError,
 )
 from flight_agent_evaluator.benchmarks.results import (
+    BenchmarkAgentExecutionProvenance,
     BenchmarkAggregateMetrics,
     BenchmarkCaseResult,
+    BenchmarkExecutionIdentity,
     BenchmarkRunArtifact,
+    compute_source_tree_digest,
+    semantic_sources_clean,
 )
 from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
@@ -31,6 +37,8 @@ logger = logging.getLogger(__name__)
 
 def _get_git_commit_sha() -> str | None:
     """Attempt to retrieve the current git commit SHA without failing outside a git repo."""
+    if not semantic_sources_clean():
+        return None
     try:
         res = subprocess.run(  # noqa: S603
             ["git", "rev-parse", "HEAD"],  # noqa: S607
@@ -161,32 +169,59 @@ class CanonicalBenchmarkEngine:
 
         manifest_digest = manifest.manifest_digest or manifest.compute_canonical_digest()
 
-        # Execute all cases across agents and repetitions
+        manifest_agent_metadata = {agent.agent_id: agent for agent in manifest.agents}
+        for aid, _agent, meta in resolved_agents:
+            declared = manifest_agent_metadata.get(aid)
+            if declared is None or (
+                declared.agent_version != meta["agent_version"]
+                or declared.implementation != meta["implementation"]
+                or declared.configuration_digest != meta.get("configuration_digest")
+            ):
+                raise BenchmarkIntegrityError(
+                    f"Manifest provenance disagrees with registry for '{aid}'."
+                )
+
+        # Execute all cases across agents, declared seeds, and repetitions.
         for aid, agent, meta in resolved_agents:
-            for rep_idx in range(rep_count):
-                for case in cases:
-                    case_res = asyncio.run(
-                        self.runner.run_case(
-                            case=case,
-                            agent=agent,
+            for seed in manifest.run_policy.seeds:
+                for rep_idx in range(rep_count):
+                    for case in cases:
+                        identity = BenchmarkExecutionIdentity(
+                            benchmark_id=case.benchmark_id,
+                            benchmark_version=case.benchmark_version,
+                            manifest_digest=manifest_digest,
+                            scenario_id=case.manifest_entry.scenario_id,
+                            scenario_version=case.manifest_entry.scenario_version,
+                            scenario_resource_digest=case.scenario_raw_sha256,
+                            expectation_resource_digest=case.expectation_raw_sha256,
+                            agent_id=aid,
+                            agent_version=meta["agent_version"],
+                            agent_configuration_digest=meta.get("configuration_digest"),
+                            execution_seed=seed,
                             repetition_index=rep_idx,
                         )
-                    )
-                    # Bind manifest digest, agent ID, and agent metadata
-                    updated_case = case_res.model_copy(
-                        update={
-                            "manifest_digest": manifest_digest,
-                            "agent_id": aid,
-                            "agent_version": getattr(
-                                agent, "agent_version", meta.get("agent_version", "1.0.0")
-                            ),
-                            "agent_configuration_digest": meta.get("configuration_digest"),
-                        }
-                    )
-                    final_digest = updated_case.compute_semantic_result_digest()
-                    case_results.append(
-                        updated_case.model_copy(update={"semantic_result_digest": final_digest})
-                    )
+                        case_res = asyncio.run(
+                            self.runner.run_case(
+                                case=case,
+                                agent=agent,
+                                repetition_index=rep_idx,
+                                execution_seed=seed,
+                                execution_run_id=identity.deterministic_run_id(),
+                            )
+                        )
+                        # Bind manifest digest, agent ID, and agent metadata
+                        updated_case = case_res.model_copy(
+                            update={
+                                "manifest_digest": manifest_digest,
+                                "agent_id": aid,
+                                "agent_version": meta["agent_version"],
+                                "agent_configuration_digest": meta.get("configuration_digest"),
+                            }
+                        )
+                        final_digest = updated_case.compute_semantic_result_digest()
+                        case_results.append(
+                            updated_case.model_copy(update={"semantic_result_digest": final_digest})
+                        )
 
         total_runs = len(case_results)
         if total_runs > 0:
@@ -257,7 +292,8 @@ class CanonicalBenchmarkEngine:
             benchmark_id=manifest.benchmark_id,
             benchmark_version=manifest.benchmark_version,
             manifest_digest=manifest_digest,
-            package_version="0.2.0",
+            package_version=importlib.metadata.version("flight-agent-evaluator"),
+            source_tree_digest=compute_source_tree_digest(),
             source_commit_sha=_get_git_commit_sha(),
             environment_version=manifest.environment_version,
             evaluator_version=manifest.evaluator_version,
@@ -265,6 +301,15 @@ class CanonicalBenchmarkEngine:
             scoring_profile_version=manifest.scoring_profile_version,
             selected_scenario_ids=[c.manifest_entry.scenario_id for c in cases],
             executed_agents=list(selected_agent_ids),
+            agent_provenance=[
+                BenchmarkAgentExecutionProvenance(
+                    agent_id=aid,
+                    agent_version=meta["agent_version"],
+                    implementation=meta["implementation"],
+                    configuration_digest=meta.get("configuration_digest"),
+                )
+                for aid, _agent, meta in resolved_agents
+            ],
             run_policy=run_policy_dict,
             scenario_count=len(cases),
             total_runs=total_runs,

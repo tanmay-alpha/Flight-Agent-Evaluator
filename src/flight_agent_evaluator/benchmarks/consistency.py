@@ -12,7 +12,9 @@ from flight_agent_evaluator.benchmarks.loader import (
 )
 from flight_agent_evaluator.benchmarks.results import (
     BenchmarkAggregateMetrics,
+    BenchmarkCaseResult,
     BenchmarkRunArtifact,
+    compute_source_tree_digest,
     render_benchmark_report,
 )
 
@@ -173,6 +175,25 @@ class ResultBundleConsistencyVerifier:
                 )
             )
 
+        # Source-tree provenance is authoritative even when Git commit topology changes.
+        try:
+            computed_source_digest = compute_source_tree_digest()
+            source_digest_matches = run_artifact.source_tree_digest == computed_source_digest
+            source_details = (
+                f"recorded={run_artifact.source_tree_digest}, computed={computed_source_digest}"
+            )
+        except Exception as exc:
+            source_digest_matches = False
+            source_details = f"Unable to compute source tree digest: {exc}"
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-11-SOURCE-TREE-DIGEST",
+                description="Recorded source tree digest matches exact current semantic runtime sources",
+                passed=source_digest_matches,
+                details=source_details,
+            )
+        )
+
         # 4. Recompute aggregate metrics from case_results
         cases = run_artifact.case_results
         total_runs = len(cases)
@@ -291,7 +312,51 @@ class ResultBundleConsistencyVerifier:
             )
         )
 
-        # 7. Deterministic Markdown README Parity
+        # 7. Physical case artifacts must be an exact, semantic projection of run.json.
+        expected_cases = {
+            f"{case.scenario_id}__{case.agent_id}__rep{case.repetition_index}.json": case
+            for case in cases
+        }
+        actual_case_files = {path.name: path for path in cases_dir.glob("*.json")}
+        exact_case_set = set(actual_case_files) == set(expected_cases)
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-08-DISK-CASE-EXACT-SET",
+                description="cases/ contains exactly one expected JSON artifact per embedded case result",
+                passed=exact_case_set,
+                details=(
+                    f"missing={sorted(set(expected_cases) - set(actual_case_files))}, "
+                    f"extra={sorted(set(actual_case_files) - set(expected_cases))}"
+                ),
+            )
+        )
+
+        disk_cases_match = exact_case_set
+        disk_case_details = "All physical case artifacts equal their embedded result."
+        if disk_cases_match:
+            for name, expected in expected_cases.items():
+                try:
+                    actual = BenchmarkCaseResult.model_validate_json(
+                        actual_case_files[name].read_text(encoding="utf-8")
+                    )
+                except Exception as exc:
+                    disk_cases_match = False
+                    disk_case_details = f"{name} is not a valid BenchmarkCaseResult: {exc}"
+                    break
+                if actual != expected:
+                    disk_cases_match = False
+                    disk_case_details = f"{name} differs from embedded run.json case result"
+                    break
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-09-DISK-CASE-SEMANTIC-PARITY",
+                description="Every physical case JSON equals its corresponding embedded run.json case result",
+                passed=disk_cases_match,
+                details=disk_case_details,
+            )
+        )
+
+        # 10. Deterministic Markdown README Parity
         generated_readme = render_benchmark_report(run_artifact)
         norm_committed = readme_text.strip().replace("\r\n", "\n")
         norm_generated = generated_readme.strip().replace("\r\n", "\n")

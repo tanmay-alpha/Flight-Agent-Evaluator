@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
 from flight_agent_evaluator.agent.protocol import AgentPolicy
+from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
 from flight_agent_evaluator.contracts.model import AgentRunResult, AgentStopReason, AgentTask
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.contracts.trajectory_expectation import TrajectoryExpectation
@@ -78,6 +80,8 @@ class BenchmarkRunner:
         agent: AgentPolicy,
         environment: SimulatedAirlineEnvironment | None = None,
         repetition_index: int = 0,
+        execution_seed: int | None = None,
+        execution_run_id: str | None = None,
     ) -> Any:
         """Run an authoritative, cryptographically bound BenchmarkCase against an agent policy."""
         import time
@@ -100,14 +104,27 @@ class BenchmarkRunner:
             expectation=expectation,
             environment=environment,
             authoritative=True,
+            execution_seed=execution_seed,
+            execution_run_id=execution_run_id,
         )
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
-        b_id = getattr(case, "benchmark_id", "benchmark-v1")
-        b_ver = getattr(case, "benchmark_version", "1.0.0")
-        m_digest = getattr(case, "manifest_digest", None)
-        agent_ver = getattr(agent, "agent_version", "1.0.0")
-        actual_run_id = mv.run_id or f"run_{case.manifest_entry.scenario_id}_{repetition_index}"
+        if case.manifest_digest is None:
+            raise BenchmarkIntegrityError("Authoritative BenchmarkCase requires manifest_digest.")
+        if execution_run_id is None:
+            raise BenchmarkIntegrityError(
+                "Authoritative benchmark execution requires execution_run_id."
+            )
+        if mv.run_id != execution_run_id:
+            raise BenchmarkIntegrityError(
+                "Benchmark metric run_id does not match execution identity."
+            )
+        b_id = case.benchmark_id
+        b_ver = case.benchmark_version
+        m_digest = case.manifest_digest
+        agent_ver = getattr(agent, "agent_version", None)
+        if not agent_ver:
+            raise BenchmarkIntegrityError("Authoritative benchmark agent requires agent_version.")
 
         case_res = BenchmarkCaseResult(
             benchmark_id=b_id,
@@ -119,7 +136,7 @@ class BenchmarkRunner:
             expectation_resource_digest=case.expectation_raw_sha256,
             agent_id=getattr(agent, "agent_id", str(agent)),
             agent_version=agent_ver,
-            seed=scenario.seed,
+            seed=execution_seed if execution_seed is not None else scenario.seed,
             repetition_index=repetition_index,
             task_success=mv.task_success,
             safety_pass=mv.safety_pass,
@@ -127,7 +144,7 @@ class BenchmarkRunner:
             overall_score=mv.overall_score,
             score_vector=mv.score_vector,
             failure_codes=mv.failure_codes,
-            run_id=actual_run_id,
+            run_id=execution_run_id,
             journal_digest=mv.journal_digest,
             wall_time_ms=elapsed_ms,
         )
@@ -142,6 +159,8 @@ class BenchmarkRunner:
         environment: SimulatedAirlineEnvironment | None = None,
         output_dir: Path | None = None,  # noqa: ARG002
         authoritative: bool = False,
+        execution_seed: int | None = None,
+        execution_run_id: str | None = None,
     ) -> BenchmarkMetricVector:
         """Run a single benchmark scenario against an agent policy."""
         if authoritative and expectation is None:
@@ -196,7 +215,11 @@ class BenchmarkRunner:
             scenario_version=scenario.scenario_id.version,
             seed=scenario.seed,
         )
-        run_id = id_factory.next(record_type="run", sequence=0)
+        run_id = (
+            uuid.UUID(execution_run_id)
+            if execution_run_id is not None
+            else id_factory.next(record_type="run", sequence=0)
+        )
         start_time: datetime.datetime
         if isinstance(scenario.reference_time, datetime.datetime):
             start_time = scenario.reference_time
@@ -210,12 +233,12 @@ class BenchmarkRunner:
             run_id=run_id,
             scenario_id=scenario.scenario_id.id,
             scenario_version=scenario.scenario_id.version,
-            seed=scenario.seed,
+            seed=execution_seed if execution_seed is not None else scenario.seed,
             clock=clock,
             id_factory=id_factory,
             tool_call_limit=scenario.limits.tool_call_limit,
             time_limit_seconds=scenario.limits.time_limit_seconds,
-            correlation_id="c1",
+            correlation_id=str(uuid.uuid5(run_id, "correlation")),
             scenario_digest=scenario.canonical_digest(),
             trajectory_digest=scenario.trajectory.canonical_digest(),
         )
@@ -279,6 +302,8 @@ class BenchmarkRunner:
             state=state,
             context=context,
         )
+        if authoritative and agent_result.run_id != str(context.run_id):
+            raise BenchmarkIntegrityError("AgentRunResult run_id does not match RunContext run_id.")
 
         # Lifecycle Gate: record final_response event
         if agent_result.final_response is not None:

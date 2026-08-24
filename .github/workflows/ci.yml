@@ -106,3 +106,6 @@ jobs:
 
       - name: Full release verifier
         run: uv run flight-evaluator benchmark verify-release
+
+      - name: Verify committed Benchmark V1 evidence bundle
+        run: uv run python scripts/check.py bundle-consistency
