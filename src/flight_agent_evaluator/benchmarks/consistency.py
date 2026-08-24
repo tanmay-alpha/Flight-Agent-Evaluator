@@ -215,9 +215,7 @@ class ResultBundleConsistencyVerifier:
 
         # Every recorded run ID must independently derive from authoritative execution inputs.
         try:
-            identity_cases = {
-                case.manifest_entry.scenario_id: case for case in manifest_cases
-            }
+            identity_cases = {case.manifest_entry.scenario_id: case for case in manifest_cases}
             identity_registry = BenchmarkAgentRegistry()
             execution_identity_matches = True
             execution_identity_details = f"All {len(run_artifact.case_results)} run IDs match deterministic execution identities."
@@ -289,7 +287,8 @@ class ResultBundleConsistencyVerifier:
                     or case_result.seed not in policy_seeds
                     or not 0 <= case_result.repetition_index < policy_repetitions
                     or case_result.scenario_resource_digest != declared_case.scenario_raw_sha256
-                    or case_result.expectation_resource_digest != declared_case.expectation_raw_sha256
+                    or case_result.expectation_resource_digest
+                    != declared_case.expectation_raw_sha256
                     or case_result.agent_version != domain_metadata["agent_version"]
                     or case_result.agent_configuration_digest
                     != domain_metadata.get("configuration_digest")
@@ -329,10 +328,9 @@ class ResultBundleConsistencyVerifier:
                 for case in run_artifact.case_results
             ]
             actual_execution_key_set = set(actual_execution_keys)
-            matrix_matches = (
-                actual_execution_key_set == expected_execution_keys
-                and len(actual_execution_keys) == len(actual_execution_key_set)
-            )
+            matrix_matches = actual_execution_key_set == expected_execution_keys and len(
+                actual_execution_keys
+            ) == len(actual_execution_key_set)
             matrix_details = (
                 f"missing={sorted(expected_execution_keys - actual_execution_key_set)}, "
                 f"extra={sorted(actual_execution_key_set - expected_execution_keys)}, "
@@ -413,7 +411,9 @@ class ResultBundleConsistencyVerifier:
         # A source-release artifact may be followed only by evidence commits, never semantic code drift.
         if run_artifact.source_commit_sha is None:
             source_commit_matches = True
-            source_commit_details = "Source commit provenance is unavailable for this non-release execution."
+            source_commit_details = (
+                "Source commit provenance is unavailable for this non-release execution."
+            )
         else:
             semantic_paths = [
                 "src/flight_agent_evaluator",
@@ -422,24 +422,48 @@ class ResultBundleConsistencyVerifier:
                 "uv.lock",
             ]
             try:
-                exists = subprocess.run(  # noqa: S603, S607
-                    ["git", "cat-file", "-e", f"{run_artifact.source_commit_sha}^{{commit}}"],  # noqa: S607
-                    check=False,
-                    capture_output=True,
-                    timeout=5.0,
-                ).returncode == 0
-                ancestor = exists and subprocess.run(  # noqa: S603, S607
-                    ["git", "merge-base", "--is-ancestor", run_artifact.source_commit_sha, "HEAD"],  # noqa: S607
-                    check=False,
-                    capture_output=True,
-                    timeout=5.0,
-                ).returncode == 0
-                no_semantic_diff = ancestor and subprocess.run(  # noqa: S603, S607
-                    ["git", "diff", "--quiet", f"{run_artifact.source_commit_sha}..HEAD", "--", *semantic_paths],  # noqa: S607
-                    check=False,
-                    capture_output=True,
-                    timeout=5.0,
-                ).returncode == 0
+                exists = (
+                    subprocess.run(  # noqa: S603, S607
+                        ["git", "cat-file", "-e", f"{run_artifact.source_commit_sha}^{{commit}}"],  # noqa: S607
+                        check=False,
+                        capture_output=True,
+                        timeout=5.0,
+                    ).returncode
+                    == 0
+                )
+                ancestor = (
+                    exists
+                    and subprocess.run(  # noqa: S603, S607
+                        [
+                            "git",
+                            "merge-base",
+                            "--is-ancestor",
+                            run_artifact.source_commit_sha,
+                            "HEAD",
+                        ],  # noqa: S607
+                        check=False,
+                        capture_output=True,
+                        timeout=5.0,
+                    ).returncode
+                    == 0
+                )
+                no_semantic_diff = (
+                    ancestor
+                    and subprocess.run(  # noqa: S603, S607
+                        [
+                            "git",
+                            "diff",
+                            "--quiet",
+                            f"{run_artifact.source_commit_sha}..HEAD",
+                            "--",
+                            *semantic_paths,
+                        ],  # noqa: S607
+                        check=False,
+                        capture_output=True,
+                        timeout=5.0,
+                    ).returncode
+                    == 0
+                )
                 source_commit_matches = bool(exists and ancestor and no_semantic_diff)
                 source_commit_details = (
                     f"exists={exists}, ancestor={ancestor}, semantic_diff={not no_semantic_diff}"

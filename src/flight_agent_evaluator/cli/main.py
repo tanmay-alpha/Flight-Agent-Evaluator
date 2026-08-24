@@ -813,8 +813,7 @@ def cmd_benchmark_run(args: argparse.Namespace) -> int:
     repetitions = getattr(args, "repetitions", 1)
     output_dir = getattr(args, "output", None)
     source_release_output = (
-        output_dir is not None
-        and Path(output_dir).as_posix().rstrip("/") == "results/benchmark-v1"
+        output_dir is not None and Path(output_dir).as_posix().rstrip("/") == "results/benchmark-v1"
     )
 
     engine = CanonicalBenchmarkEngine()

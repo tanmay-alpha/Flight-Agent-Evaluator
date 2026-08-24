@@ -49,6 +49,7 @@ def test_unique_forged_run_id_fails_execution_identity(tmp_path: Path) -> None:
     assert report.valid is False
     assert "BND-15-EXECUTION-IDENTITY" in _failed_ids(report)
 
+
 def test_rehashed_forged_run_id_still_fails_execution_identity(tmp_path: Path) -> None:
     bundle, embedded, disk = _copied_matching_case_bundle(tmp_path)
     forged_id = "12345678-1234-5678-9234-567812345678"
@@ -81,7 +82,9 @@ def test_case_digest_binds_run_id_but_not_wall_time(base_case: BenchmarkCaseResu
     changed_id = base_case.model_copy(update={"run_id": "00000000-0000-5000-8000-000000000001"})
     changed_time = base_case.model_copy(update={"wall_time_ms": 999.0})
     assert changed_id.compute_semantic_result_digest() != base_case.compute_semantic_result_digest()
-    assert changed_time.compute_semantic_result_digest() == base_case.compute_semantic_result_digest()
+    assert (
+        changed_time.compute_semantic_result_digest() == base_case.compute_semantic_result_digest()
+    )
 ```
 
 Also assert different journal digest, agent version, and seed each change the
@@ -158,8 +161,7 @@ the verified manifest case and registry metadata:
 
 ```python
 expected = {
-    (case.manifest_entry.scenario_id, agent_id, seed, repetition):
-    BenchmarkExecutionIdentity(
+    (case.manifest_entry.scenario_id, agent_id, seed, repetition): BenchmarkExecutionIdentity(
         benchmark_id=manifest.benchmark_id,
         benchmark_version=manifest.benchmark_version,
         manifest_digest=computed_m_digest,
