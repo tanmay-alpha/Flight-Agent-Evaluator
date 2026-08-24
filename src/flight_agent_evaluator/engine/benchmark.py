@@ -86,17 +86,42 @@ class BenchmarkRunner:
         import time
 
         from flight_agent_evaluator.benchmarks.loader import BenchmarkCase, BenchmarkIntegrityError
-        from flight_agent_evaluator.benchmarks.results import BenchmarkCaseResult
+        from flight_agent_evaluator.benchmarks.results import (
+            BenchmarkCaseResult,
+            BenchmarkExecutionIdentity,
+        )
 
         if not isinstance(case, BenchmarkCase):
             raise TypeError(
                 f"run_case requires a BenchmarkCase instance, got {type(case).__name__}."
             )
 
-        t0 = time.perf_counter()
         scenario = case.scenario
         expectation = case.expectation
+        if case.manifest_digest is None:
+            raise BenchmarkIntegrityError("Authoritative BenchmarkCase requires manifest_digest.")
+        b_id = case.benchmark_id
+        b_ver = case.benchmark_version
+        m_digest = case.manifest_digest
+        agent_ver = getattr(agent, "agent_version", None)
+        if not agent_ver:
+            raise BenchmarkIntegrityError("Authoritative benchmark agent requires agent_version.")
+        derived_identity = BenchmarkExecutionIdentity(
+            benchmark_id=b_id,
+            benchmark_version=b_ver,
+            manifest_digest=m_digest,
+            scenario_id=case.manifest_entry.scenario_id,
+            scenario_version=case.manifest_entry.scenario_version,
+            scenario_resource_digest=case.scenario_raw_sha256,
+            expectation_resource_digest=case.expectation_raw_sha256,
+            agent_id=getattr(agent, "agent_id", str(agent)),
+            agent_version=agent_ver,
+            execution_seed=execution_seed if execution_seed is not None else scenario.seed,
+            repetition_index=repetition_index,
+        )
+        effective_run_id = execution_run_id or derived_identity.deterministic_run_id()
 
+        t0 = time.perf_counter()
         mv = await self.run_scenario(
             scenario=scenario,
             agent=agent,
@@ -104,26 +129,14 @@ class BenchmarkRunner:
             environment=environment,
             authoritative=True,
             execution_seed=execution_seed,
-            execution_run_id=execution_run_id,
+            execution_run_id=effective_run_id,
         )
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
-        if case.manifest_digest is None:
-            raise BenchmarkIntegrityError("Authoritative BenchmarkCase requires manifest_digest.")
-        if execution_run_id is None:
-            raise BenchmarkIntegrityError(
-                "Authoritative benchmark execution requires execution_run_id."
-            )
-        if mv.run_id != execution_run_id:
+        if mv.run_id != effective_run_id:
             raise BenchmarkIntegrityError(
                 "Benchmark metric run_id does not match execution identity."
             )
-        b_id = case.benchmark_id
-        b_ver = case.benchmark_version
-        m_digest = case.manifest_digest
-        agent_ver = getattr(agent, "agent_version", None)
-        if not agent_ver:
-            raise BenchmarkIntegrityError("Authoritative benchmark agent requires agent_version.")
 
         case_res = BenchmarkCaseResult(
             benchmark_id=b_id,
@@ -143,7 +156,7 @@ class BenchmarkRunner:
             overall_score=mv.overall_score,
             score_vector=mv.score_vector,
             failure_codes=mv.failure_codes,
-            run_id=execution_run_id,
+            run_id=effective_run_id,
             journal_digest=mv.journal_digest,
             wall_time_ms=elapsed_ms,
         )

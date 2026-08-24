@@ -37,6 +37,8 @@ def _semantic_source_paths(root: Path) -> list[str]:
 def compute_source_tree_digest(root: Path | str = ".") -> str:
     """Hash exact bytes of the versioned tracked runtime-source closure."""
     base = Path(root).resolve()
+    if not (base / ".git").exists():
+        return canonical_hash({"version": SOURCE_TREE_DIGEST_VERSION, "mode": "unavailable"})
     entries = [
         {"path": path, "sha256": hashlib.sha256((base / path).read_bytes()).hexdigest()}
         for path in _semantic_source_paths(base)
