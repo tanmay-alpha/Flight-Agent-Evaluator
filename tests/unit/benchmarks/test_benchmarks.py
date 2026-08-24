@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
 from pathlib import Path
@@ -16,12 +17,14 @@ from flight_agent_evaluator.benchmarks.report import (
     generate_benchmark_report,
 )
 from flight_agent_evaluator.benchmarks.results import (
+    SOURCE_TREE_DIGEST_VERSION,
     BenchmarkCaseResult,
     BenchmarkInvocation,
     compute_source_tree_digest,
     render_reproduction_command,
     semantic_sources_clean,
 )
+from flight_agent_evaluator.canonical import canonical_hash
 
 
 def test_benchmark_metrics() -> None:
@@ -157,6 +160,39 @@ def test_non_git_source_tree_has_no_authoritative_digest(tmp_path: Path) -> None
     source_root.mkdir()
 
     assert compute_source_tree_digest(source_root) is None
+
+
+def test_source_tree_digest_uses_committed_blob_bytes(tmp_path: Path) -> None:
+    """Checkout line endings cannot alter the digest of a clean committed source tree."""
+    source_root = tmp_path / "git-source"
+    package = source_root / "src" / "flight_agent_evaluator"
+    package.mkdir(parents=True)
+    source_file = package / "tracked.py"
+    committed_bytes = b"VALUE = 'tracked'\n"
+    source_file.write_bytes(committed_bytes)
+    for command in (
+        ["git", "init"],
+        ["git", "config", "user.email", "test@example.invalid"],
+        ["git", "config", "user.name", "Test User"],
+        ["git", "add", "src"],
+        ["git", "commit", "-m", "initial source"],
+    ):
+        subprocess.run(command, cwd=source_root, check=True, capture_output=True)  # noqa: S603
+
+    source_file.write_bytes(b"VALUE = 'tracked'\r\n")
+    expected = canonical_hash(
+        {
+            "version": SOURCE_TREE_DIGEST_VERSION,
+            "files": [
+                {
+                    "path": "src/flight_agent_evaluator/tracked.py",
+                    "sha256": hashlib.sha256(committed_bytes).hexdigest(),
+                }
+            ],
+        }
+    )
+
+    assert compute_source_tree_digest(source_root) == expected
 
 
 def test_untracked_semantic_source_marks_tree_unclean(tmp_path: Path) -> None:
