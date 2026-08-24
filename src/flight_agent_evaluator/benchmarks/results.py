@@ -143,7 +143,9 @@ class BenchmarkCaseResult(ContractModel):
         }
         missing = sorted(name for name, value in required.items() if value is None or value == "")
         if missing:
-            raise ValueError(f"Authoritative benchmark case is missing provenance: {', '.join(missing)}")
+            raise ValueError(
+                f"Authoritative benchmark case is missing provenance: {', '.join(missing)}"
+            )
 
     def compute_semantic_result_digest(self) -> str:
         """Compute deterministic SHA-256 digest of semantic execution outcome (excluding wall-clock timing)."""

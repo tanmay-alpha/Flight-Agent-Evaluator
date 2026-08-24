@@ -32,9 +32,13 @@ def _copied_matching_case_bundle(
     run_file = bundle / "run.json"
     raw_run: dict[str, Any] = json.loads(run_file.read_text(encoding="utf-8"))
     embedded = raw_run["case_results"][0]
-    disk_file = bundle / "cases" / (
-        f"{embedded['scenario_id']}__{embedded['agent_id']}__rep"
-        f"{embedded['repetition_index']}.json"
+    disk_file = (
+        bundle
+        / "cases"
+        / (
+            f"{embedded['scenario_id']}__{embedded['agent_id']}__rep"
+            f"{embedded['repetition_index']}.json"
+        )
     )
     disk: dict[str, Any] = json.loads(disk_file.read_text(encoding="utf-8"))
     assert disk == embedded
@@ -316,14 +320,17 @@ def test_case_digest_binds_run_id_and_declares_its_version(tmp_path: Path) -> No
     """Changing the execution identity changes a versioned semantic result digest."""
     bundle, raw_run, _disk, _disk_file = _copied_matching_case_bundle(tmp_path)
     original = BenchmarkCaseResult.model_validate(raw_run["case_results"][0])
-    changed_run_id = original.model_copy(
-        update={"run_id": "00000000-0000-5000-8000-000000000001"}
-    )
+    changed_run_id = original.model_copy(update={"run_id": "00000000-0000-5000-8000-000000000001"})
     changed_wall_time = original.model_copy(update={"wall_time_ms": 999.0})
 
     assert benchmark_results.CASE_RESULT_DIGEST_VERSION == "benchmark-case-result-v2"
-    assert changed_run_id.compute_semantic_result_digest() != original.compute_semantic_result_digest()
-    assert changed_wall_time.compute_semantic_result_digest() == original.compute_semantic_result_digest()
+    assert (
+        changed_run_id.compute_semantic_result_digest() != original.compute_semantic_result_digest()
+    )
+    assert (
+        changed_wall_time.compute_semantic_result_digest()
+        == original.compute_semantic_result_digest()
+    )
     assert bundle.is_dir()
 
 
@@ -348,7 +355,9 @@ def test_valid_looking_wrong_seed_fails_execution_domain(tmp_path: Path) -> None
     ).deterministic_run_id()
     embedded["seed"] = disk["seed"] = changed_seed
     embedded["run_id"] = disk["run_id"] = replacement_id
-    replacement_digest = BenchmarkCaseResult.model_validate(embedded).compute_semantic_result_digest()
+    replacement_digest = BenchmarkCaseResult.model_validate(
+        embedded
+    ).compute_semantic_result_digest()
     embedded["semantic_result_digest"] = disk["semantic_result_digest"] = replacement_digest
     _write_case_pair(bundle, raw_run, disk, disk_file)
 
