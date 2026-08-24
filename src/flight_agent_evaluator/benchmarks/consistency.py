@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -270,8 +271,39 @@ class ResultBundleConsistencyVerifier:
             )
         )
 
+        # Package provenance must be bound to the distribution executing this verifier.
+        try:
+            installed_package_version = version("flight-agent-evaluator")
+            package_version_matches = run_artifact.package_version == installed_package_version
+            package_version_details = (
+                f"recorded={run_artifact.package_version}, installed={installed_package_version}"
+            )
+        except PackageNotFoundError:
+            package_version_matches = False
+            package_version_details = "The flight-agent-evaluator distribution is not installed."
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-14-PACKAGE-VERSION",
+                description="Recorded package version matches the installed evaluator distribution",
+                passed=package_version_matches,
+                details=package_version_details,
+            )
+        )
+
         # 4. Recompute aggregate metrics from case_results
         cases = run_artifact.case_results
+        execution_run_ids = [case.run_id for case in cases]
+        unique_execution_ids = len(execution_run_ids) == len(set(execution_run_ids))
+        checks.append(
+            BundleCheckItem(
+                check_id="BND-13-EXECUTION-RUN-ID-UNIQUENESS",
+                description="Every materialized case execution has a unique deterministic run ID",
+                passed=unique_execution_ids,
+                details=(
+                    f"{len(execution_run_ids)} execution IDs, {len(set(execution_run_ids))} unique"
+                ),
+            )
+        )
         total_runs = len(cases)
         if total_runs > 0:
             task_success_count = sum(1 for r in cases if r.task_success)

@@ -192,3 +192,47 @@ def test_tampered_run_semantic_id_fails_even_when_readme_is_regenerated(tmp_path
     assert "BND-10-RUN-SEMANTIC-ID" in [
         check.check_id for check in report.checks if not check.passed
     ]
+
+
+def test_duplicate_execution_run_id_fails_bundle_verification(tmp_path: Path) -> None:
+    """Every materialized execution must retain its distinct deterministic run ID."""
+    shutil.copytree("results/benchmark-v1", tmp_path / "bundle")
+    run_file = tmp_path / "bundle" / "run.json"
+    raw_run = json.loads(run_file.read_text(encoding="utf-8"))
+    raw_run["case_results"][1]["run_id"] = raw_run["case_results"][0]["run_id"]
+    run_file.write_text(json.dumps(raw_run), encoding="utf-8")
+
+    report = ResultBundleConsistencyVerifier().verify_bundle(
+        tmp_path / "bundle", manifest_id_or_path="resources/benchmarks/benchmark-v1.json"
+    )
+
+    assert report.valid is False
+    assert "BND-13-EXECUTION-RUN-ID-UNIQUENESS" in [
+        check.check_id for check in report.checks if not check.passed
+    ]
+
+
+def test_package_version_mismatch_fails_even_when_readme_is_regenerated(tmp_path: Path) -> None:
+    """Artifact package provenance must match the installed evaluator distribution."""
+    from flight_agent_evaluator.benchmarks.results import (
+        BenchmarkRunArtifact,
+        render_benchmark_report,
+    )
+
+    shutil.copytree("results/benchmark-v1", tmp_path / "bundle")
+    run_file = tmp_path / "bundle" / "run.json"
+    artifact = BenchmarkRunArtifact.model_validate_json(run_file.read_text(encoding="utf-8"))
+    forged = artifact.model_copy(update={"package_version": "0.0.0-forged"})
+    run_file.write_text(forged.model_dump_json(indent=2), encoding="utf-8")
+    (tmp_path / "bundle" / "README.md").write_text(
+        render_benchmark_report(forged), encoding="utf-8"
+    )
+
+    report = ResultBundleConsistencyVerifier().verify_bundle(
+        tmp_path / "bundle", manifest_id_or_path="resources/benchmarks/benchmark-v1.json"
+    )
+
+    assert report.valid is False
+    assert "BND-14-PACKAGE-VERSION" in [
+        check.check_id for check in report.checks if not check.passed
+    ]
