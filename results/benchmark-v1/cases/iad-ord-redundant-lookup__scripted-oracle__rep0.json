@@ -24,6 +24,6 @@
   "run_id": "ad54ecd5-304a-5869-a247-548fe999711d",
   "journal_digest": "6de7b2cc4447459f8cc14eef303ab6e0f7e9ea1ac20f1a4bd31936bea36871cf",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 21.188600017922,
-  "semantic_result_digest": "07b62d8f4a817088c99b8f37906f0e4f057f9915d632ce970ee5e9fceadb5bdd"
+  "wall_time_ms": 0.9319000237155706,
+  "semantic_result_digest": "970dc3e72f7a1183937aeeaec95b8a2f09123de7f141f90054b84ae15f1c2f7f"
 }
