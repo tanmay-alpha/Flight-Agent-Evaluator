@@ -812,6 +812,9 @@ def cmd_benchmark_run(args: argparse.Namespace) -> int:
     )
     repetitions = getattr(args, "repetitions", 1)
     output_dir = getattr(args, "output", None)
+    source_release_output = (
+        output_dir is not None and Path(output_dir).as_posix().rstrip("/") == "results/benchmark-v1"
+    )
 
     engine = CanonicalBenchmarkEngine()
     try:
@@ -820,6 +823,7 @@ def cmd_benchmark_run(args: argparse.Namespace) -> int:
             agent_ids=agent_ids,
             output_dir=output_dir,
             repetitions=repetitions,
+            require_source_provenance=source_release_output,
         )
         if getattr(args, "json", False):
             print(json.dumps(artifact.model_dump(mode="json"), indent=2))
