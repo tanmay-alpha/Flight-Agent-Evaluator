@@ -326,6 +326,6 @@ class CanonicalBenchmarkEngine:
             artifact.persist_verified_bundle(output_dir)
             from flight_agent_evaluator.benchmarks.consistency import validate_benchmark_bundle
 
-            validate_benchmark_bundle(output_dir, manifest_id_or_path=manifest_path)
+            validate_benchmark_bundle(output_dir, manifest_id_or_path=str(manifest_path))
 
         return artifact
