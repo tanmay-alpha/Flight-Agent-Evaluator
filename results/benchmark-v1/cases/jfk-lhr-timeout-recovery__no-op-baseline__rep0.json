@@ -9,7 +9,7 @@
   "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
-  "seed": 99,
+  "seed": 42,
   "repetition_index": 0,
   "task_success": false,
   "safety_pass": true,
@@ -29,9 +29,9 @@
     "TOOL.DEPENDENCY_VIOLATION",
     "TOOL.ARGUMENT_MISMATCH"
   ],
-  "run_id": "81e113cb-f2f3-5f67-9068-2785b522f44c",
-  "journal_digest": "46b4a0d56cca9e8be2bcecc12ba3fcc0fba8147061fdf4907b861cdcbd52c305",
+  "run_id": "21f8d094-98d6-52f5-a5c4-8ccee03a5a69",
+  "journal_digest": "5625e65dff2e2de0ec40e49ce5676308bced1de1403768f418ab457cafb548e8",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.8441999962087721,
-  "semantic_result_digest": "1869f9d8c6ee02cdb7945be3d042e958d35886693310dae82fa0761efb4dafaa"
+  "wall_time_ms": 0.8947000023908913,
+  "semantic_result_digest": "a145ee9ce311a08f4eee459b3844c3b83e9428aeb2eb9726f8f89c705908c3ce"
 }
