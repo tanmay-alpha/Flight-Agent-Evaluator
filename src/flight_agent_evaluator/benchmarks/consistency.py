@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from shutil import which
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -422,9 +423,12 @@ class ResultBundleConsistencyVerifier:
                 "uv.lock",
             ]
             try:
+                git_path = which("git")
+                if git_path is None:
+                    raise FileNotFoundError("git executable is unavailable")
                 exists = (
                     subprocess.run(  # noqa: S603, S607
-                        ["git", "cat-file", "-e", f"{run_artifact.source_commit_sha}^{{commit}}"],  # noqa: S607
+                        [git_path, "cat-file", "-e", f"{run_artifact.source_commit_sha}^{{commit}}"],
                         check=False,
                         capture_output=True,
                         timeout=5.0,
@@ -435,12 +439,12 @@ class ResultBundleConsistencyVerifier:
                     exists
                     and subprocess.run(  # noqa: S603, S607
                         [
-                            "git",  # noqa: S607
+                            git_path,
                             "merge-base",
                             "--is-ancestor",
                             run_artifact.source_commit_sha,
                             "HEAD",
-                        ],  # noqa: S607
+                        ],
                         check=False,
                         capture_output=True,
                         timeout=5.0,
@@ -451,13 +455,13 @@ class ResultBundleConsistencyVerifier:
                     ancestor
                     and subprocess.run(  # noqa: S603, S607
                         [
-                            "git",  # noqa: S607
+                            git_path,
                             "diff",
                             "--quiet",
                             f"{run_artifact.source_commit_sha}..HEAD",
                             "--",
                             *semantic_paths,
-                        ],  # noqa: S607
+                        ],
                         check=False,
                         capture_output=True,
                         timeout=5.0,
