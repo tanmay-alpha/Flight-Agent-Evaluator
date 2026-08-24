@@ -435,7 +435,7 @@ class ResultBundleConsistencyVerifier:
                     exists
                     and subprocess.run(  # noqa: S603, S607
                         [
-                            "git",
+                            "git",  # noqa: S607
                             "merge-base",
                             "--is-ancestor",
                             run_artifact.source_commit_sha,
@@ -451,7 +451,7 @@ class ResultBundleConsistencyVerifier:
                     ancestor
                     and subprocess.run(  # noqa: S603, S607
                         [
-                            "git",
+                            "git",  # noqa: S607
                             "diff",
                             "--quiet",
                             f"{run_artifact.source_commit_sha}..HEAD",
