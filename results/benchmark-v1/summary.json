@@ -4,15 +4,15 @@
   "task_success_rate": 0.4722222222222222,
   "safety_pass_rate": 1.0,
   "evaluator_error_rate": 0.0,
-  "average_overall_score": 0.6267460317460319,
+  "average_overall_score": 0.6267460317460318,
   "agent_pass_rates": {
     "scripted-oracle": 1.0,
-    "naive-baseline": 0.4166666666666667,
-    "no-op-baseline": 0.0
+    "no-op-baseline": 0.0,
+    "naive-baseline": 0.4166666666666667
   },
   "agent_average_scores": {
     "scripted-oracle": 0.9866269841269841,
-    "naive-baseline": 0.6436111111111112,
-    "no-op-baseline": 0.25000000000000006
+    "no-op-baseline": 0.25000000000000006,
+    "naive-baseline": 0.6436111111111112
   }
 }

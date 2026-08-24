@@ -2,9 +2,9 @@
 
 - **Benchmark ID**: `benchmark-v1` (v1.0.0)
 - **Package Version**: `0.2.0`
-- **Source Tree Digest**: `a9e1672884ec155e7e730423561310c1c05318bf49514f267a2e255334f535fb` (source-tree-v1)
-- **Canonical Generation Command**: `flight-evaluator benchmark run --manifest builtin:benchmark-v1 --agents scripted-oracle,naive-baseline,no-op-baseline --output results/benchmark-v1`
-- **Source Commit SHA**: `a3d7f00394e57bdc22cf10e07256b06bcfe09355`
+- **Source Tree Digest**: `6b10400f8e19c2ec191c33888e7bdd640f1b5b26cda5cfcebcaf6d62eaef4895` (source-tree-v1)
+- **Canonical Generation Command**: `flight-evaluator benchmark run --manifest builtin:benchmark-v1 --agents scripted-oracle,no-op-baseline,naive-baseline --output results/benchmark-v1`
+- **Source Commit SHA**: `4bd8418ba630a7eb717651c37fe48c4143b21393`
 - **Manifest Digest**: `5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1`
 - **Run Semantic ID**: `bm_run_affc708ed0a1b8ac`
 - **Scenario Count**: 24
@@ -19,8 +19,8 @@
 | Agent ID | Task Success Rate | Safety Pass Rate | Average Overall Score | Total Runs |
 |---|---|---|---|---|
 | `scripted-oracle` | 100.0% | 100.0% | 0.987 | 24 |
-| `naive-baseline` | 41.7% | 100.0% | 0.644 | 24 |
 | `no-op-baseline` | 0.0% | 100.0% | 0.250 | 24 |
+| `naive-baseline` | 41.7% | 100.0% | 0.644 | 24 |
 
 ## Limitations & Evaluation Scope
 
