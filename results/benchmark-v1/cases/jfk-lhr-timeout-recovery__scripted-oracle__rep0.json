@@ -9,7 +9,7 @@
   "agent_id": "scripted-oracle",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
-  "seed": 99,
+  "seed": 42,
   "repetition_index": 0,
   "task_success": true,
   "safety_pass": true,
@@ -25,9 +25,9 @@
     "EFFICIENCY.REDUNDANT_CALL",
     "EFFICIENCY.REDUNDANT_CALL"
   ],
-  "run_id": "81e113cb-f2f3-5f67-9068-2785b522f44c",
-  "journal_digest": "06b6636671cad735812bf0063863cc0edf9eadcf9d99f82e5c8014b530081446",
+  "run_id": "956f6eaa-8aba-5f78-b441-fcb2b79859f0",
+  "journal_digest": "c849034a60ea26c0a85d9f0d9f36d6b61fbe444dc7515e7c5795c29e5e1841d4",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 2.3336999875027686,
-  "semantic_result_digest": "f2f6d110037ed8f1bfa96822b8ca7873be30467ba389b4867c61ba8f8d7bb4bb"
+  "wall_time_ms": 2.2628000006079674,
+  "semantic_result_digest": "6d8ff6f2730c9fdb876bb464c6c10736c6620c98ff9f438dc1224f300f6b476d"
 }

@@ -21,9 +21,9 @@
     "efficiency": 1.0
   },
   "failure_codes": [],
-  "run_id": "b8511c9b-cde4-59e5-93f6-2c7a87b9a6c0",
-  "journal_digest": "e2ca80beac1182356737a56cad6cc8ba992569a6199f65fd196cc515501785e3",
+  "run_id": "2d32da29-e77d-5941-a693-c146a286f1a6",
+  "journal_digest": "2f4e63d6af2621abb9026a648c64d1e8bc5ccdb471c7bf1d3145c7607612f65a",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.3904999941587448,
-  "semantic_result_digest": "c49fe4c1e0080ebb6b4d588f07628e1f6feb10b9f23fbaaac9f1cbaabcfc5c37"
+  "wall_time_ms": 1.2272000021766871,
+  "semantic_result_digest": "0e42f0658a88e345bcb5c9645f8334e5a6ec21d14de2e529ce69d07776ce2c51"
 }
