@@ -94,7 +94,7 @@ def test_validator_missing_manifest_file(tmp_path: Path) -> None:
     assert any(e.code == "MANIFEST_NOT_FOUND" for e in report.errors)
 
 
-def test_results_persistence_atomic(tmp_path: Path) -> None:
+def test_results_persistence_verified_bundle(tmp_path: Path) -> None:
     metrics = BenchmarkAggregateMetrics(
         total_cases=1,
         total_runs=1,
@@ -133,13 +133,14 @@ def test_results_persistence_atomic(tmp_path: Path) -> None:
         manifest_digest="1" * 64,
         package_version="0.2.0",
         source_tree_digest="d" * 64,
+        generation_command="flight-evaluator benchmark run",
         scenario_count=1,
         total_runs=1,
         metrics=metrics,
         case_results=[case_res],
     )
     out_dir = tmp_path / "atomic_out"
-    artifact.persist_atomic(out_dir)
+    artifact.persist_verified_bundle(out_dir)
 
     assert (out_dir / "run.json").is_file()
     assert (out_dir / "summary.json").is_file()
@@ -189,6 +190,7 @@ def test_report_generation() -> None:
         manifest_digest="1" * 64,
         package_version="0.2.0",
         source_tree_digest="d" * 64,
+        generation_command="flight-evaluator benchmark run",
         scenario_count=1,
         total_runs=1,
         metrics=metrics,
