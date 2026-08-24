@@ -321,12 +321,18 @@ def test_case_digest_binds_run_id_and_declares_its_version(tmp_path: Path) -> No
     bundle, raw_run, _disk, _disk_file = _copied_matching_case_bundle(tmp_path)
     original = BenchmarkCaseResult.model_validate(raw_run["case_results"][0])
     changed_run_id = original.model_copy(update={"run_id": "00000000-0000-5000-8000-000000000001"})
+    changed_agent = original.model_copy(update={"agent_id": "substituted-agent"})
+    changed_seed = original.model_copy(update={"seed": original.seed + 1})
+    changed_journal = original.model_copy(update={"journal_digest": "0" * 64})
     changed_wall_time = original.model_copy(update={"wall_time_ms": 999.0})
 
     assert benchmark_results.CASE_RESULT_DIGEST_VERSION == "benchmark-case-result-v2"
     assert (
         changed_run_id.compute_semantic_result_digest() != original.compute_semantic_result_digest()
     )
+    assert changed_agent.compute_semantic_result_digest() != original.compute_semantic_result_digest()
+    assert changed_seed.compute_semantic_result_digest() != original.compute_semantic_result_digest()
+    assert changed_journal.compute_semantic_result_digest() != original.compute_semantic_result_digest()
     assert (
         changed_wall_time.compute_semantic_result_digest()
         == original.compute_semantic_result_digest()
@@ -367,12 +373,57 @@ def test_valid_looking_wrong_seed_fails_execution_domain(tmp_path: Path) -> None
     assert "BND-16-CASE-EXECUTION-DOMAIN" in _failed_ids(report)
 
 
+def test_valid_looking_wrong_repetition_fails_execution_domain(tmp_path: Path) -> None:
+    """A deterministic ID cannot authorize an undeclared repetition coordinate."""
+    bundle, raw_run, disk, disk_file = _copied_matching_case_bundle(tmp_path)
+    embedded = raw_run["case_results"][0]
+    changed_repetition = 1
+    replacement_id = BenchmarkExecutionIdentity(
+        benchmark_id=embedded["benchmark_id"],
+        benchmark_version=embedded["benchmark_version"],
+        manifest_digest=embedded["manifest_digest"],
+        scenario_id=embedded["scenario_id"],
+        scenario_version=embedded["scenario_version"],
+        scenario_resource_digest=embedded["scenario_resource_digest"],
+        expectation_resource_digest=embedded["expectation_resource_digest"],
+        agent_id=embedded["agent_id"],
+        agent_version=embedded["agent_version"],
+        agent_configuration_digest=embedded["agent_configuration_digest"],
+        execution_seed=embedded["seed"],
+        repetition_index=changed_repetition,
+    ).deterministic_run_id()
+    embedded["repetition_index"] = disk["repetition_index"] = changed_repetition
+    embedded["run_id"] = disk["run_id"] = replacement_id
+    replacement_digest = BenchmarkCaseResult.model_validate(
+        embedded
+    ).compute_semantic_result_digest()
+    embedded["semantic_result_digest"] = disk["semantic_result_digest"] = replacement_digest
+    _write_case_pair(bundle, raw_run, disk, disk_file)
+
+    report = ResultBundleConsistencyVerifier().verify_bundle(bundle, _MANIFEST)
+
+    assert report.valid is False
+    assert "BND-16-CASE-EXECUTION-DOMAIN" in _failed_ids(report)
+
+
 def test_missing_valid_case_fails_exact_execution_matrix(tmp_path: Path) -> None:
     """The verifier requires every declared scenario-agent-seed-repetition coordinate."""
     bundle, raw_run, _disk, disk_file = _copied_matching_case_bundle(tmp_path)
     raw_run["case_results"].pop(0)
     disk_file.unlink()
     _write_case_pair(bundle, raw_run, {}, disk_file)
+
+    report = ResultBundleConsistencyVerifier().verify_bundle(bundle, _MANIFEST)
+
+    assert report.valid is False
+    assert "BND-17-EXECUTION-MATRIX" in _failed_ids(report)
+
+
+def test_extra_valid_case_fails_exact_execution_matrix(tmp_path: Path) -> None:
+    """A duplicated otherwise-valid case cannot expand the declared matrix."""
+    bundle, raw_run, _disk, _disk_file = _copied_matching_case_bundle(tmp_path)
+    raw_run["case_results"].append(raw_run["case_results"][0].copy())
+    (bundle / "run.json").write_text(json.dumps(raw_run), encoding="utf-8")
 
     report = ResultBundleConsistencyVerifier().verify_bundle(bundle, _MANIFEST)
 
