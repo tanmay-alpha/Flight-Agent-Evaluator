@@ -2,9 +2,9 @@
 
 - **Benchmark ID**: `benchmark-v1` (v1.0.0)
 - **Package Version**: `0.3.0`
-- **Source Tree Digest**: `8a39de2eb9673dee5e14f473781ae760351e6e5b1c371d0804eaefac2609c68e` (source-tree-v1)
+- **Source Tree Digest**: `d29774e7deb6dcbb60b4f9cb909bdc78690d87b97860480b5a07f4a94d9e13aa` (source-tree-v1)
 - **Canonical Generation Command**: `flight-evaluator benchmark run --manifest builtin:benchmark-v1 --agents scripted-oracle,no-op-baseline,naive-baseline,unsafe-baseline --repetitions 1 --output results/benchmark-v1`
-- **Source Commit SHA**: `6ecbdf1d88e58439a9dc83e5d8b7ce2784cd4045`
+- **Source Commit SHA**: `a23eeab0898507aef91a66d22298bf40528b911c`
 - **Manifest Digest**: `a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6`
 - **Run Semantic ID**: `bm_run_56765103dbcf460e`
 - **Scenario Count**: 24
