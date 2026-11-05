@@ -12,6 +12,7 @@ from flight_agent_evaluator.judges.contracts import (
     JudgeCriterion,
     JudgeExchange,
     JudgeExchangeManifest,
+    JudgeMode,
     JudgeValidationStatus,
     TrustedObservation,
 )
@@ -20,7 +21,7 @@ from flight_agent_evaluator.judges.evidence import (
     build_evidence_package,
     build_evidence_package_from_scorecard,
 )
-from flight_agent_evaluator.judges.fake import FakeJudgeClient
+from flight_agent_evaluator.judges.fake import FAKE_JUDGE_WARNING, FakeJudgeClient
 from flight_agent_evaluator.judges.prompt import build_system_prompt, build_user_message
 from flight_agent_evaluator.judges.replay import ReplayJudgeClient
 from flight_agent_evaluator.judges.rubric import DEFAULT_RUBRIC, get_anchor
@@ -65,6 +66,30 @@ def test_fake_judge_client() -> None:
     assert result.criterion_score(JudgeCriterion.GROUNDEDNESS) == 4
     assert result.criterion_score(JudgeCriterion.CLARITY) == 2  # default
     assert result.validation_status == JudgeValidationStatus.UNVALIDATED
+
+
+def test_fake_judge_results_are_marked_fake_and_low_confidence() -> None:
+    pkg = build_evidence_package(
+        scenario_id="scenario-1",
+        run_id="run-123",
+        public_task="Find flight to LHR",
+        final_response="Found flight BA178",
+    )
+    result = asyncio.run(FakeJudgeClient().judge(pkg))
+
+    assert result.mode is JudgeMode.FAKE
+    assert result.mode != JudgeMode.REPLAY
+    assert result.judge_model_id is None
+    for criterion_result in result.criteria_results:
+        assert criterion_result.confidence == "low"
+        assert FAKE_JUDGE_WARNING in criterion_result.warnings
+        assert "placeholder" in criterion_result.rationale
+    assert result.model_dump(mode="json")["mode"] == "fake"
+
+
+def test_fake_judge_cannot_claim_human_calibration() -> None:
+    with pytest.raises(ValueError, match="HUMAN_CALIBRATED"):
+        FakeJudgeClient(validation_status=JudgeValidationStatus.HUMAN_CALIBRATED)
 
 
 def test_replay_judge_client() -> None:
