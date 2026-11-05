@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import tempfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,15 +29,16 @@ from flight_agent_evaluator.contracts.model import (
 )
 from flight_agent_evaluator.judges.contracts import (
     JudgeCriterion,
-    JudgeCriterionResult,
     JudgeEvidencePackage,
     JudgeExchange,
     JudgeExchangeManifest,
     JudgeRequestFingerprintV1,
-    JudgeResult,
     TrustedObservation,
 )
-from flight_agent_evaluator.judges.errors import JudgeReplayNotFoundError
+from flight_agent_evaluator.judges.errors import (
+    JudgeReplayCorruptedError,
+    JudgeReplayNotFoundError,
+)
 from flight_agent_evaluator.judges.replay import ReplayJudgeClient
 from flight_agent_evaluator.judges.resolver import VerifiedEvidenceResolver
 from flight_agent_evaluator.recording.contracts import (
@@ -68,46 +70,17 @@ from flight_agent_evaluator.replay.projection import (
 
 
 def _create_clean_journal(run_id: str) -> HashChainJournal:
+    """Journal produced by the real ScenarioRunner for jfk-lhr-delay, re-keyed to ``run_id``."""
+    from flight_agent_evaluator.engine.runner import ScenarioRunner
+    from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
+
+    loaded = ScenarioLoader().load_from_path(Path("resources/scenarios/jfk-lhr-delay.json"))
+    with tempfile.TemporaryDirectory() as tmp:
+        recording = asyncio.run(ScenarioRunner().run(loaded, output_dir=Path(tmp)))
+        source = FileRecordingStore(Path(tmp)).read_recording(str(recording.run_id))
     j = HashChainJournal()
-    j.append_event(
-        "run_started",
-        run_id,
-        "c0",
-        datetime(2026, 7, 28, 10, 0, 0, tzinfo=UTC),
-        {"scenario_id": "jfk-lhr-delay", "seed": 42},
-    )
-    j.append_event(
-        "tool_call",
-        run_id,
-        "c1",
-        datetime(2026, 7, 28, 10, 0, 1, tzinfo=UTC),
-        {
-            "tool_name": "flight.get_status",
-            "arguments": {"flight_id": "AS142"},
-            "call_id": "call-1",
-        },
-    )
-    j.append_event(
-        "tool_result",
-        run_id,
-        "c1",
-        datetime(2026, 7, 28, 10, 0, 2, tzinfo=UTC),
-        {"call_id": "call-1", "status": "SUCCESS", "value": {"status": "DELAYED"}},
-    )
-    j.append_event(
-        "final_response",
-        run_id,
-        "c2",
-        datetime(2026, 7, 28, 10, 0, 3, tzinfo=UTC),
-        {"response": "Flight AS142 is delayed."},
-    )
-    j.append_event(
-        "run_completed",
-        run_id,
-        "c3",
-        datetime(2026, 7, 28, 10, 0, 4, tzinfo=UTC),
-        {"stop_reason": "completed"},
-    )
+    for entry in source.entries:
+        j.append_event(entry.type, run_id, entry.correlation_id, entry.time, dict(entry.payload))
     return j
 
 
@@ -305,7 +278,6 @@ def test_path_traversal_escapes_rejected(tmp_path: Path):
 async def test_replay_model_client_fingerprint_and_response_digest_integrity():
     """R-INV-11 & 12: ReplayModelClient verifies request fingerprint and response digest."""
     req = ModelRequest(
-        provider="replay",
         model_id="gpt-4o-mini",
         prompt_policy_id="default",
         prompt_policy_version="1.0.0",
@@ -396,24 +368,19 @@ async def test_judge_replay_client_strict_binding():
     )
     fp = fp_obj.canonical_fingerprint()
 
-    judge_result = JudgeResult(
-        schema_version="judge-schema-v1",
-        package_id="pkg-1",
-        package_digest=pkg_digest,
-        mode="replay",
-        criteria_results=[
-            JudgeCriterionResult(
-                criterion=JudgeCriterion.GROUNDEDNESS,
-                score=4,
-                evidence_ids=["obs-1"],
-                rationale="Accurate report matching observation",
-            )
-        ],
-        overall_score=4.0,
-        created_at=datetime.now(UTC),
+    resp_text = json.dumps(
+        {
+            "criteria_results": [
+                {
+                    "criterion": criterion.value,
+                    "score": 4,
+                    "evidence_ids": ["obs-1"],
+                    "rationale": "Accurate report matching observation",
+                }
+                for criterion in JudgeCriterion
+            ]
+        }
     )
-
-    resp_text = json.dumps(judge_result.model_dump(mode="json"))
     resp_digest = hashlib.sha256(resp_text.encode("utf-8")).hexdigest()
 
     exchange = JudgeExchange(
@@ -424,8 +391,6 @@ async def test_judge_replay_client_strict_binding():
         request_messages=[{"role": "user", "content": "Grade"}],
         response_text=resp_text,
         response_digest=resp_digest,
-        parsed_result=judge_result,
-        parsed_result_digest=judge_result.canonical_digest(),
         model_id="gpt-4o",
         recorded_at=datetime.now(UTC),
     )
@@ -440,8 +405,8 @@ async def test_judge_replay_client_strict_binding():
     res = await client.judge(pkg, rubric_version="judge-rubric-v1", prompt_policy_id="standard")
     assert res.overall_score == 4.0
 
-    # Mismatched rubric version rejected
-    with pytest.raises(JudgeReplayNotFoundError, match="Rubric version mismatch"):
+    # A different rubric version is a different request: no recorded exchange.
+    with pytest.raises(JudgeReplayNotFoundError):
         await client.judge(pkg, rubric_version="judge-rubric-v2", prompt_policy_id="standard")
 
     # Tampered raw response text rejected
@@ -452,7 +417,7 @@ async def test_judge_replay_client_strict_binding():
         created_at=datetime.now(UTC),
     )
     tampered_client = ReplayJudgeClient(tampered_manifest)
-    with pytest.raises(JudgeReplayNotFoundError, match="raw response digest mismatch"):
+    with pytest.raises(JudgeReplayCorruptedError, match="raw response digest mismatch"):
         await tampered_client.judge(
             pkg, rubric_version="judge-rubric-v1", prompt_policy_id="standard"
         )
@@ -462,27 +427,29 @@ def test_verified_evidence_resolver():
     """VerifiedEvidenceResolver maps evidence observations back to journal entries."""
     run_id = str(uuid.uuid4())
     j = _create_clean_journal(run_id)
+    first_call = next(e for e in j.entries if e.type == "tool_call")
+    call_id = first_call.payload["call_id"]
 
     obs1 = TrustedObservation(
         evidence_id="obs-1",
-        source="seq:2",
+        source=f"seq:{first_call.seq}",
         description="Tool call for status",
-        value='{"flight_id": "AS142"}',
+        value=json.dumps(first_call.payload["arguments"]),
     )
     obs2 = TrustedObservation(
         evidence_id="obs-2",
-        source="call:call-1",
+        source=f"call:{call_id}",
         description="Call ID reference",
-        value='{"status": "SUCCESS"}',
+        value='{"status": "success"}',
     )
 
     resolver = VerifiedEvidenceResolver(j)
     r1 = resolver.resolve_observation(obs1)
-    assert r1["resolved_entry_seq"] == 2
+    assert r1["resolved_entry_seq"] == first_call.seq
     assert r1["resolved_entry_type"] == "tool_call"
 
     r2 = resolver.resolve_observation(obs2)
-    assert r2["resolved_entry_seq"] == 2
+    assert r2["resolved_entry_seq"] == first_call.seq
     assert r2["resolved_entry_type"] == "tool_call"
 
 

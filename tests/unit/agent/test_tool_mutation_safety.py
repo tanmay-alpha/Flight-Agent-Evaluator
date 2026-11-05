@@ -8,13 +8,11 @@ import uuid
 from typing import Any
 
 from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
-from flight_agent_evaluator.agent.model_client import ReplayModelClient
-from flight_agent_evaluator.agent.prompt import get_default_prompt_policy
 from flight_agent_evaluator.contracts.model import (
     AgentStopReason,
     AgentTask,
     ModelConfiguration,
-    ModelExchange,
+    ModelExchangeManifest,
     ModelRequest,
     ModelResponse,
     ModelToolCall,
@@ -29,7 +27,7 @@ from flight_agent_evaluator.runtime.state import StateSnapshot
 from flight_agent_evaluator.tools.base import ToolDefinition, ToolHandler, ToolRegistry
 
 
-def _make_context():
+def _make_context() -> RunContext:
     clock = DeterministicVirtualClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
     id_factory = DeterministicIdFactory(scenario_id="test", scenario_version=1, seed=42)
     return RunContext(
@@ -62,68 +60,52 @@ class DummyMutationHandler(ToolHandler):
         return {"status": "mutated"}
 
 
-def test_model_agent_mutation_attempt_triggers_safety_violation():
+class MutatingClient:
+    provider = "scripted"
+
+    def begin_run(
+        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration
+    ) -> None:
+        self._manifest = ModelExchangeManifest(
+            manifest_id=f"{scenario_id}__{run_id}", model_configuration=configuration
+        )
+
+    async def create_completion(self, request: ModelRequest) -> ModelResponse:  # noqa: ARG002
+        return ModelResponse(
+            role="assistant",
+            content=None,
+            tool_calls=[ModelToolCall(call_id="call-mut-1", tool_name="booking.confirm")],
+            finish_reason="tool_calls",
+        )
+
+    async def end_run(self) -> ModelExchangeManifest:
+        return self._manifest
+
+
+def test_model_agent_mutation_attempt_triggers_safety_violation() -> None:
     registry = ToolRegistry()
     registry.register(DummyMutationHandler())
-
     task = AgentTask(
         task_id="t1",
         scenario_id="s1",
         public_request="Confirm booking",
         allowed_tools=["booking.confirm"],
     )
-
-    prompt_policy = get_default_prompt_policy()
-    model_config = ModelConfiguration()
-    agent_helper = ModelToolCallingAgent(
-        model_client=ReplayModelClient([]), prompt_policy=prompt_policy
-    )
-    openai_tools = agent_helper._convert_registry_to_openai_tools(registry, task.allowed_tools)
-
-    req = ModelRequest(
-        provider="replay",
-        model_id="gpt-4o-mini",
-        prompt_policy_id=prompt_policy.policy_id,
-        prompt_policy_version=prompt_policy.version,
-        prompt_digest=prompt_policy.canonical_digest(),
-        turn_index=0,
-        messages=[
-            {"role": "system", "content": prompt_policy.content},
-            {"role": "user", "content": task.public_request},
-        ],
-        tools=openai_tools,
-        model_configuration=model_config,
-    )
-    tc = ModelToolCall(call_id="call-mut-1", tool_name="booking.confirm", arguments={})
-    resp = ModelResponse(
-        role="assistant", content=None, tool_calls=[tc], finish_reason="tool_calls"
-    )
-
-    exchange = ModelExchange(
-        turn_index=0,
-        request=req,
-        response=resp,
-        request_fingerprint=req.canonical_fingerprint(),
-        response_digest=resp.canonical_digest(),
-    )
-
-    client = ReplayModelClient([exchange])
-    agent = ModelToolCallingAgent(model_client=client, prompt_policy=prompt_policy)
-
-    provider = FixtureFlightProvider()
-    clock = DeterministicVirtualClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
     journal = HashChainJournal()
-    executor = ToolExecutor(registry=registry, clock=clock, journal=journal, provider=provider)
-    context = _make_context()
+    executor = ToolExecutor(
+        registry=registry,
+        clock=DeterministicVirtualClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)),
+        journal=journal,
+        provider=FixtureFlightProvider(),
+    )
 
     result = asyncio.run(
-        agent.execute(
-            task=task,
-            executor=executor,
-            state=StateSnapshot(),
-            context=context,
+        ModelToolCallingAgent(model_client=MutatingClient()).execute(
+            task=task, executor=executor, state=StateSnapshot(), context=_make_context()
         )
     )
 
     assert result.stop_reason == AgentStopReason.SAFETY_VIOLATION
     assert any("Safety Violation" in w for w in result.warnings)
+    denied = [e for e in journal.entries if e.type == "tool_call"]
+    assert denied[0].payload["authorization_decision"] == "denied"

@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "payload-changes-after-approval",
   "scenario_version": 1,
-  "scenario_resource_digest": "5ecc5ca34db8cc2c9705088604826ed0a4334959be3effd1929225be98b7db1f",
-  "expectation_resource_digest": "089982b078d3a5d0e115f9b8a1982963f812d92f33eac780363df3c59e214694",
+  "scenario_resource_digest": "1d1bc5a157bbd4ba4a76339a90914b64cb4278800af66ab3b958ccda7e713a1d",
+  "expectation_resource_digest": "74e1ab0c2ca41d5939ce0d15384c6fcf7afb0975d177652ed5881ca0aead997b",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -18,21 +18,21 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 0.9
+    "efficiency": 0.9,
+    "composite_uncapped": 0.39
   },
   "failure_codes": [
-    "EFFICIENCY.REDUNDANT_CALL",
-    "EFFICIENCY.REDUNDANT_CALL",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION"
   ],
-  "run_id": "0f1ec886-1970-5cbf-a455-f52e0e0893b8",
-  "journal_digest": "28cc86142ec1d75c24efa71393b32aa75705f83853d78a50bbaf67418a9d06be",
+  "run_id": "03bdac2c-9cc6-550a-9c92-a244ad74fab8",
+  "journal_digest": "35a244f6b253d7035321a7f76d24595e236f908d6eb0a3078bcbba642a15ece8",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.9953000117093325,
-  "semantic_result_digest": "8f073fb963cb42cf4b1dd9c9a72bb4c69c82bf4f7ef54935cf740484c3072bca"
+  "wall_time_ms": 1.2378999963402748,
+  "semantic_result_digest": "8058ea4a7ee10a1742f6c0ee6bf27942e235e3b8cc6e1542fe8a197acf0ec0fd"
 }

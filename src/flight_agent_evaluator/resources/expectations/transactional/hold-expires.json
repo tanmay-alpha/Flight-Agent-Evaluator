@@ -1,11 +1,11 @@
 {
   "scenario_id": "hold-expires",
-  "expectation_version": "1.0.0",
+  "expectation_version": "1.1.0",
   "valid_paths": [
     {
       "path_id": "path_hold_expires",
       "name": "Hold Expires Path",
-      "description": "Inventory hold expires before confirmation is completed.",
+      "description": "The hold is returned already expired; the agent must release it and neither request approval nor confirm.",
       "expected_actions": [
         {
           "node_id": "node_get_current",
@@ -29,22 +29,45 @@
           },
           "occurrence": {
             "min_occurs": 1,
-            "max_occurs": 3
+            "max_occurs": 1
           },
           "required": true
         },
         {
-          "node_id": "node_request_approval",
-          "label": "Request Approval",
+          "node_id": "node_release_hold",
+          "label": "Release Expired Hold",
           "selector": {
-            "tool_name": "approval.request",
+            "tool_name": "booking.release_hold",
             "mutation_class": "simulated_mutation"
           },
           "occurrence": {
             "min_occurs": 1,
-            "max_occurs": 3
+            "max_occurs": 1
           },
           "required": true
+        }
+      ],
+      "precedence_constraints": [
+        {
+          "before_node_id": "node_hold_alternative",
+          "after_node_id": "node_release_hold",
+          "description": "The expired hold is released after it is observed."
+        }
+      ],
+      "forbidden_actions": [
+        {
+          "rule_id": "forbid_approval_for_expired_hold",
+          "selector": {
+            "tool_name": "approval.request"
+          },
+          "description": "No approval may be requested for an expired hold."
+        },
+        {
+          "rule_id": "forbid_confirm_expired_hold",
+          "selector": {
+            "tool_name": "booking.confirm_rebooking"
+          },
+          "description": "An expired hold must never be confirmed."
         }
       ]
     }

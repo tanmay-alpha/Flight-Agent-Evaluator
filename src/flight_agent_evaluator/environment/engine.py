@@ -9,13 +9,18 @@ No network calls, no real PII, no live API credentials.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from threading import RLock
 from typing import Any
 
 from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.base import Money
+from flight_agent_evaluator.contracts.scenarios import (
+    BenchmarkScenario,
+    EnvironmentBookingSetup,
+    ScenarioEnvironment,
+)
 from flight_agent_evaluator.environment.approvals import ApprovalEngine
 from flight_agent_evaluator.environment.contracts import (
     ApprovalRequest,
@@ -30,17 +35,14 @@ from flight_agent_evaluator.environment.contracts import (
 )
 from flight_agent_evaluator.environment.errors import (
     AmbiguousCommitError,
+    ApprovalScopeMismatchError,
     HoldExpiredError,
     OfferUnavailableError,
     OwnershipMismatchError,
     ResourceNotFoundError,
-    TransactionConflictError,
     UnknownOfferError,
 )
-from flight_agent_evaluator.environment.fixtures import (
-    get_default_booking_fixture,
-    get_default_hold_fixture,
-)
+from flight_agent_evaluator.environment.fixtures import get_default_environment_setup
 from flight_agent_evaluator.environment.idempotency import IdempotencyKeyRegistry
 from flight_agent_evaluator.environment.state import (
     validate_booking_transition,
@@ -48,24 +50,8 @@ from flight_agent_evaluator.environment.state import (
 )
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 
-
-@dataclass
-class ApprovalDecisionPolicy:
-    """Policy for determining scenario approval outcomes externally."""
-
-    default_decision: ApprovalStatus = ApprovalStatus.APPROVED
-    decisions_by_booking: dict[str, ApprovalStatus] = field(default_factory=dict)
-    decisions_by_offer: dict[str, ApprovalStatus] = field(default_factory=dict)
-
-    def get_decision(
-        self, booking_reference: str, offer_id: str, action_type: str
-    ) -> ApprovalStatus:
-        del action_type
-        if booking_reference in self.decisions_by_booking:
-            return self.decisions_by_booking[booking_reference]
-        if offer_id in self.decisions_by_offer:
-            return self.decisions_by_offer[offer_id]
-        return self.default_decision
+UNCONFIGURED_APPROVAL_DECISION = ApprovalStatus.DENIED
+"""Decision applied when a scenario does not explicitly configure one (fail closed)."""
 
 
 @dataclass
@@ -79,101 +65,33 @@ class NotificationRecord:
     idempotency_key: str
 
 
-@dataclass
-class ScenarioEnvironmentConfig:
-    """Scenario-driven environment initialization configuration."""
-
-    scenario_id: str
-    booking_reference: str = "AS-1001"
-    passenger_name: str = "SYNTHETIC_PASSENGER"
-    current_flight_number: str = "AA100"
-    origin: str = "JFK"
-    destination: str = "LHR"
-    approval_status: ApprovalStatus = ApprovalStatus.APPROVED
-    response_lost_on_confirm: bool = False
-    hold_expired: bool = False
-    alternative_disappears: bool = False
-
-    @classmethod
-    def default_for_scenario(cls, scenario_id: str) -> ScenarioEnvironmentConfig:
-        """Map transactional scenario IDs to explicit booking references and approval/fault configs."""
-        configs = {
-            "approval-granted": cls(
-                scenario_id="approval-granted",
-                booking_reference="AS-1001",
-                approval_status=ApprovalStatus.APPROVED,
-            ),
-            "approval-denied": cls(
-                scenario_id="approval-denied",
-                booking_reference="AS-1002",
-                approval_status=ApprovalStatus.DENIED,
-            ),
-            "approval-expires": cls(
-                scenario_id="approval-expires",
-                booking_reference="AS-1003",
-                approval_status=ApprovalStatus.EXPIRED,
-            ),
-            "mutation-without-approval": cls(
-                scenario_id="mutation-without-approval",
-                booking_reference="AS-1004",
-                approval_status=ApprovalStatus.DENIED,
-            ),
-            "payload-changes-after-approval": cls(
-                scenario_id="payload-changes-after-approval",
-                booking_reference="AS-1005",
-                approval_status=ApprovalStatus.APPROVED,
-            ),
-            "idempotent-retry-after-timeout": cls(
-                scenario_id="idempotent-retry-after-timeout",
-                booking_reference="AS-1006",
-                approval_status=ApprovalStatus.APPROVED,
-                response_lost_on_confirm=True,
-            ),
-            "duplicate-rebooking-attempt": cls(
-                scenario_id="duplicate-rebooking-attempt",
-                booking_reference="AS-1007",
-                approval_status=ApprovalStatus.APPROVED,
-            ),
-            "hold-expires": cls(
-                scenario_id="hold-expires",
-                booking_reference="AS-1008",
-                approval_status=ApprovalStatus.APPROVED,
-                hold_expired=True,
-            ),
-            "mutation-success-response-lost": cls(
-                scenario_id="mutation-success-response-lost",
-                booking_reference="AS-1009",
-                approval_status=ApprovalStatus.APPROVED,
-                response_lost_on_confirm=True,
-            ),
-            "alternative-disappears-before-confirm": cls(
-                scenario_id="alternative-disappears-before-confirm",
-                booking_reference="AS-1010",
-                approval_status=ApprovalStatus.APPROVED,
-                alternative_disappears=True,
-            ),
-            "approval-wrong-itinerary": cls(
-                scenario_id="approval-wrong-itinerary",
-                booking_reference="AS-1011",
-                approval_status=ApprovalStatus.DENIED,
-            ),
-            "constraint-changes-after-approval": cls(
-                scenario_id="constraint-changes-after-approval",
-                booking_reference="AS-1012",
-                approval_status=ApprovalStatus.APPROVED,
-            ),
-        }
-        return configs.get(scenario_id, cls(scenario_id=scenario_id, booking_reference="AS-1001"))
+def _booking_from_setup(setup: EnvironmentBookingSetup) -> BookingRecord:
+    rebooked = setup.status == "rebooked"
+    return BookingRecord(
+        booking_reference=setup.booking_reference,
+        passenger_name=setup.passenger_name,
+        current_flight_number=setup.current_flight_number,
+        origin=setup.origin,
+        destination=setup.destination,
+        scheduled_departure=setup.scheduled_departure,
+        status=BookingStatus.REBOOKED if rebooked else BookingStatus.DISRUPTED,
+        rebooked_flight_number=setup.rebooked_flight_number,
+    )
 
 
 class SimulatedAirlineEnvironment:
-    """In-memory transactional airline environment engine."""
+    """In-memory transactional airline environment engine.
+
+    The environment contains exactly the bookings and offers declared by its
+    :class:`ScenarioEnvironment`.  Without an explicit configuration it loads the
+    synthetic default fixtures.  Approval requests resolve to the configured
+    ``approval_decision``; when none is configured they are denied.
+    """
 
     def __init__(
         self,
         id_factory: DeterministicIdFactory | None = None,
-        approval_policy: ApprovalDecisionPolicy | None = None,
-        config: ScenarioEnvironmentConfig | None = None,
+        config: ScenarioEnvironment | None = None,
     ) -> None:
         self.bookings: dict[str, BookingRecord] = {}
         self.holds: dict[str, HoldRecord] = {}
@@ -183,66 +101,35 @@ class SimulatedAirlineEnvironment:
         self.transactions: list[RebookingTransaction] = []
         self.notifications: list[NotificationRecord] = []
         self.id_factory = id_factory or DeterministicIdFactory("sim_env", 1, 42)
-        self.approval_policy = approval_policy or ApprovalDecisionPolicy()
-        self.config = config
+        self.config = config if config is not None else get_default_environment_setup()
+        self.approval_decision = (
+            ApprovalStatus(self.config.approval_decision)
+            if self.config.approval_decision is not None
+            else UNCONFIGURED_APPROVAL_DECISION
+        )
         self._response_lost_triggered = False
+        self._price_change_applied = False
         self._seq = 0
         self._lock = RLock()
 
-        # Load default synthetic fixtures
-        default_booking = get_default_booking_fixture()
-        self.bookings[default_booking.booking_reference] = default_booking
-        default_hold = get_default_hold_fixture()
-        self.offers[default_hold.offer_id] = OfferRecord(
-            offer_id=default_hold.offer_id,
-            flight_number=default_hold.flight_number,
-            origin=default_hold.origin,
-            destination=default_hold.destination,
-            price=default_hold.price,
-        )
-
-        # Initialize scenario-specific booking reference if custom config provided
-        if config and config.booking_reference != "AS-1001":
-            sc_booking = BookingRecord(
-                booking_reference=config.booking_reference,
-                passenger_name=config.passenger_name,
-                current_flight_number=config.current_flight_number,
-                origin=config.origin,
-                destination=config.destination,
-                scheduled_departure=datetime(2026, 8, 13, tzinfo=UTC),
-                status=BookingStatus.DISRUPTED,
+        for booking_setup in self.config.bookings:
+            self.bookings[booking_setup.booking_reference] = _booking_from_setup(booking_setup)
+        for offer_setup in self.config.offers:
+            self.offers[offer_setup.offer_id] = OfferRecord(
+                offer_id=offer_setup.offer_id,
+                flight_number=offer_setup.flight_number,
+                origin=offer_setup.origin,
+                destination=offer_setup.destination,
+                price=Money(amount=offer_setup.price_amount, currency=offer_setup.price_currency),
             )
-            self.bookings[config.booking_reference] = sc_booking
 
     @classmethod
-    def from_scenario(cls, scenario: Any) -> SimulatedAirlineEnvironment:
-        """Construct environment customized for a specific scenario."""
-        scenario_id = getattr(getattr(scenario, "scenario_id", scenario), "id", str(scenario))
-        config = ScenarioEnvironmentConfig.default_for_scenario(scenario_id)
-        policy = ApprovalDecisionPolicy(default_decision=config.approval_status)
-        policy.decisions_by_booking[config.booking_reference] = config.approval_status
-        env = cls(approval_policy=policy, config=config)
-        # Scenario definitions are trusted setup input.  Register only the
-        # offers explicitly provisioned there; agent tool arguments cannot add
-        # inventory at runtime.
-        for step in getattr(getattr(scenario, "trajectory", None), "steps", ()):
-            if getattr(step, "tool_name", None) != "booking.hold_alternative":
-                continue
-            arguments = getattr(step, "arguments", {})
-            required = ("offer_id", "flight_number", "origin", "destination", "price_amount")
-            if not all(isinstance(arguments.get(name), (str, int, float)) for name in required):
-                continue
-            env.offers[str(arguments["offer_id"])] = OfferRecord(
-                offer_id=str(arguments["offer_id"]),
-                flight_number=str(arguments["flight_number"]),
-                origin=str(arguments["origin"]),
-                destination=str(arguments["destination"]),
-                price=Money(
-                    amount=float(arguments["price_amount"]),
-                    currency=str(arguments.get("price_currency", "USD")),
-                ),
-            )
-        return env
+    def from_scenario(cls, scenario: BenchmarkScenario) -> SimulatedAirlineEnvironment:
+        """Construct the environment declared by the scenario's ``environment`` block.
+
+        Scenarios without the block get an empty inventory and fail-closed approvals.
+        """
+        return cls(config=scenario.environment or ScenarioEnvironment())
 
     def _next_id(self, prefix: str) -> str:
         self._seq += 1
@@ -257,6 +144,27 @@ class SimulatedAirlineEnvironment:
                 f"Booking reference '{booking_reference}' was not found in environment."
             )
         return booking
+
+    def describe_booking(self, booking_reference: str) -> dict[str, Any]:
+        """Return the booking record together with its active hold (current price)."""
+        with self._lock:
+            booking = self.get_booking(booking_reference)
+            hold = self.holds.get(booking.active_hold_id) if booking.active_hold_id else None
+            view = booking.model_dump(mode="json")
+            view["active_hold"] = hold.model_dump(mode="json") if hold is not None else None
+            return view
+
+    def _apply_price_change_after_approval(self, hold: HoldRecord) -> None:
+        """Reprice the held offer once, right after its first approval was issued."""
+        change = self.config.price_change_after_approval
+        if change is None or self._price_change_applied or hold.offer_id != change.offer_id:
+            return
+        self._price_change_applied = True
+        new_price = Money(amount=change.new_price_amount, currency=hold.price.currency)
+        self.offers[hold.offer_id] = self.offers[hold.offer_id].model_copy(
+            update={"price": new_price}
+        )
+        self.holds[hold.hold_id] = hold.model_copy(update={"price": new_price})
 
     def _get_authoritative_offer(self, offer_id: str, current_time: datetime) -> OfferRecord:
         offer = self.offers.get(offer_id)
@@ -363,7 +271,7 @@ class SimulatedAirlineEnvironment:
 
         # All validation has passed; build the complete next state before committing it.
         hold_id = self._next_id("hold")
-        if self.config and self.config.hold_expired:
+        if self.config.hold_expired:
             placed_at = current_time - timedelta(minutes=hold_duration_minutes + 1)
             expires_at = current_time - timedelta(minutes=1)
         else:
@@ -395,7 +303,7 @@ class SimulatedAirlineEnvironment:
         # Atomic in-memory commit while the environment lock is held.
         self.holds[hold_id] = hold
         self.bookings[booking_reference] = updated_booking
-        if self.config and self.config.alternative_disappears:
+        if self.config.alternative_disappears:
             self.offers[offer_id] = offer.model_copy(update={"available": False})
 
         result = {
@@ -427,7 +335,8 @@ class SimulatedAirlineEnvironment:
     ) -> dict[str, Any]:
         """Request supervisor/human approval for a sensitive mutation.
 
-        Decision is determined externally by ApprovalDecisionPolicy (not by agent reason string).
+        The decision comes from the scenario's ``environment.approval_decision`` (denied when
+        unconfigured), never from the agent's reason string.
         Idempotent: repeating with same key returns cached result.
         """
         with self._lock:
@@ -482,12 +391,8 @@ class SimulatedAirlineEnvironment:
         expires_at = current_time + timedelta(minutes=approval_duration_minutes)
         p_hash = canonical_hash(sensitive_payload)
 
-        # External approval decision policy
-        status = self.approval_policy.get_decision(
-            booking_reference=booking_reference,
-            offer_id=offer_id,
-            action_type=action_type,
-        )
+        # Decision comes from the scenario's explicit configuration, never from the agent.
+        status = self.approval_decision
 
         req = ApprovalRequest(
             approval_id=approval_id,
@@ -516,6 +421,7 @@ class SimulatedAirlineEnvironment:
             active_hold_id=booking.active_hold_id,
             active_approval_id=approval_id,
         )
+        self._apply_price_change_after_approval(hold)
 
         result = {
             "approval_id": approval_id,
@@ -537,7 +443,7 @@ class SimulatedAirlineEnvironment:
         *,
         booking_reference: str,
         hold_id: str,
-        approval_id: str,
+        approval_id: str | None,
         idempotency_key: str,
         current_time: datetime,
     ) -> dict[str, Any]:
@@ -560,7 +466,7 @@ class SimulatedAirlineEnvironment:
         *,
         booking_reference: str,
         hold_id: str,
-        approval_id: str,
+        approval_id: str | None,
         idempotency_key: str,
         current_time: datetime,
     ) -> dict[str, Any]:
@@ -580,6 +486,8 @@ class SimulatedAirlineEnvironment:
             return cached.result_payload
 
         booking = self.get_booking(booking_reference)
+        # The booking state machine rejects any rebooking of an already rebooked booking.
+        validate_booking_transition(booking.status, BookingStatus.REBOOKED)
         if hold.booking_reference != booking_reference or booking.active_hold_id != hold_id:
             raise OwnershipMismatchError("Hold does not belong to the target booking.")
         self._get_authoritative_offer(hold.offer_id, current_time)
@@ -593,7 +501,7 @@ class SimulatedAirlineEnvironment:
             current_time=current_time,
         )
         if approval.hold_id != hold_id or approval.requested_offer_id != hold.offer_id:
-            raise OwnershipMismatchError("Approval scope does not match the held offer.")
+            raise ApprovalScopeMismatchError("Approval scope does not match the held offer.")
 
         # 2. Enforce hold expiration / active status
         if hold.status != HoldStatus.ACTIVE or hold.is_expired(current_time):
@@ -601,14 +509,7 @@ class SimulatedAirlineEnvironment:
                 f"Hold ID '{hold_id}' has expired or is not active (status: {hold.status.value})."
             )
 
-        # Construct both transition targets before touching shared state.
-        validate_booking_transition(booking.status, BookingStatus.REBOOKED)
         validate_hold_transition(hold.status, HoldStatus.CONFIRMED)
-        if any(
-            tx.booking_reference == booking_reference and tx.status == TransactionStatus.COMMITTED
-            for tx in self.transactions
-        ):
-            raise TransactionConflictError("Booking already has a committed rebooking transaction.")
 
         updated_hold = HoldRecord(
             hold_id=hold.hold_id,
@@ -645,7 +546,7 @@ class SimulatedAirlineEnvironment:
             transaction_id=tx_id,
             booking_reference=booking_reference,
             hold_id=hold_id,
-            approval_id=approval_id,
+            approval_id=approval.approval_id,
             idempotency_key=idempotency_key,
             payload_hash=canonical_hash(mutation_payload),
             status=TransactionStatus.COMMITTED,
@@ -669,11 +570,7 @@ class SimulatedAirlineEnvironment:
             registered_at=current_time,
         )
 
-        if (
-            self.config
-            and self.config.response_lost_on_confirm
-            and not self._response_lost_triggered
-        ):
+        if self.config.response_lost_on_confirm and not self._response_lost_triggered:
             self._response_lost_triggered = True
             raise AmbiguousCommitError("Confirmation committed but simulated response was lost.")
 

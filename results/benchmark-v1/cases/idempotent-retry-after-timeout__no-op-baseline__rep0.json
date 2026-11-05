@@ -1,10 +1,10 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "idempotent-retry-after-timeout",
   "scenario_version": 1,
-  "scenario_resource_digest": "59ba30e550198fd3fcc31b9d7be2d5e6483051edbc9905a5e56e3cd35b19c8e1",
+  "scenario_resource_digest": "56587f4a969198f9ef0f71f330997bd0ccc4f7ddccd9853d1a95158d801e94a1",
   "expectation_resource_digest": "114b5276d10e6d4becc2705de24af60582c16aa34172507e52562508f6eff3f0",
   "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
@@ -18,20 +18,18 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.4
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "PLANNING.MISSING_REQUIRED_ACTION",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "PLANNING.MISSING_REQUIRED_ACTION"
   ],
-  "run_id": "b90b775d-aedc-5409-9374-0591b08c9b01",
-  "journal_digest": "25d4ac99db179e8daca76ebd4711f421bfd689ae9dd3470c03044a6c45afc345",
+  "run_id": "256cfd9e-f898-5449-a7f6-f343f0be320d",
+  "journal_digest": "dd69acecbd3024fe19767348dc1251771f1e104091a6383e06fef51f7852a142",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 2.092899987474084,
-  "semantic_result_digest": "e3ea4df0499b1cb987495e65375ef904e421870cf80054164333e2e73bfa545e"
+  "wall_time_ms": 0.8127999899443239,
+  "semantic_result_digest": "f66cfba32f9934f0b1cdb35776e060766f9a98c7f2f1145a0ae847b40f4dbfb2"
 }

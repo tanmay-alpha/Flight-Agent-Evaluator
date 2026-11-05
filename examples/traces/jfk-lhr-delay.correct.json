@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "format": "tool_calls",
+  "notes": "HAND-WRITTEN EXAMPLE, NOT MODEL OUTPUT. Illustrates a correct trace for the built-in jfk-lhr-delay scenario. The observed_result on the first call was copied from the simulated environment's flight.get_status response so it replays without divergence. No token usage or latency is reported because no model was run.",
+  "scenario": {
+    "builtin": "jfk-lhr-delay"
+  },
+  "agent": {
+    "name": "hand-written-example",
+    "framework": "none (hand-written example)",
+    "version": "1.0.0"
+  },
+  "calls": [
+    {
+      "call_id": "example-call-1",
+      "tool_name": "flight.get_status",
+      "arguments": {
+        "flight_id": "AS142",
+        "operating_day": "2026-07-28"
+      },
+      "observed_result": {
+        "query": {
+          "flight_identity": {
+            "flight_number": "AS142",
+            "marketing_airline_iata": "AS",
+            "operating_airline_iata": "AS",
+            "is_codeshare": false
+          },
+          "flight_number": null,
+          "origin_iata": null,
+          "destination_iata": null,
+          "query_date": "2026-07-28T00:00:00"
+        },
+        "segment": {
+          "origin_iata": "JFK",
+          "destination_iata": "LHR",
+          "flight_id": {
+            "flight_number": "AS142",
+            "marketing_airline_iata": "AS",
+            "operating_airline_iata": "AS",
+            "is_codeshare": false
+          },
+          "departure": {
+            "scheduled": "2026-07-28T18:30:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T20:15:00Z",
+            "delay_minutes": 105
+          },
+          "arrival": {
+            "scheduled": "2026-07-29T06:45:00+01:00",
+            "actual": null,
+            "estimated": "2026-07-29T08:30:00+01:00",
+            "delay_minutes": 105
+          },
+          "aircraft_type": "B789",
+          "cabin_class": null
+        },
+        "status": {
+          "operational_status": "delayed",
+          "delay_minutes": 105,
+          "gate": "B12",
+          "terminal": "4",
+          "remarks": "Inbound aircraft delay"
+        },
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_status_AS142.json",
+            "sha256": "e70581499d77c1187ad599179e62af45b7c44233b43430a4bbd6f31819c81e8c",
+            "content_type": "application/json",
+            "byte_length": 1345
+          },
+          "normalisation_warnings": []
+        }
+      }
+    },
+    {
+      "call_id": "example-call-2",
+      "tool_name": "flight.search_flights",
+      "arguments": {
+        "origin": "JFK",
+        "destination": "LHR",
+        "departure_date": "2026-07-28"
+      }
+    }
+  ],
+  "final_response": "AS142 from JFK to LHR on 2026-07-28 is delayed by 105 minutes (inbound aircraft delay); estimated departure is 20:15 UTC from terminal 4, gate B12. Alternatives on the same day: AS144 departing 21:30 UTC and AS146 departing 23:00 UTC."
+}

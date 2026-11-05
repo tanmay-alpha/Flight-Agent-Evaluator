@@ -62,6 +62,17 @@ NonEmptyIdentifier = Annotated[
     Field(min_length=1, description="Non-empty identifier string"),
 ]
 
+SafeIdentifier = Annotated[
+    str,
+    Field(
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+        description=(
+            "Identifier safe for use in file names and paths: starts alphanumeric, "
+            "then up to 127 of [A-Za-z0-9_.-]"
+        ),
+    ),
+]
+
 ProviderName = Annotated[
     str,
     Field(

@@ -11,6 +11,7 @@ from flight_agent_evaluator.contracts.tools import ToolCall
 from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
+from flight_agent_evaluator.environment.fixtures import get_default_environment_setup
 from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
@@ -149,7 +150,7 @@ def test_forged_mutation_class_is_rejected_before_handler_execution() -> None:
 
 def test_forged_read_only_cannot_downgrade_sensitive_confirmation() -> None:
     """The sensitive registry classification wins before its handler can run."""
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     context = _context()
     hold = env.place_hold(
         booking_reference="AS-1001",

@@ -17,6 +17,7 @@ from flight_agent_evaluator.environment.errors import (
     IdempotencyConflictError,
     StateTransitionError,
 )
+from flight_agent_evaluator.environment.fixtures import get_default_environment_setup
 from flight_agent_evaluator.environment.state import (
     validate_booking_transition,
     validate_hold_transition,
@@ -93,7 +94,7 @@ def test_simulated_environment_place_hold_and_release() -> None:
 
 
 def test_confirm_rebooking_with_approval() -> None:
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     now = datetime(2026, 8, 12, 12, 0, 0, tzinfo=UTC)
 
     # 1. Place hold first to transition booking status to HOLD_PLACED
@@ -136,7 +137,7 @@ def test_confirm_rebooking_with_approval() -> None:
 
 
 def test_confirm_rebooking_missing_or_expired_approval() -> None:
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     now = datetime(2026, 8, 12, 12, 0, 0, tzinfo=UTC)
 
     hold_res = env.place_hold(

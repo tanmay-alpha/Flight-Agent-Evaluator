@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "dfw-den-no-alternatives",
   "scenario_version": 1,
   "scenario_resource_digest": "a40ad6a6b714e2cb6e409e55f6d8e91a4532b8c6ced432395735c92d506dfba8",
@@ -18,19 +18,16 @@
   "score_vector": {
     "goal_accuracy": 0.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.1
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "PLANNING.MISSING_REQUIRED_ACTION",
-    "STATE.FALSE_SUCCESS",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "STATE.OUTCOME_NOT_ACHIEVED"
   ],
-  "run_id": "9796e1b6-de4d-504d-b69d-0432de82281a",
-  "journal_digest": "7260ec1f0ef8a94ab20d9e09c9918c7caacdeb1ac19e4b1646e1cd999b277deb",
+  "run_id": "afaac0fc-1cab-5d9d-af95-31d4e7381b82",
+  "journal_digest": "89ca59720688a02a77caa807741c070db159063f0a0084ee1fb82386d4e62966",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.6238000059965998,
-  "semantic_result_digest": "71ee69774126ac7b24992ef96a2307824da44fd5b46deb85a7abcae49dc622ef"
+  "wall_time_ms": 0.5362000083550811,
+  "semantic_result_digest": "21f7dbfd7bb1d3410f41c2474b10141d365532196797dee87d700cc9b6881917"
 }

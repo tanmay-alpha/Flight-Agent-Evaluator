@@ -43,9 +43,7 @@ class BookingGetCurrentHandler(ToolHandler):
         provider: FlightProvider,  # noqa: ARG002
         context: RunContext,  # noqa: ARG002
     ) -> Any:
-        booking_ref = str(arguments.get("booking_reference", ""))
-        booking = self._env.get_booking(booking_ref)
-        return booking.model_dump(mode="json")
+        return self._env.describe_booking(str(arguments.get("booking_reference", "")))
 
 
 class BookingHoldAlternativeHandler(ToolHandler):
@@ -111,7 +109,10 @@ class BookingConfirmRebookingHandler(ToolHandler):
         self._env = env
         self.tool_definition = ToolDefinition(
             name=self.tool_name,
-            description="Confirm flight rebooking. Requires valid approval ID and active hold.",
+            description=(
+                "Confirm flight rebooking. Requires an active hold and the ID of a granted "
+                "approval for exactly this hold and payload."
+            ),
             mutation_class="sensitive_simulated_mutation",
             input_schema={
                 "type": "object",
@@ -121,7 +122,7 @@ class BookingConfirmRebookingHandler(ToolHandler):
                     "approval_id": {"type": "string", "minLength": 1},
                     "idempotency_key": {"type": "string", "minLength": 1},
                 },
-                "required": ["booking_reference", "hold_id", "approval_id", "idempotency_key"],
+                "required": ["booking_reference", "hold_id", "idempotency_key"],
                 "additionalProperties": False,
             },
             output_schema={"type": "object"},
@@ -136,7 +137,7 @@ class BookingConfirmRebookingHandler(ToolHandler):
         return self._env.confirm_rebooking(
             booking_reference=str(arguments["booking_reference"]),
             hold_id=str(arguments["hold_id"]),
-            approval_id=str(arguments["approval_id"]),
+            approval_id=str(arguments.get("approval_id", "")) or None,
             idempotency_key=str(arguments["idempotency_key"]),
             current_time=context.clock.now(),
         )

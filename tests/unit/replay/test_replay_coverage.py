@@ -63,8 +63,11 @@ def test_replay_verify_valid_integrity_unresolved_scenario(tmp_path: Path):
 
     engine = ReplayEngine(tmp_path)
     report = engine.verify(run_id)
-    assert report.status == "integrity_valid"
-    assert len(report.divergences) == 0
+    # No bundle manifest: raw bytes cannot be authenticated, so the outcome is a
+    # distinct non-success status, never "integrity_valid".
+    assert report.status == "recording_incomplete"
+    assert report.behaviour_status is not None
+    assert report.behaviour_status.value != "verified"
 
 
 def test_replay_verify_behaviour_verified_with_real_scenario(tmp_path: Path):

@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "ord-sea-dual-order",
   "scenario_version": 1,
   "scenario_resource_digest": "2694ce7ca67df8d7feeadf4645ae489ac7530a671db8c40eadb0923bba3fb599",
@@ -18,15 +18,16 @@
   "score_vector": {
     "goal_accuracy": 0.5,
     "constraint_satisfaction": 1.0,
-    "efficiency": 0.95
+    "efficiency": 0.95,
+    "composite_uncapped": 0.745
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "STATE.FALSE_SUCCESS"
+    "STATE.OUTCOME_NOT_ACHIEVED"
   ],
-  "run_id": "da38c6bb-6195-52a4-b44b-3719990611a1",
-  "journal_digest": "03ca874d9af899b65682c4b050a7f5eced70f98ab4f7257bcbc1143f87d80a9c",
+  "run_id": "2bcec6b7-43d9-57f1-bfa1-ee830ac95abb",
+  "journal_digest": "52d31c551ce5cee7ed559c4122ab61782195bf92d21efd6e5c006f0cace6062c",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.368700002785772,
-  "semantic_result_digest": "92926a6abae0fbd2f9a8d86869407a002905f5778e73a3265c01ee3180258dd8"
+  "wall_time_ms": 1.9223999988753349,
+  "semantic_result_digest": "52caf158bfaed7c600c271da5d19cae2abd1ddc737b1fb09a9fbbeac7407d5dd"
 }

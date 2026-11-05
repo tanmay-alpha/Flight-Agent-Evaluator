@@ -2,12 +2,48 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+import pytest
+
 from flight_agent_evaluator.annotation.bundle import (
     create_bundle_from_packages,
     freeze_bundle,
     verify_bundle_digest,
 )
+from flight_agent_evaluator.annotation.contracts import AnnotationBundle, AnnotationTaskStatus
+from flight_agent_evaluator.cli.main import main as cli_main
 from flight_agent_evaluator.judges.evidence import build_evidence_package
+
+SHIPPED_BUNDLE = (
+    Path(__file__).resolve().parents[3] / "validation" / "annotation-bundle-v1" / "bundle.json"
+)
+
+
+def test_shipped_bundle_is_declared_an_unannotated_template() -> None:
+    bundle = AnnotationBundle.model_validate_json(SHIPPED_BUNDLE.read_text(encoding="utf-8"))
+
+    assert verify_bundle_digest(bundle)
+    # Its tasks carry placeholder responses, not real agent outputs, and nobody annotated them.
+    assert all(task.final_response.startswith("[Synthetic") for task in bundle.tasks)
+    assert all(task.annotation_count == 0 for task in bundle.tasks)
+    assert all(task.status is AnnotationTaskStatus.PENDING for task in bundle.tasks)
+    assert bundle.annotation_status == "template"
+    note = bundle.calibration_note.lower()
+    assert "template" in note
+    assert "placeholder" in note
+    assert "0 annotations" in note
+
+
+def test_annotation_validate_cli_accepts_shipped_template(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli_main(["annotation", "validate", str(SHIPPED_BUNDLE), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["valid"] is True
+    assert payload["status"] == "template"
+    assert payload["tasks"] == 12
 
 
 def test_annotation_bundle_creation_and_freeze() -> None:

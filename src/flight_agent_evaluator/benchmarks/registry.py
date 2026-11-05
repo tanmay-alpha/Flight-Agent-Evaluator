@@ -9,7 +9,10 @@ from flight_agent_evaluator.agent.baselines import (
     NaiveBaselineAgent,
     NoOpBaselineAgent,
     ScriptedOracleAgent,
+    UnsafeBaselineAgent,
 )
+from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
+from flight_agent_evaluator.agent.model_client import ModelAgentSettings, build_model_client
 from flight_agent_evaluator.agent.protocol import AgentPolicy
 from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
 
@@ -19,13 +22,27 @@ class UnknownBenchmarkAgentError(BenchmarkIntegrityError):
 
 
 class BenchmarkAgentRegistry:
-    """Registry managing exact registered benchmark agent identities."""
+    """Registry managing exact registered benchmark agent identities.
 
-    def __init__(self) -> None:
+    ``model_settings`` configures the ``model`` agent.  The default is offline
+    replay with no recorded manifests, so resolving ``model`` without settings
+    fails closed with a clear configuration error instead of touching the
+    network.
+    """
+
+    def __init__(self, model_settings: ModelAgentSettings | None = None) -> None:
         self._factories: dict[str, Callable[[], AgentPolicy]] = {}
         self._metadata: dict[str, dict[str, Any]] = {}
         self._aliases: dict[str, str] = {}
+        self._model_settings = model_settings or ModelAgentSettings()
         self._register_defaults()
+
+    def _build_model_agent(self) -> AgentPolicy:
+        settings = self._model_settings
+        return ModelToolCallingAgent(
+            model_client=build_model_client(settings),
+            model_configuration=settings.model_configuration,
+        )
 
     def _register_defaults(self) -> None:
         # Canonical benchmark agent identities
@@ -35,6 +52,7 @@ class BenchmarkAgentRegistry:
             agent_version="1.0.0",
             implementation="flight_agent_evaluator.agent.baselines.ScriptedOracleAgent",
             description="Executes golden reference trajectory steps.",
+            agent_type="deterministic",
         )
         self.register(
             agent_id="naive-baseline",
@@ -42,6 +60,7 @@ class BenchmarkAgentRegistry:
             agent_version="1.0.0",
             implementation="flight_agent_evaluator.agent.baselines.NaiveBaselineAgent",
             description="Fixed status lookup and simple alternative search heuristic.",
+            agent_type="heuristic",
         )
         self.register(
             agent_id="no-op-baseline",
@@ -49,6 +68,30 @@ class BenchmarkAgentRegistry:
             agent_version="1.0.0",
             implementation="flight_agent_evaluator.agent.baselines.NoOpBaselineAgent",
             description="Deterministic negative control that performs no task actions.",
+            agent_type="negative_control",
+        )
+        self.register(
+            agent_id="unsafe-baseline",
+            factory=UnsafeBaselineAgent,
+            agent_version="1.0.0",
+            implementation="flight_agent_evaluator.agent.baselines.UnsafeBaselineAgent",
+            description=(
+                "Deterministic unsafe negative control: confirms rebookings without or "
+                "against approval and always claims success. Exists to prove the safety "
+                "metric discriminates."
+            ),
+            agent_type="negative_control",
+        )
+        self.register(
+            agent_id="model",
+            factory=self._build_model_agent,
+            agent_version="1.0.0",
+            implementation="flight_agent_evaluator.agent.loop.ModelToolCallingAgent",
+            description=(
+                "LLM tool-calling agent; offline replay of recorded model exchanges by "
+                "default, record/live only with --allow-live-model."
+            ),
+            agent_type="llm",
         )
 
         # Explicit aliases pointing to canonical identities
@@ -61,6 +104,7 @@ class BenchmarkAgentRegistry:
         self.register_alias("no-op", "no-op-baseline")
         self.register_alias("baseline-noop", "no-op-baseline")
         self.register_alias("baseline-no-op", "no-op-baseline")
+        self.register_alias("unsafe", "unsafe-baseline")
 
     def register(
         self,
@@ -69,6 +113,7 @@ class BenchmarkAgentRegistry:
         agent_version: str = "1.0.0",
         implementation: str = "",
         description: str = "",
+        agent_type: str = "custom",
     ) -> None:
         """Register an exact canonical agent policy factory."""
         aid = agent_id.strip()
@@ -80,6 +125,7 @@ class BenchmarkAgentRegistry:
             "agent_version": agent_version,
             "implementation": implementation or getattr(factory, "__name__", str(factory)),
             "description": description,
+            "agent_type": agent_type,
             "is_alias": False,
         }
 

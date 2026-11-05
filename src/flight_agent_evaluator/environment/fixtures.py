@@ -6,6 +6,12 @@ from datetime import UTC, datetime, timedelta
 
 from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.base import Money
+from flight_agent_evaluator.contracts.scenarios import (
+    EnvironmentBookingSetup,
+    EnvironmentOfferSetup,
+    ScenarioApprovalDecision,
+    ScenarioEnvironment,
+)
 from flight_agent_evaluator.environment.contracts import (
     ApprovalRequest,
     ApprovalStatus,
@@ -47,6 +53,40 @@ def get_default_hold_fixture(
         placed_at=_REF_TIME,
         expires_at=_REF_TIME + timedelta(minutes=expires_in_minutes),
         status=HoldStatus.ACTIVE,
+    )
+
+
+def get_default_environment_setup(
+    approval_decision: ScenarioApprovalDecision | None = None,
+) -> ScenarioEnvironment:
+    """Return the synthetic default environment: booking AS-1001 and offer offer-alt-1.
+
+    ``approval_decision`` defaults to unconfigured, so approvals fail closed.
+    """
+    booking = get_default_booking_fixture()
+    hold = get_default_hold_fixture()
+    return ScenarioEnvironment(
+        bookings=(
+            EnvironmentBookingSetup(
+                booking_reference=booking.booking_reference,
+                passenger_name=booking.passenger_name,
+                current_flight_number=booking.current_flight_number,
+                origin=booking.origin,
+                destination=booking.destination,
+                scheduled_departure=booking.scheduled_departure,
+            ),
+        ),
+        offers=(
+            EnvironmentOfferSetup(
+                offer_id=hold.offer_id,
+                flight_number=hold.flight_number,
+                origin=hold.origin,
+                destination=hold.destination,
+                price_amount=float(hold.price.amount),
+                price_currency=hold.price.currency,
+            ),
+        ),
+        approval_decision=approval_decision,
     )
 
 

@@ -3,6 +3,9 @@
 Returns deterministic, configurable scores without any network calls.
 All scores default to the midpoint (2) unless overridden.
 
+Results are always marked ``mode=JudgeMode.FAKE`` with ``confidence="low"`` and an
+unvalidated status, so they can never be mistaken for real judgments.
+
 Usage::
 
     client = FakeJudgeClient(scores={JudgeCriterion.GROUNDEDNESS: 4})
@@ -25,6 +28,8 @@ from flight_agent_evaluator.judges.contracts import (
     JudgeValidationStatus,
 )
 
+FAKE_JUDGE_WARNING = "FAKE judge: scores are placeholders, not model or human judgments."
+
 
 class FakeJudgeClient:
     """Deterministic fake judge for testing.
@@ -44,8 +49,14 @@ class FakeJudgeClient:
 
         Args:
             scores: Per-criterion override scores. Unspecified criteria default to 2.
-            validation_status: Validation status to embed in results.
+            validation_status: Validation status to embed in results. A fake judge can
+                never be human calibrated, so ``HUMAN_CALIBRATED`` is rejected.
+
+        Raises:
+            ValueError: If ``validation_status`` is ``HUMAN_CALIBRATED``.
         """
+        if validation_status is JudgeValidationStatus.HUMAN_CALIBRATED:
+            raise ValueError("A fake judge cannot report HUMAN_CALIBRATED validation status.")
         self._scores: dict[JudgeCriterion, JudgeScore] = scores or {}
         self._validation_status = validation_status
 
@@ -71,8 +82,9 @@ class FakeJudgeClient:
                     criterion=criterion,
                     score=score,
                     evidence_ids=evidence_ids,
-                    rationale=f"Fake judge score: {score} for {criterion.value}.",
-                    confidence="high",
+                    rationale=f"Fake judge placeholder score {score} for {criterion.value}.",
+                    confidence="low",
+                    warnings=[FAKE_JUDGE_WARNING],
                 )
             )
 
@@ -82,7 +94,7 @@ class FakeJudgeClient:
             package_id=evidence_package.package_id,
             package_digest=evidence_package.digest(),
             judge_model_id=None,
-            mode=JudgeMode.REPLAY,
+            mode=JudgeMode.FAKE,
             rubric_version=rubric_version,
             criteria_results=criteria_results,
             overall_score=round(overall, 4),

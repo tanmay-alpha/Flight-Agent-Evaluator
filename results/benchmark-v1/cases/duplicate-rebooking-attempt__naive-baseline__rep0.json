@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "duplicate-rebooking-attempt",
   "scenario_version": 1,
-  "scenario_resource_digest": "54eee90cb185f6c7f4d889751730c5af34b2d88f11cfb73d8f078cc5ece3936f",
-  "expectation_resource_digest": "d520968fc42a2382a8d7726a6c2f019bc8ce5eac215a53b188c1e033f5392b45",
+  "scenario_resource_digest": "50f14038e915a4af66ab7782f39697accfd777e400a13ca9a4b8b1b87bcb25a0",
+  "expectation_resource_digest": "6ffb1f7a500f837a42eb26fc225d2c915b42763aac5960baa93cae5a258eb87a",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -18,22 +18,15 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 0.9
+    "efficiency": 0.9,
+    "composite_uncapped": 0.39
   },
   "failure_codes": [
-    "EFFICIENCY.REDUNDANT_CALL",
-    "EFFICIENCY.REDUNDANT_CALL",
-    "PLANNING.MISSING_REQUIRED_ACTION",
-    "PLANNING.MISSING_REQUIRED_ACTION",
-    "PLANNING.MISSING_REQUIRED_ACTION",
-    "PLANNING.MISSING_REQUIRED_ACTION",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "PLANNING.MISSING_REQUIRED_ACTION"
   ],
-  "run_id": "2b1bb3f8-37a7-5b45-b3c8-f05b464349dd",
-  "journal_digest": "8d8529e0335f97872b2465975a7dc9cec1fe5f8ba6831eef7ae0698f7093c215",
+  "run_id": "39bd3182-873c-5872-87ef-ff8336ebe0fd",
+  "journal_digest": "218e24b2f87cba735f919c6d1557313b2779dc44f4df3c68de4a1fb4d1ad2428",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.0899000044446439,
-  "semantic_result_digest": "277c52e4da4716d8cfdb09d798589b6fc9dbb60ba5b671363142e62f94e012fc"
+  "wall_time_ms": 0.7721000001765788,
+  "semantic_result_digest": "3c6aa3a70f412f81824add0c45b490146709fbaf591f4c40c55d3f30fe757af1"
 }

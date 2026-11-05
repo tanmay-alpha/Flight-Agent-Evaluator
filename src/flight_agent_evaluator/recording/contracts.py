@@ -137,8 +137,13 @@ class RunRecording(ContractModel):
 # ---------------------------------------------------------------------------
 
 RECORDING_BUNDLE_SCHEMA_VERSION: str = "recording-bundle-v1"
-REPLAY_ALGORITHM_VERSION: str = "semantic-replay-v1"
-SEMANTIC_EVENT_PROJECTION_VERSION: str = "semantic-events-v1"
+REPLAY_ALGORITHM_VERSION: str = "semantic-replay-v2"
+SEMANTIC_EVENT_PROJECTION_VERSION: str = "semantic-events-v2"
+
+
+ExecutionRunner = Literal["scenario-runner", "benchmark-runner"]
+"""``scenario-runner``: ``ScenarioRunner`` (``flight-evaluator run``); ``benchmark-runner``:
+``BenchmarkRunner.run_scenario`` (``agent run --output``). Their journals differ in shape."""
 
 
 class RecordingBundleManifest(ContractModel):
@@ -175,6 +180,8 @@ class RecordingBundleManifest(ContractModel):
     fixture_manifest_digest: SHA256Digest | None = None
 
     seed: int = 42
+    execution_runner: ExecutionRunner = "scenario-runner"
+    """Which execution path produced the journal; replay must re-execute through the same one."""
     semantic_recording_digest: SHA256Digest
 
 
@@ -204,6 +211,7 @@ class ReplayProvenance(ContractModel):
 
     model_exchange_manifest_digest: str | None = None
     seed: int = 42
+    execution_runner: ExecutionRunner = "scenario-runner"
 
     replay_algorithm_version: str = REPLAY_ALGORITHM_VERSION
     semantic_projection_version: str = SEMANTIC_EVENT_PROJECTION_VERSION
@@ -220,6 +228,9 @@ ReplayOutcomeStatus = Literal[
     "behaviour_diverged",
     "recording_tampered",
     "replay_unavailable",
+    "recording_incomplete",
+    "provenance_mismatch",
+    "reexecution_error",
     "verified",
     "tampered",
     "diverged",
@@ -263,19 +274,26 @@ class ReplayReport(ContractModel):
 
     @property
     def status(self) -> ReplayOutcomeStatus:
-        """Legacy outcome status property for backward compatibility."""
+        """Overall outcome; only ``behaviour_verified`` means a verified, matching re-execution."""
         if self.integrity_status == RecordingIntegrityStatus.TAMPERED:
             return "recording_tampered"
-        if (
-            self.integrity_status != RecordingIntegrityStatus.VERIFIED
-            and self.integrity_status != RecordingIntegrityStatus.INCOMPLETE
-        ):
+        if self.integrity_status == RecordingIntegrityStatus.INCOMPLETE:
+            # Bundle manifest missing: raw bytes cannot be authenticated, so no claim holds.
+            return "recording_incomplete"
+        if self.integrity_status != RecordingIntegrityStatus.VERIFIED:
             return "replay_unavailable"
+        if self.behaviour_status is None:
+            # Playback / integrity-only report: no behavioural claim is made.
+            return "integrity_valid"
         if self.behaviour_status == BehaviourVerificationStatus.VERIFIED:
             return "behaviour_verified"
         if self.behaviour_status == BehaviourVerificationStatus.DIVERGED:
             return "behaviour_diverged"
-        return "integrity_valid"
+        if self.behaviour_status == BehaviourVerificationStatus.REEXECUTION_ERROR:
+            return "reexecution_error"
+        if self.provenance_status == "mismatch":
+            return "provenance_mismatch"
+        return "replay_unavailable"
 
 
 # ---------------------------------------------------------------------------

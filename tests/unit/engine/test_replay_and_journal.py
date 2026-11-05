@@ -132,7 +132,7 @@ class TestReplayEngine:
 
         engine = ReplayEngine(tmp_path)
         report = engine.verify(run_id)
-        assert report.status in ("verified", "integrity_valid")
+        assert report.status == "recording_incomplete"
         assert report.recording_run_id == run_id
 
     def test_verification_detects_tampering(self, tmp_path: Path):
@@ -720,4 +720,4 @@ class TestReplayDivergenceCategories:
         # Verify valid reading works
         engine = ReplayEngine(tmp_path)
         report = engine.verify(run_id)
-        assert report.status in ("verified", "integrity_valid")
+        assert report.status == "recording_incomplete"

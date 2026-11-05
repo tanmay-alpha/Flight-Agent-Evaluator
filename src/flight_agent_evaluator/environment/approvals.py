@@ -18,9 +18,11 @@ from flight_agent_evaluator.environment.contracts import (
     ApprovalStatus,
 )
 from flight_agent_evaluator.environment.errors import (
+    ApprovalDeniedError,
     ApprovalExpiredError,
     ApprovalMissingError,
     ApprovalNotFoundError,
+    ApprovalPendingError,
     ApprovalScopeMismatchError,
 )
 
@@ -64,6 +66,8 @@ class ApprovalEngine:
             ApprovalMissingError: If approval_id is None or empty.
             ApprovalNotFoundError: If approval_id is not in registry.
             ApprovalExpiredError: If approval is expired or status is EXPIRED.
+            ApprovalPendingError: If the approval has not been decided yet.
+            ApprovalDeniedError: If the approval was denied.
             ApprovalScopeMismatchError: If action, booking_ref, or payload_hash mismatches.
         """
         if not approval_id:
@@ -82,10 +86,11 @@ class ApprovalEngine:
                 f"Approval '{approval_id}' has expired (expires_at={req.expires_at.isoformat()})."
             )
 
+        if req.status == ApprovalStatus.PENDING:
+            raise ApprovalPendingError(f"Approval '{approval_id}' has not been granted yet.")
+
         if req.status != ApprovalStatus.APPROVED:
-            raise ApprovalScopeMismatchError(
-                f"Approval '{approval_id}' status is '{req.status}', expected 'approved'."
-            )
+            raise ApprovalDeniedError(f"Approval '{approval_id}' was denied.")
 
         if req.action_type != action_type:
             raise ApprovalScopeMismatchError(
