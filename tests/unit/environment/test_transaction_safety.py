@@ -16,6 +16,7 @@ from flight_agent_evaluator.environment.errors import (
     StateTransitionError,
     UnknownOfferError,
 )
+from flight_agent_evaluator.environment.fixtures import get_default_environment_setup
 
 NOW = datetime(2026, 8, 12, 12, tzinfo=UTC)
 
@@ -54,7 +55,7 @@ def _approval(
 
 
 def test_foreign_hold_cannot_be_approved_or_confirmed_without_state_change() -> None:
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     booking_b = env.get_booking("AS-1001").model_copy(
         update={"booking_reference": "AS-2002", "passenger_name": "Passenger B"}
     )
@@ -73,6 +74,7 @@ def test_foreign_hold_cannot_be_approved_or_confirmed_without_state_change() -> 
         )
 
     approval_b = _approval(env, hold_b, "AS-2002")
+    _hold(env, "AS-1001")  # AS-1001 is rebookable, but only with its own hold
     before = (env.get_booking("AS-1001"), env.get_booking("AS-2002"), env.holds[hold_b])
     with pytest.raises(OwnershipMismatchError):
         env.confirm_rebooking(
@@ -89,7 +91,7 @@ def test_foreign_hold_cannot_be_approved_or_confirmed_without_state_change() -> 
 
 
 def test_invented_offer_and_invalid_transition_leave_no_orphan_hold() -> None:
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     before_holds = dict(env.holds)
     with pytest.raises(UnknownOfferError):
         env.place_hold(
@@ -127,7 +129,7 @@ def test_release_active_hold_restores_booking_and_cannot_release_consumed_hold()
     assert env.get_booking("AS-1001").active_hold_id is None
     assert env.holds[hold_id].status.value == "released"
 
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     consumed_hold = _hold(env)
     approval_id = _approval(env, consumed_hold)
     env.confirm_rebooking(
@@ -147,7 +149,7 @@ def test_release_active_hold_restores_booking_and_cannot_release_consumed_hold()
 
 
 def test_idempotency_is_scoped_and_concurrent_confirm_has_one_commit() -> None:
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     hold_id = _hold(env)
     approval_id = _approval(env, hold_id)
     barrier = Barrier(2)
@@ -183,7 +185,7 @@ def test_approval_registry_scope_validations() -> None:
         ApprovalScopeMismatchError,
     )
 
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     hold_id = _hold(env)
     app_id = _approval(env, hold_id)
 
