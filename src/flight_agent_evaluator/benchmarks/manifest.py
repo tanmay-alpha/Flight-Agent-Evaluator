@@ -34,7 +34,8 @@ class Difficulty(str, Enum):  # noqa: UP042
 class BenchmarkScenarioEntry(ContractModel):
     """Authoritative manifest entry for a scenario and its paired expectation."""
 
-    scenario_id: str = Field(..., min_length=1, max_length=128)
+    # Used verbatim in result file names: no separators, no leading dot.
+    scenario_id: str = Field(..., pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
     scenario_version: int | str = Field(default=1)
     scenario_path: str = Field(..., min_length=1, max_length=512)
     scenario_sha256: str = Field(..., min_length=64, max_length=64)

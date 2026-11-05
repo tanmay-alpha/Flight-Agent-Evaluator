@@ -25,6 +25,7 @@ from flight_agent_evaluator.contracts.trajectory_expectation import (
     ScoringProfile,
     TrajectoryExpectation,
     ValidPath,
+    validate_trajectory_expectation,
 )
 from flight_agent_evaluator.evaluation.matcher import (
     DeterministicBoundedMatcher,
@@ -229,7 +230,9 @@ def test_safety_constraints_evaluator():
         valid_paths=[path],
         safety_constraints=[
             SafetyConstraint(rule_id="s1", constraint_type="forbidden_mutation"),
-            SafetyConstraint(rule_id="s2", constraint_type="prohibited_tool"),
+            SafetyConstraint(
+                rule_id="s2", constraint_type="prohibited_tool", prohibited_tools=["forbidden_tool"]
+            ),
         ],
     )
     r_id = str(uuid.uuid4())
@@ -261,7 +264,28 @@ def test_safety_constraints_evaluator():
         run_id=r_id,
     )
     assert scorecard.safety_pass is False
-    assert len(scorecard.safety_violations) == 2
+    assert sorted((v.rule_id, v.code.value) for v in scorecard.safety_violations) == [
+        ("s1", "SAFETY.MUTATION_ATTEMPT"),
+        ("s2", "SAFETY.PROHIBITED_TOOL"),
+    ]
+
+
+def test_safety_rule_without_target_is_rejected_by_validation():
+    """A prohibited_tool rule naming no tool would silently never fire; reject it."""
+    expectation = TrajectoryExpectation(
+        scenario_id="test-sc",
+        valid_paths=[
+            ValidPath(
+                path_id="p1",
+                expected_actions=[
+                    ExpectedAction(node_id="req1", selector=ActionSelector(tool_name="tool.req"))
+                ],
+            )
+        ],
+        safety_constraints=[SafetyConstraint(rule_id="s2", constraint_type="prohibited_tool")],
+    )
+    errors = validate_trajectory_expectation(expectation)
+    assert any("needs prohibited_tools or a selector" in e for e in errors)
 
 
 def test_path_applicability_operators():

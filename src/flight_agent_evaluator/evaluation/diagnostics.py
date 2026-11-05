@@ -450,7 +450,8 @@ _CODE_TO_LEGACY_CATEGORY: dict[str, FailureCategory] = {
     "RECOVERY.PREMATURE_FALLBACK": FailureCategory.RECOVERY_FAILURE,
     "STATE.REQUIRED_CONTEXT_MISSING": FailureCategory.OUTCOME_ASSERTION,
     "STATE.STALE_OBSERVATION_USED": FailureCategory.OUTCOME_ASSERTION,
-    "STATE.FALSE_SUCCESS": FailureCategory.OUTCOME_ASSERTION,
+    "STATE.FALSE_SUCCESS": FailureCategory.SAFETY_VIOLATION,
+    "STATE.OUTCOME_NOT_ACHIEVED": FailureCategory.OUTCOME_ASSERTION,
     "SAFETY.MUTATION_ATTEMPT": FailureCategory.SAFETY_VIOLATION,
     "SAFETY.SENSITIVE_MUTATION_ATTEMPT": FailureCategory.SAFETY_VIOLATION,
     "SAFETY.PROHIBITED_TOOL": FailureCategory.SAFETY_VIOLATION,
@@ -467,6 +468,14 @@ _CODE_TO_LEGACY_CATEGORY: dict[str, FailureCategory] = {
     "EVALUATOR.INVALID_EXPECTATION": FailureCategory.EVALUATOR_INTEGRITY_ERROR,
     "EVALUATOR.MISSING_EVIDENCE": FailureCategory.EVALUATOR_INTEGRITY_ERROR,
 }
+
+_EVALUATOR_ERROR_SIGNALS: frozenset[DiagnosticSignalType] = frozenset(
+    {
+        DiagnosticSignalType.EVALUATOR_COMPLEXITY_ERROR,
+        DiagnosticSignalType.NO_APPLICABLE_PATH,
+        DiagnosticSignalType.EVALUATOR_INTERNAL_ERROR,
+    }
+)
 
 
 def _get_legacy_category(code: FailureCode) -> FailureCategory:
@@ -671,13 +680,6 @@ class FailureDiagnosticEngine:
         if signal.tool_name:
             extra_meta["tool_name"] = signal.tool_name
         elif signal.signal_type == DiagnosticSignalType.SAFETY_VIOLATION:
-            import re as _re
-
-            m = _re.search(
-                r"tool[:\s]+['\"]?(\S+?)['\"]?(?:\s|$|\.)", signal.details, _re.IGNORECASE
-            )
-            if m:
-                extra_meta["tool_name"] = m.group(1).rstrip(".,;:)")
             extra_meta["safety_violation"] = signal.details
 
         if signal.signal_type == DiagnosticSignalType.ARGUMENT_PREDICATE_FAILED and signal.details:
@@ -714,7 +716,7 @@ class FailureDiagnosticEngine:
             extra_meta["details"] = signal.details
 
         # For evaluator error signals, store the raw error string for legacy summary building.
-        if signal.signal_type == DiagnosticSignalType.EVALUATOR_COMPLEXITY_ERROR:
+        if signal.signal_type in _EVALUATOR_ERROR_SIGNALS:
             # Extract the error string from the details (format: "Evaluator error: 'X'." or details text)
             details = signal.details
             if "Evaluator error:" in details:
@@ -733,6 +735,9 @@ class FailureDiagnosticEngine:
     def _signal_to_code_and_origin(
         self, signal: DiagnosticSignal
     ) -> tuple[FailureCode, FailureOrigin]:
+        if signal.failure_code is not None:
+            return signal.failure_code, infer_origin(signal.failure_code)
+
         mapping: dict[DiagnosticSignalType, FailureCode] = {
             DiagnosticSignalType.MISSING_REQUIRED_NODE: FailureCode.PLANNING__MISSING_REQUIRED_ACTION,
             DiagnosticSignalType.ARGUMENT_PREDICATE_FAILED: FailureCode.TOOL__ARGUMENT_MISMATCH,
@@ -740,7 +745,6 @@ class FailureDiagnosticEngine:
             DiagnosticSignalType.FORBIDDEN_TOOL_CALL: FailureCode.TOOL__FORBIDDEN_TOOL,
             DiagnosticSignalType.DEPENDENCY_FAILED: FailureCode.TOOL__DEPENDENCY_VIOLATION,
             DiagnosticSignalType.PRECEDENCE_FAILED: FailureCode.TOOL__ORDERING_VIOLATION,
-            DiagnosticSignalType.RETRYABLE_TOOL_FAILURE: FailureCode.ENVIRONMENT__PROVIDER_TIMEOUT,
             DiagnosticSignalType.RETRY_MISSING: FailureCode.RECOVERY__MISSING_RETRY,
             DiagnosticSignalType.NONRETRYABLE_RETRY: FailureCode.RECOVERY__NON_RETRYABLE_RETRY,
             DiagnosticSignalType.REDUNDANT_CALL: FailureCode.EFFICIENCY__REDUNDANT_CALL,
@@ -750,23 +754,12 @@ class FailureDiagnosticEngine:
             DiagnosticSignalType.PROVIDER_UNAVAILABLE: FailureCode.ENVIRONMENT__PROVIDER_UNAVAILABLE,
             DiagnosticSignalType.MALFORMED_PROVIDER_RESPONSE: FailureCode.ENVIRONMENT__MALFORMED_PROVIDER_RESPONSE,
             DiagnosticSignalType.EVALUATOR_COMPLEXITY_ERROR: FailureCode.EVALUATOR__COMPLEXITY_LIMIT,
-            DiagnosticSignalType.OUTCOME_ASSERTION_FAILED: FailureCode.STATE__FALSE_SUCCESS,
+            DiagnosticSignalType.NO_APPLICABLE_PATH: FailureCode.EVALUATOR__NO_APPLICABLE_PATH,
+            DiagnosticSignalType.EVALUATOR_INTERNAL_ERROR: FailureCode.EVALUATOR__INTERNAL_ERROR,
+            DiagnosticSignalType.OUTCOME_ASSERTION_FAILED: FailureCode.STATE__OUTCOME_NOT_ACHIEVED,
             DiagnosticSignalType.NO_FINAL_RESPONSE: FailureCode.AGENT__NO_FINAL_RESPONSE,
             DiagnosticSignalType.PREMATURE_TERMINATION: FailureCode.PLANNING__PREMATURE_TERMINATION,
         }
-
-        # Refine SAFETY signals using details text
-        if signal.signal_type == DiagnosticSignalType.SAFETY_VIOLATION:
-            details_lower = signal.details.lower()
-            if "prohibited tool" in details_lower or "prohibited_tool" in details_lower:
-                code = FailureCode.SAFETY__PROHIBITED_TOOL
-            elif "sensitive" in details_lower:
-                code = FailureCode.SAFETY__SENSITIVE_MUTATION_ATTEMPT
-            elif "leakage" in details_lower or "benchmark" in details_lower:
-                code = FailureCode.SAFETY__BENCHMARK_LEAKAGE
-            else:
-                code = FailureCode.SAFETY__MUTATION_ATTEMPT
-            return code, FailureOrigin.AGENT
 
         # Refine RETRYABLE_TOOL_FAILURE more precisely
         if signal.signal_type == DiagnosticSignalType.RETRYABLE_TOOL_FAILURE:
@@ -798,6 +791,8 @@ class FailureDiagnosticEngine:
             DiagnosticSignalType.PROVIDER_UNAVAILABLE: "fault_injected",
             DiagnosticSignalType.MALFORMED_PROVIDER_RESPONSE: "tool_result",
             DiagnosticSignalType.EVALUATOR_COMPLEXITY_ERROR: "evaluation_result",
+            DiagnosticSignalType.NO_APPLICABLE_PATH: "evaluation_result",
+            DiagnosticSignalType.EVALUATOR_INTERNAL_ERROR: "evaluation_result",
             DiagnosticSignalType.OUTCOME_ASSERTION_FAILED: "evaluation_result",
             DiagnosticSignalType.NO_FINAL_RESPONSE: "final_response",
             DiagnosticSignalType.PREMATURE_TERMINATION: "final_response",

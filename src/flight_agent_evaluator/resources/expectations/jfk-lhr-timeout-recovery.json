@@ -55,6 +55,14 @@
           "dependent_node_id": "node_status_retry",
           "required_node_id": "node_status_initial"
         }
+      ],
+      "recovery_constraints": [
+        {
+          "rule_id": "recover_status_after_timeout",
+          "trigger_event": "retryable_error",
+          "expected_node_id": "node_status_retry",
+          "description": "After the status lookup times out, a later status lookup must succeed."
+        }
       ]
     }
   ]

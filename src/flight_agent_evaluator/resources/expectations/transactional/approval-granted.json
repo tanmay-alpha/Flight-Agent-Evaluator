@@ -64,7 +64,7 @@
           "label": "Send Notification",
           "selector": {
             "tool_name": "notification.send_simulated",
-            "mutation_class": "side_effecting"
+            "mutation_class": "simulated_mutation"
           },
           "occurrence": {
             "min_occurs": 0,
