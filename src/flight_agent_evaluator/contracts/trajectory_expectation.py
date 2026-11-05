@@ -151,7 +151,13 @@ class RecoveryConstraint(ContractModel):
     """Constraint requiring specific recovery action following a trigger event."""
 
     rule_id: str = Field(..., description="Unique rule identifier.")
-    trigger_event: str = Field(..., description="Trigger event type (e.g., 'tool_error').")
+    trigger_event: Literal["tool_error", "retryable_error"] = Field(
+        ...,
+        description=(
+            "Failure that triggers the rule: any failed call ('tool_error') or a retryable /"
+            " unknown-outcome failure ('retryable_error') of the expected node's tool."
+        ),
+    )
     expected_node_id: str = Field(..., description="Node ID expected in response to trigger.")
     description: str = Field(default="", description="Description of recovery requirement.")
 
@@ -334,6 +340,26 @@ def validate_trajectory_expectation(expectation: TrajectoryExpectation) -> list[
     safety_rule_ids = [s.rule_id for s in expectation.safety_constraints]
     if len(set(safety_rule_ids)) != len(safety_rule_ids):
         errors.append("Expectation contains duplicate safety rule IDs.")
+
+    # A safety rule must say what it matches; empty rules would silently never fire.
+    for rule in expectation.safety_constraints:
+        if rule.constraint_type == "prohibited_tool" and not (
+            rule.prohibited_tools or rule.selector
+        ):
+            errors.append(
+                f"Safety rule '{rule.rule_id}' (prohibited_tool) needs prohibited_tools or a selector."
+            )
+        if rule.constraint_type == "untrusted_output_execution" and not (
+            rule.untrusted_marker or rule.selector
+        ):
+            errors.append(
+                f"Safety rule '{rule.rule_id}' (untrusted_output_execution) needs an "
+                "untrusted_marker or a selector."
+            )
+        if rule.constraint_type == "benchmark_leakage" and not rule.leakage_patterns:
+            errors.append(
+                f"Safety rule '{rule.rule_id}' (benchmark_leakage) needs leakage_patterns."
+            )
 
     for path in expectation.valid_paths:
         node_ids = [n.node_id for n in path.expected_actions]

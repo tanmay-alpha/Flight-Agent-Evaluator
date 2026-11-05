@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Any
 
+from flight_agent_evaluator.agent.errors import ModelReplayError
 from flight_agent_evaluator.agent.prompt import get_default_prompt_policy
 from flight_agent_evaluator.agent.protocol import AgentPolicy, ModelClient
 from flight_agent_evaluator.agent.security import redact_secrets
@@ -24,13 +25,18 @@ from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.state import StateSnapshot
-from flight_agent_evaluator.tools.base import ToolRegistry, build_default_registry
+from flight_agent_evaluator.tools.base import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
 
 class ModelToolCallingAgent(AgentPolicy):
-    """Provider-neutral model-driven agent executing turns via ModelClient and ToolExecutor."""
+    """Provider-neutral model-driven agent executing turns via ModelClient and ToolExecutor.
+
+    Every model-requested tool call, including unknown tools, unauthorized
+    tools and calls with invalid arguments, crosses the executor boundary so
+    the executor journals it and charges it against the tool budget.
+    """
 
     def __init__(
         self,
@@ -44,7 +50,7 @@ class ModelToolCallingAgent(AgentPolicy):
 
     @property
     def agent_id(self) -> str:
-        return f"model_tool_calling_{self.model_client.provider}"
+        return "model_tool_calling"
 
     @property
     def agent_version(self) -> str:
@@ -58,8 +64,24 @@ class ModelToolCallingAgent(AgentPolicy):
         context: RunContext,
     ) -> AgentRunResult:
         """Execute the agent task using only public_request, prompt policy, and tool results."""
-        self.model_client.reset()
-        registry = executor.registry or build_default_registry()
+        self.model_client.begin_run(
+            scenario_id=task.scenario_id,
+            run_id=str(context.run_id),
+            configuration=self.model_configuration,
+        )
+        try:
+            result = await self._run_turns(task, executor, context)
+        finally:
+            manifest = await self.model_client.end_run()
+        return result.model_copy(update={"model_exchange_digest": manifest.semantic_digest()})
+
+    async def _run_turns(
+        self,
+        task: AgentTask,
+        executor: ToolExecutor,
+        context: RunContext,
+    ) -> AgentRunResult:
+        registry = executor.registry
         task_policy = ExecutionToolPolicy.for_task(
             scenario_id=context.scenario_id,
             allowed_tool_names=task.allowed_tools,
@@ -73,7 +95,7 @@ class ModelToolCallingAgent(AgentPolicy):
             executor.set_execution_policy(task_policy)
             policy = task_policy
         visible_tools = [name for name in task.allowed_tools if policy.permits_tool(name)]
-        openai_tools = self._convert_registry_to_openai_tools(registry, visible_tools)
+        tool_schemas = self._tool_schemas(registry, visible_tools)
 
         # Base conversation: ONLY public_request, system prompt policy, and tool responses
         messages: list[dict[str, Any]] = [
@@ -84,44 +106,40 @@ class ModelToolCallingAgent(AgentPolicy):
         tool_calls_made = 0
         invalid_tool_calls = 0
         model_calls = 0
-        turns = 0
         final_response: str | None = None
         stop_reason = AgentStopReason.COMPLETED
         warnings: list[str] = []
         accumulated_usage = ModelUsage()
-
         tool_calls_remaining = task.tool_call_limit
-        max_turns = task.max_turns
 
-        for turn in range(max_turns):
+        for turn in range(task.max_turns):
             if tool_calls_remaining <= 0:
                 stop_reason = AgentStopReason.TOOL_LIMIT_EXCEEDED
                 warnings.append(f"Agent reached tool call limit ({task.tool_call_limit}).")
                 break
 
             request = ModelRequest(
-                provider=self.model_client.provider,
-                model_id=self.model_client.model_id,
+                model_id=self.model_configuration.model_id,
                 prompt_policy_id=self.prompt_policy.policy_id,
                 prompt_policy_version=self.prompt_policy.version,
                 prompt_digest=self.prompt_policy.canonical_digest(),
                 turn_index=turn,
                 messages=messages,
-                tools=openai_tools,
+                tools=tool_schemas,
                 model_configuration=self.model_configuration,
             )
 
             try:
                 response = await self.model_client.create_completion(request)
+            except ModelReplayError:
+                # Replay integrity failures are evaluator errors, not agent behaviour.
+                raise
             except Exception as exc:
                 stop_reason = AgentStopReason.ERROR
                 warnings.append(f"Model client error at turn {turn}: {exc}")
                 break
 
             model_calls += 1
-            turns += 1
-
-            # Accumulate token usage
             accumulated_usage = ModelUsage(
                 prompt_tokens=accumulated_usage.prompt_tokens + response.usage.prompt_tokens,
                 completion_tokens=accumulated_usage.completion_tokens
@@ -129,11 +147,7 @@ class ModelToolCallingAgent(AgentPolicy):
                 total_tokens=accumulated_usage.total_tokens + response.usage.total_tokens,
             )
 
-            # Record assistant turn in messages
-            assistant_msg: dict[str, Any] = {
-                "role": "assistant",
-                "content": response.content,
-            }
+            assistant_msg: dict[str, Any] = {"role": "assistant", "content": response.content}
             if response.tool_calls:
                 assistant_msg["tool_calls"] = [
                     {
@@ -146,7 +160,6 @@ class ModelToolCallingAgent(AgentPolicy):
                     }
                     for tc in response.tool_calls
                 ]
-
             messages.append(assistant_msg)
 
             if not response.tool_calls:
@@ -154,150 +167,26 @@ class ModelToolCallingAgent(AgentPolicy):
                 stop_reason = AgentStopReason.COMPLETED
                 break
 
-            # Execute tool calls
             for tc in response.tool_calls:
                 if tool_calls_remaining <= 0:
                     stop_reason = AgentStopReason.TOOL_LIMIT_EXCEEDED
                     break
-
-                # Unknown calls must still cross the executor boundary so the
-                # denied intent becomes trusted journal evidence.
-                if tc.tool_name not in registry.handlers:
-                    tool_call_id = context.id_factory.next(
-                        record_type="tool_call", sequence=tool_calls_made
-                    )
-                    denied_result = await executor.execute(
-                        ToolCall(
-                            call_id=tool_call_id,
-                            run_id=context.run_id,
-                            tool_name=tc.tool_name,
-                            arguments=tc.arguments,
-                            start_time=context.clock.now(),
-                        ),
-                        context=context,
-                    )
-                    tool_calls_made += 1
-                    tool_calls_remaining -= 1
-                    invalid_tool_calls += 1
-                    warnings.append(f"Invalid tool name requested: '{tc.tool_name}'")
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc.call_id,
-                            "content": json.dumps(
-                                {
-                                    "error": denied_result.error.message
-                                    if denied_result.error
-                                    else "Unknown tool"
-                                }
-                            ),
-                        }
-                    )
-                    continue
-
-                tool_handler = registry.handlers[tc.tool_name]
-                mutation_class = tool_handler.tool_definition.mutation_class
-
-                # Do not let client-side argument validation hide an unsafe
-                # intent. Route registered-but-disallowed calls to the
-                # executor so it records the authoritative denial.
-                if not policy.permits_tool(tc.tool_name):
-                    tool_call_id = context.id_factory.next(
-                        record_type="tool_call", sequence=tool_calls_made
-                    )
-                    denied_result = await executor.execute(
-                        ToolCall(
-                            call_id=tool_call_id,
-                            run_id=context.run_id,
-                            tool_name=tc.tool_name,
-                            arguments=tc.arguments,
-                            mutation_class=None,
-                            start_time=context.clock.now(),
-                        ),
-                        context=context,
-                    )
-                    tool_calls_made += 1
-                    tool_calls_remaining -= 1
-                    invalid_tool_calls += 1
-                    warnings.append(f"Unauthorized tool request denied: '{tc.tool_name}'")
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc.call_id,
-                            "content": json.dumps(
-                                {
-                                    "error": denied_result.error.message
-                                    if denied_result.error
-                                    else "Unauthorized tool"
-                                }
-                            ),
-                        }
-                    )
-                    continue
-
-                # Validate arguments strictly
-                is_valid, validation_err = self._validate_arguments(tc, tool_handler)
-                if not is_valid:
-                    invalid_tool_calls += 1
-                    warnings.append(
-                        f"Invalid arguments for tool '{tc.tool_name}': {validation_err}"
-                    )
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc.call_id,
-                            "content": json.dumps(
-                                {"error": f"Invalid tool arguments: {validation_err}"}
-                            ),
-                        }
-                    )
-                    continue
-
-                # Execute valid tool call
-                tool_call_id = context.id_factory.next(
-                    record_type="tool_call", sequence=tool_calls_made
+                safety_violation = await self._execute_tool_call(
+                    tc,
+                    registry=registry,
+                    policy=policy,
+                    executor=executor,
+                    context=context,
+                    sequence=tool_calls_made,
+                    messages=messages,
+                    warnings=warnings,
                 )
-                tool_call = ToolCall(
-                    call_id=tool_call_id,
-                    run_id=context.run_id,
-                    tool_name=tc.tool_name,
-                    arguments=tc.arguments,
-                    mutation_class=mutation_class,
-                    start_time=context.clock.now(),
-                )
-
-                exec_result = await executor.execute(tool_call=tool_call, context=context)
                 tool_calls_made += 1
                 tool_calls_remaining -= 1
-                if (
-                    exec_result.error is not None
-                    and exec_result.error.error_type == "authorization_error"
-                ):
+                if safety_violation is not None:
                     invalid_tool_calls += 1
-                    warnings.append(f"Unauthorized tool request denied: '{tc.tool_name}'")
-                    if mutation_class != "read_only":
+                    if safety_violation:
                         stop_reason = AgentStopReason.SAFETY_VIOLATION
-                        warnings.append(
-                            f"Safety Violation: Agent attempted mutation tool '{tc.tool_name}'"
-                        )
-
-                result_payload = (
-                    exec_result.result
-                    if exec_result.status == "success"
-                    else {
-                        "error": exec_result.error.message
-                        if exec_result.error
-                        else "Execution failed"
-                    }
-                )
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.call_id,
-                        "content": json.dumps(redact_secrets(result_payload)),
-                    }
-                )
 
             if stop_reason == AgentStopReason.SAFETY_VIOLATION:
                 break
@@ -314,24 +203,85 @@ class ModelToolCallingAgent(AgentPolicy):
             stop_reason=stop_reason,
             final_response=final_response,
             model_call_count=model_calls,
-            model_turn_count=turns,
+            model_turn_count=model_calls,
             tool_call_count=tool_calls_made,
             invalid_tool_call_count=invalid_tool_calls,
             usage=accumulated_usage,
             warnings=warnings,
         )
 
-    def _convert_registry_to_openai_tools(
+    async def _execute_tool_call(
+        self,
+        tc: ModelToolCall,
+        *,
+        registry: ToolRegistry,
+        policy: ExecutionToolPolicy,
+        executor: ToolExecutor,
+        context: RunContext,
+        sequence: int,
+        messages: list[dict[str, Any]],
+        warnings: list[str],
+    ) -> bool | None:
+        """Execute one model tool call through the executor.
+
+        Returns ``None`` for a valid call, ``False`` for an invalid call
+        (unknown tool, unauthorized tool, invalid arguments) and ``True`` when
+        the invalid call is a denied mutation of a visible tool.
+        """
+        definition = registry.definition_for(tc.tool_name)
+        exec_result = await executor.execute(
+            ToolCall(
+                call_id=context.id_factory.next(record_type="tool_call", sequence=sequence),
+                run_id=context.run_id,
+                tool_name=tc.tool_name,
+                arguments=tc.arguments,
+                mutation_class=definition.mutation_class if definition else None,
+                start_time=context.clock.now(),
+            ),
+            context=context,
+        )
+        error = exec_result.error
+        outcome: bool | None = None
+        if definition is None:
+            warnings.append(f"Invalid tool name requested: '{tc.tool_name}'")
+            outcome = False
+        elif error is not None and error.error_type == "authorization_error":
+            warnings.append(f"Unauthorized tool request denied: '{tc.tool_name}'")
+            outcome = False
+            if policy.permits_tool(tc.tool_name) and definition.mutation_class != "read_only":
+                warnings.append(f"Safety Violation: Agent attempted mutation tool '{tc.tool_name}'")
+                outcome = True
+        elif error is not None and error.error_type == "invalid_arguments":
+            warnings.append(f"Invalid arguments for tool '{tc.tool_name}': {error.message}")
+            outcome = False
+
+        result_payload = (
+            exec_result.result
+            if exec_result.status == "success"
+            else {"error": error.message if error else "Execution failed"}
+        )
+        messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": tc.call_id,
+                "content": json.dumps(redact_secrets(result_payload)),
+            }
+        )
+        return outcome
+
+    def _tool_schemas(
         self,
         registry: ToolRegistry,
-        allowed_tools: list[str],
+        visible_tools: list[str],
     ) -> list[dict[str, Any]]:
-        openai_tools: list[dict[str, Any]] = []
+        """Return function schemas for exactly the visible tools (none when empty)."""
+        visible = set(visible_tools)
+        schemas: list[dict[str, Any]] = []
         for name, handler in registry.handlers.items():
-            if allowed_tools and name not in allowed_tools:
+            if name not in visible:
                 continue
             defn = handler.tool_definition
-            openai_tools.append(
+            schemas.append(
                 {
                     "type": "function",
                     "function": {
@@ -341,12 +291,4 @@ class ModelToolCallingAgent(AgentPolicy):
                     },
                 }
             )
-        return openai_tools
-
-    def _validate_arguments(self, tc: ModelToolCall, handler: Any) -> tuple[bool, str | None]:
-        schema = handler.tool_definition.input_schema
-        required = schema.get("required", [])
-        for req_field in required:
-            if req_field not in tc.arguments:
-                return False, f"Missing required parameter '{req_field}'"
-        return True, None
+        return schemas

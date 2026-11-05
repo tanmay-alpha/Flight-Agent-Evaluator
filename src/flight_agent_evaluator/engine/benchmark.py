@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import logging
 import uuid
 from pathlib import Path
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
 from flight_agent_evaluator.agent.protocol import AgentPolicy
+from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.model import AgentRunResult, AgentStopReason, AgentTask
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.contracts.trajectory_expectation import TrajectoryExpectation
@@ -20,14 +22,19 @@ from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
 from flight_agent_evaluator.evaluation.diagnostics import FailureDiagnosticEngine
-from flight_agent_evaluator.evaluation.trajectory_evaluator import TrajectoryEvaluator
+from flight_agent_evaluator.evaluation.trajectory_evaluator import (
+    TrajectoryEvaluator,
+    apply_safety_cap,
+)
 from flight_agent_evaluator.providers.fixture import FixtureFlightProvider
+from flight_agent_evaluator.recording.contracts import RecordingBundleManifest, RunRecording
 from flight_agent_evaluator.recording.journal import HashChainJournal
+from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 from flight_agent_evaluator.runtime.state import StateSnapshot
-from flight_agent_evaluator.tools.base import build_registry_for_scenario
+from flight_agent_evaluator.tools.base import build_registry_for_scenario, default_allowed_tools
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +49,7 @@ class BenchmarkMetricVector(BaseModel):
     overall_score: float = 1.0
     score_vector: dict[str, float] = Field(default_factory=dict)
     failure_codes: list[str] = Field(default_factory=list)
+    evaluator_error: str | None = None
     model_calls: int = 0
     tool_calls: int = 0
     invalid_tool_calls: int = 0
@@ -87,6 +95,7 @@ class BenchmarkRunner:
 
         from flight_agent_evaluator.benchmarks.loader import BenchmarkCase, BenchmarkIntegrityError
         from flight_agent_evaluator.benchmarks.results import (
+            EVALUATOR_ERROR_STATUS,
             BenchmarkCaseResult,
             BenchmarkExecutionIdentity,
         )
@@ -152,7 +161,11 @@ class BenchmarkRunner:
             repetition_index=repetition_index,
             task_success=mv.task_success,
             safety_pass=mv.safety_pass,
-            evaluator_status="passed" if mv.task_success else "failed",
+            evaluator_status=(
+                EVALUATOR_ERROR_STATUS
+                if mv.evaluator_error is not None
+                else ("passed" if mv.task_success else "failed")
+            ),
             overall_score=mv.overall_score,
             score_vector=mv.score_vector,
             failure_codes=mv.failure_codes,
@@ -169,17 +182,27 @@ class BenchmarkRunner:
         agent: Any,
         expectation: TrajectoryExpectation | None = None,
         environment: SimulatedAirlineEnvironment | None = None,
-        output_dir: Path | None = None,  # noqa: ARG002
+        output_dir: Path | None = None,
         authoritative: bool = False,
         execution_seed: int | None = None,
         execution_run_id: str | None = None,
+        scenario_source_digest: str | None = None,
     ) -> BenchmarkMetricVector:
-        """Run a single benchmark scenario against an agent policy."""
+        """Run a single benchmark scenario against an agent policy.
+
+        ``output_dir`` persists a replayable recording; it requires
+        ``scenario_source_digest`` (the SHA-256 of the scenario file bytes, i.e.
+        ``LoadedScenario.digest``), which replay provenance re-checks.
+        """
         if authoritative and expectation is None:
             raise ValueError(
                 f"Authoritative benchmark run for scenario '{scenario.scenario_id.id}' requires an explicit authored expectation."
             )
-
+        if output_dir is not None and not scenario_source_digest:
+            raise ValueError(
+                "Persisting a replayable recording requires scenario_source_digest "
+                "(the scenario file's byte digest)."
+            )
         # Ensure scenario mode matches scenario configuration
         scenario_mode = getattr(scenario, "scenario_mode", "read_only")
 
@@ -190,27 +213,7 @@ class BenchmarkRunner:
             or scenario.metadata.description
         )
 
-        sc_tools = getattr(scenario, "allowed_tools", None) or [
-            s.tool_name for s in scenario.trajectory.steps if s.kind == "invoke_tool"
-        ]
-        allowed_tools = (
-            list(dict.fromkeys(sc_tools))
-            if sc_tools
-            else [
-                "flight.get_status",
-                "flight.search",
-                "flight.search_flights",
-                "policy.get_rebooking_rules",
-                "itinerary.get_current_booking",
-                "booking.get_current",
-                "booking.hold_alternative",
-                "booking.confirm_rebooking",
-                "booking.release_hold",
-                "approval.request",
-                "approval.get_status",
-                "notification.send_simulated",
-            ]
-        )
+        allowed_tools = default_allowed_tools(scenario)
 
         task = AgentTask(
             task_id=f"task_{scenario.scenario_id.id}",
@@ -227,10 +230,15 @@ class BenchmarkRunner:
             scenario_version=scenario.scenario_id.version,
             seed=scenario.seed,
         )
+        # Deterministic, but distinct per agent so recordings of different agents on the
+        # same scenario never overwrite each other.
         run_id = (
             uuid.UUID(execution_run_id)
             if execution_run_id is not None
-            else id_factory.next(record_type="run", sequence=0)
+            else uuid.uuid5(
+                id_factory.next(record_type="run", sequence=0),
+                str(getattr(agent, "agent_id", type(agent).__name__)),
+            )
         )
         start_time: datetime.datetime
         if isinstance(scenario.reference_time, datetime.datetime):
@@ -356,6 +364,7 @@ class BenchmarkRunner:
             journal=journal,
             run_id=str(run_id),
             final_response=agent_result.final_response,
+            initial_state=scenario.initial_state,
         )
 
         # Failure diagnostics
@@ -375,6 +384,7 @@ class BenchmarkRunner:
             and scorecard.overall_pass
             and scorecard.evaluator_error is None
         )
+        overall_score = apply_safety_cap(scorecard.composite_score, safety_pass)
 
         # Lifecycle Gate: record run_completed event
         journal.append_event(
@@ -387,6 +397,7 @@ class BenchmarkRunner:
                 "safety_pass": safety_pass,
                 "overall_pass": scorecard.overall_pass,
                 "composite_score": scorecard.composite_score,
+                "overall_score": overall_score,
             },
         )
 
@@ -396,33 +407,105 @@ class BenchmarkRunner:
         ]
         if not safety_pass and "safety_violation" not in failure_codes:
             failure_codes.append("safety_violation")
-        if scorecard.evaluator_error and scorecard.evaluator_error not in failure_codes:
-            failure_codes.append(scorecard.evaluator_error)
 
-        journal_digest = journal.final_digest()
+        score_vector = {
+            "goal_accuracy": scorecard.goal_accuracy,
+            "constraint_satisfaction": scorecard.constraint_satisfaction,
+            "efficiency": scorecard.efficiency_score,
+            "composite_uncapped": scorecard.composite_score,
+        }
+        if scorecard.recovery_score is not None:
+            score_vector["recovery"] = scorecard.recovery_score
 
-        return BenchmarkMetricVector(
+        metric_vector = BenchmarkMetricVector(
             scenario_id=scenario.scenario_id.id,
             agent_id=getattr(agent, "agent_id", str(agent)),
             task_success=task_success,
             safety_pass=safety_pass,
-            overall_score=scorecard.overall_score,
-            score_vector={
-                "goal_accuracy": scorecard.goal_accuracy,
-                "constraint_satisfaction": scorecard.constraint_satisfaction,
-                "efficiency": scorecard.efficiency_score,
-            },
+            overall_score=overall_score,
+            score_vector=score_vector,
             failure_codes=failure_codes,
+            evaluator_error=scorecard.evaluator_error,
             model_calls=agent_result.model_call_count,
             tool_calls=agent_result.tool_call_count,
             invalid_tool_calls=agent_result.invalid_tool_call_count,
             retries=agent_result.retry_count,
             unnecessary_calls=scorecard.unnecessary_action_count,
-            false_transaction_claims=0,
+            false_transaction_claims=scorecard.unsupported_claim_count,
             replay_success=None,
             total_tokens=agent_result.usage.total_tokens,
             run_id=str(context.run_id),
-            journal_digest=journal_digest,
+            journal_digest=journal.final_digest(),
+        )
+        if output_dir is not None and scenario_source_digest:
+            self._persist_run(
+                output_dir=output_dir,
+                scenario=scenario,
+                scenario_source_digest=scenario_source_digest,
+                expectation=expectation,
+                agent=agent,
+                journal=journal,
+                agent_result=agent_result,
+                metric_vector=metric_vector,
+            )
+        return metric_vector
+
+    @staticmethod
+    def _persist_run(
+        *,
+        output_dir: Path,
+        scenario: BenchmarkScenario,
+        scenario_source_digest: str,
+        expectation: TrajectoryExpectation | None,
+        agent: Any,
+        journal: HashChainJournal,
+        agent_result: AgentRunResult,
+        metric_vector: BenchmarkMetricVector,
+    ) -> None:
+        """Write the recording bundle (replayable by the CLI) and the metric vector."""
+        run_id = str(metric_vector.run_id)
+        scenario_digest = scenario_source_digest
+        recording = RunRecording(
+            run_id=uuid.UUID(run_id),
+            scenario_id=scenario.scenario_id.id,
+            scenario_version=scenario.scenario_id.version,
+            seed=scenario.seed,
+            entry_count=len(journal.entries),
+            final_digest=journal.final_digest(),
+            started_at=journal.entries[0].time,
+            completed_at=journal.entries[-1].time,
+            tool_calls_made=agent_result.tool_call_count,
+            final_response=agent_result.final_response,
+        )
+        journal_bytes = journal.to_jsonl_string().encode("utf-8")
+        meta_bytes = (recording.model_dump_json(indent=2) + "\n").encode("utf-8")
+        manifest = RecordingBundleManifest(
+            run_id=run_id,
+            journal_file=f"{run_id}.jsonl",
+            journal_bytes_sha256=hashlib.sha256(journal_bytes).hexdigest(),
+            journal_chain_digest=journal.final_digest(),
+            journal_entry_count=len(journal.entries),
+            metadata_file=f"{run_id}.meta.json",
+            metadata_bytes_sha256=hashlib.sha256(meta_bytes).hexdigest(),
+            scenario_id=scenario.scenario_id.id,
+            scenario_version=scenario.scenario_id.version,
+            scenario_digest=scenario_digest,
+            expectation_digest=(
+                canonical_hash(expectation.model_dump(mode="json")) if expectation else None
+            ),
+            agent_id=metric_vector.agent_id,
+            agent_version=str(getattr(agent, "agent_version", "1.0.0")),
+            execution_runner="benchmark-runner",
+            seed=scenario.seed,
+            semantic_recording_digest=hashlib.sha256(
+                (journal.final_digest() + scenario_digest).encode("utf-8")
+            ).hexdigest(),
+        )
+        output_dir.mkdir(parents=True, exist_ok=True)
+        store = FileRecordingStore(output_dir)
+        store.write_recording(run_id, journal, recording, manifest=manifest)
+        (output_dir / f"{run_id}.metrics.json").write_text(
+            metric_vector.model_dump_json(indent=2) + "\n", encoding="utf-8"
         )
 
     def _build_development_expectation(self, scenario: BenchmarkScenario) -> TrajectoryExpectation:
@@ -473,13 +556,12 @@ class BenchmarkRunner:
         self,
         scenarios: list[BenchmarkScenario],
         agents: list[AgentPolicy],
-        output_dir: Path | None = None,
     ) -> BenchmarkSuiteResult:
-        """Run benchmark suite across multiple scenarios and agents."""
+        """Run benchmark suite across multiple scenarios and agents (no persistence)."""
         metric_vectors: list[BenchmarkMetricVector] = []
         for scenario in scenarios:
             for agent in agents:
-                mv = await self.run_scenario(scenario, agent, output_dir=output_dir)
+                mv = await self.run_scenario(scenario, agent)
                 metric_vectors.append(mv)
 
         total_runs = len(metric_vectors)

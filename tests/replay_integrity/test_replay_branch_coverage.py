@@ -12,11 +12,9 @@ import pytest
 
 from flight_agent_evaluator.judges.contracts import (
     JudgeCriterion,
-    JudgeCriterionResult,
     JudgeEvidencePackage,
     JudgeExchange,
     JudgeExchangeManifest,
-    JudgeResult,
 )
 from flight_agent_evaluator.judges.errors import (
     JudgeReplayCorruptedError,
@@ -248,22 +246,14 @@ async def test_judge_replay_manifest_validation():
         final_response="resp",
         created_at=datetime.now(UTC),
     )
-    judge_res = JudgeResult(
-        schema_version="judge-schema-v1",
-        package_id="p1",
-        package_digest=pkg.semantic_digest(),
-        mode="replay",
-        criteria_results=[
-            JudgeCriterionResult(
-                criterion=JudgeCriterion.GROUNDEDNESS,
-                score=3,
-                rationale="Grounded observation",
-            )
-        ],
-        overall_score=3.0,
-        created_at=datetime.now(UTC),
+    resp_text = json.dumps(
+        {
+            "criteria_results": [
+                {"criterion": c.value, "score": 3, "rationale": "Grounded observation"}
+                for c in JudgeCriterion
+            ]
+        }
     )
-    resp_text = json.dumps(judge_res.model_dump(mode="json"))
     ex1 = JudgeExchange(
         exchange_id="ex-1",
         request_fingerprint="fp-dup",
@@ -272,8 +262,6 @@ async def test_judge_replay_manifest_validation():
         request_messages=[],
         response_text=resp_text,
         response_digest=hashlib.sha256(resp_text.encode("utf-8")).hexdigest(),
-        parsed_result=judge_res,
-        parsed_result_digest=judge_res.canonical_digest(),
         model_id="gpt-4o",
         recorded_at=datetime.now(UTC),
     )

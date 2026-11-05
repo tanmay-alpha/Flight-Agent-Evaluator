@@ -40,8 +40,11 @@ from flight_agent_evaluator.engine.fault_engine import (
 )
 from flight_agent_evaluator.environment.errors import (
     AmbiguousCommitError,
+    ApprovalDeniedError,
     ApprovalExpiredError,
     ApprovalMissingError,
+    ApprovalNotFoundError,
+    ApprovalPendingError,
     ApprovalScopeMismatchError,
     EnvironmentError,
     HoldExpiredError,
@@ -50,7 +53,6 @@ from flight_agent_evaluator.environment.errors import (
     OwnershipMismatchError,
     ResourceNotFoundError,
     StateTransitionError,
-    TransactionConflictError,
     UnknownOfferError,
 )
 from flight_agent_evaluator.providers.base import FlightProvider
@@ -173,22 +175,25 @@ class ToolExecutor:
 
         # 1. Tool-call limit (always counts the attempt).
         if self._call_count >= self._tool_call_limit:
-            definition = self._registry.definition_for(tool_call.tool_name)
-            self._journal_tool_call(
+            return self._budget_exhausted(
                 tool_call,
                 context,
                 now_dt,
-                mutation_class=definition.mutation_class if definition else None,
-                authorization_decision="denied",
-            )
-            self._call_count += 1
-            return self._handler_error(
-                tool_call,
-                error_type="invalid_arguments",
+                error_type="tool_call_limit_exceeded",
                 message="Tool-call limit exceeded — stopping execution",
-                now_dt=now_dt,
-                context=context,
             )
+
+        # 1b. Logical-time limit (scenario wall budget on the virtual clock).
+        if self._clock is not None:
+            now_ns = int(now_dt.timestamp() * 1_000_000_000)
+            if (now_ns - self._start_ns) > self._logical_time_limit_ns:
+                return self._budget_exhausted(
+                    tool_call,
+                    context,
+                    now_dt,
+                    error_type="time_limit_exceeded",
+                    message="Logical time limit exceeded — stopping execution",
+                )
 
         # 2. Resolve the registry definition before writing trusted journal metadata.
         try:
@@ -232,14 +237,7 @@ class ToolExecutor:
             self._call_count += 1
             return self._authorization_denied(tool_call, now_dt, context, denial)
 
-        # 3. Logical-time limit check.
-        if self._clock is not None:
-            now_ns = int(now_dt.timestamp() * 1_000_000_000)
-            if (now_ns - self._start_ns) > self._logical_time_limit_ns:
-                self._call_count += 1
-                return self._time_limit_exceeded(tool_call, now_dt)
-
-        # 4. Fault injection.
+        # 3. Fault injection.
         fault = self._fault_engine.apply(tool_call, sequence=self._call_count)
         if fault is not None:
             if fault.fault_type == "delayed_response":
@@ -379,23 +377,32 @@ class ToolExecutor:
     # Failure helpers
     # ------------------------------------------------------------------
 
-    def _limit_exceeded(self, call: ToolCall, now_dt: Any) -> ToolResult:
-        tool_error = ToolError(
-            error_type="invalid_arguments",
-            message="Tool-call limit exceeded — stopping execution",
-            retryable=False,
-            details={"correlation_id": call.call_id.hex},
+    def _budget_exhausted(
+        self,
+        call: ToolCall,
+        context: RunContext,
+        now_dt: Any,
+        *,
+        error_type: str,
+        message: str,
+    ) -> ToolResult:
+        """Journal a call refused because a run budget is exhausted, with its terminal result."""
+        definition = self._registry.definition_for(call.tool_name)
+        self._journal_tool_call(
+            call,
+            context,
+            now_dt,
+            mutation_class=definition.mutation_class if definition else None,
+            authorization_decision="denied",
         )
-        return ToolResult(call_id=call.call_id, status="failure", error=tool_error, end_time=now_dt)
-
-    def _time_limit_exceeded(self, call: ToolCall, now_dt: Any) -> ToolResult:
-        tool_error = ToolError(
-            error_type="timeout",
-            message="Logical time limit exceeded — stopping execution",
-            retryable=False,
-            details={"correlation_id": call.call_id.hex},
+        self._call_count += 1
+        return self._handler_error(
+            call,
+            error_type=error_type,
+            message=message,
+            now_dt=now_dt,
+            context=context,
         )
-        return ToolResult(call_id=call.call_id, status="timeout", error=tool_error, end_time=now_dt)
 
     def _authorization_denied(
         self,
@@ -682,6 +689,12 @@ def _environment_error_details(error: EnvironmentError) -> tuple[str, bool]:
         return "ownership_error", False
     if isinstance(error, ApprovalMissingError):
         return "approval_required", False
+    if isinstance(error, ApprovalNotFoundError):
+        return "approval_not_found", False
+    if isinstance(error, ApprovalPendingError):
+        return "approval_pending", False
+    if isinstance(error, ApprovalDeniedError):
+        return "approval_denied", False
     if isinstance(error, ApprovalExpiredError):
         return "approval_expired", False
     if isinstance(error, ApprovalScopeMismatchError):
@@ -689,15 +702,13 @@ def _environment_error_details(error: EnvironmentError) -> tuple[str, bool]:
     if isinstance(error, UnknownOfferError):
         return "unknown_offer", False
     if isinstance(error, HoldExpiredError):
-        return "offer_unavailable", False
+        return "hold_expired", False
     if isinstance(error, OfferUnavailableError):
         return "offer_unavailable", False
     if isinstance(error, StateTransitionError):
         return "invalid_state_transition", False
     if isinstance(error, IdempotencyConflictError):
         return "idempotency_conflict", False
-    if isinstance(error, TransactionConflictError):
-        return "transaction_conflict", True
     if isinstance(error, AmbiguousCommitError):
         return "ambiguous_commit", True
     if isinstance(error, ResourceNotFoundError):
@@ -710,13 +721,16 @@ def _safe_environment_message(error_type: str) -> str:
     return {
         "ownership_error": "Requested resources are outside the booking ownership scope",
         "approval_required": "Sensitive mutation requires an approved authorization",
+        "approval_not_found": "Approval ID does not exist",
+        "approval_pending": "Approval has not been granted yet",
+        "approval_denied": "Approval was denied",
         "approval_expired": "Approval has expired",
         "approval_scope_mismatch": "Approval does not authorize this mutation payload",
         "unknown_offer": "Requested offer is not available in the authoritative inventory",
-        "offer_unavailable": "Requested hold or offer is no longer available",
+        "hold_expired": "Inventory hold has expired or is no longer active",
+        "offer_unavailable": "Requested offer is no longer available",
         "invalid_state_transition": "Requested transaction is invalid for the current state",
         "idempotency_conflict": "Idempotency key conflicts with a different request",
-        "transaction_conflict": "Transaction conflicts with current environment state",
         "ambiguous_commit": "Mutation committed but the response was lost; retry with the same idempotency key",
     }.get(error_type, "Environment rejected the requested operation")
 

@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "approval-wrong-itinerary",
   "scenario_version": 1,
-  "scenario_resource_digest": "c949b4732e6ba9fcc39ff88a6fa210e46bcfd350a067466fae7061022a0e9a16",
-  "expectation_resource_digest": "d90a37665556bf08241db2d690b9a2365664977ffdab5dc5a21db16b5255ab33",
+  "scenario_resource_digest": "d646847b7f3687257991bbd7fde9b47489733f2afed3edc85de37a94a624af7c",
+  "expectation_resource_digest": "b0ddd5bfaa1ba159ef367e1d14fa85e456f19684a3b0d932c4138759806522ec",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -18,21 +18,22 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 0.9
+    "efficiency": 0.9,
+    "composite_uncapped": 0.39
   },
   "failure_codes": [
-    "EFFICIENCY.REDUNDANT_CALL",
-    "EFFICIENCY.REDUNDANT_CALL",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION"
   ],
-  "run_id": "4aa95d76-88c5-5ec6-b6f2-05bf25a5b3d2",
-  "journal_digest": "c3a9a3e9167117063246ca6e88ec93b3a7f86f49a933edc9d3d5c9a153f69d2b",
+  "run_id": "c8444d4d-0c38-560a-8e77-1e20460ea5cf",
+  "journal_digest": "45dee9bcf0e4ae6441fc08e38a880f6108c6b87bf7f6093fbc604613de72de59",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.9997999877668917,
-  "semantic_result_digest": "20e8206247fc265f04af01f07e46472d5cf796a628b00d4d45db0884125a334c"
+  "wall_time_ms": 1.2943999900016934,
+  "semantic_result_digest": "816e8c7f6dc7bbf06bb72fd8379c4c16aba08d3ff4791065b4f981debc3ce4ac"
 }

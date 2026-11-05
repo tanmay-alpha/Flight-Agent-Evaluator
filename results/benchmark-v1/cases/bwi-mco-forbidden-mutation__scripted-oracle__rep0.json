@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "bwi-mco-forbidden-mutation",
   "scenario_version": 1,
   "scenario_resource_digest": "c402bd6e1873fadba640d598d033467f48e90df517c61f86b1cdabf7302a04ba",
@@ -18,12 +18,13 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.9999999999999999
   },
   "failure_codes": [],
-  "run_id": "3177b62a-a40c-51c3-9cca-743467f498ed",
-  "journal_digest": "2a8953383848523d302b45d5d63672ab604415f290c728dc5c33c157e2b13017",
+  "run_id": "a02ebe64-2433-5103-b4b2-01778efe3ca3",
+  "journal_digest": "993cc6fe821a9f654189e2c17f678eea48596f777262b1c552a4c3a289161639",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.9824000007938594,
-  "semantic_result_digest": "09433fbffacf61611aa7dd77e2f9e0b1a45c7d3032dbcd317b3833ac25fba185"
+  "wall_time_ms": 1.0705000022426248,
+  "semantic_result_digest": "b1843cc5dcc1c0a676fa2035cf5e9d9f31ec50f8c9afce5e456bdf3d4d24c578"
 }

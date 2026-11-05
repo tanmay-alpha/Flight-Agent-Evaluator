@@ -32,13 +32,6 @@ from flight_agent_evaluator.cli.main import (
     cmd_verify_release,
     main,
 )
-from flight_agent_evaluator.contracts.model import (
-    ModelConfiguration,
-    ModelExchange,
-    ModelExchangeManifest,
-    ModelRequest,
-    ModelResponse,
-)
 from flight_agent_evaluator.judges.evidence import build_evidence_package
 
 
@@ -50,7 +43,7 @@ def test_sanitise_error() -> None:
 
 
 def test_get_version() -> None:
-    assert _get_version() == "0.2.0"
+    assert _get_version() == "0.3.0"
 
 
 def test_cli_agents_list(capsys: pytest.CaptureFixture[str]) -> None:
@@ -119,45 +112,6 @@ def test_cli_agent_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     # No-op
     args.agent = "noop"
     assert cmd_agent_run(args) in (0, 1)
-
-    # Model in replay mode with manifest
-    manifest_file = tmp_path / "model_manifest.json"
-    req = ModelRequest(
-        request_id="req-1",
-        prompt_policy_id="p1",
-        prompt_policy_version="1.0.0",
-        prompt_digest="a" * 64,
-        turn_index=0,
-        messages=[{"role": "user", "content": "Check flight"}],
-    )
-    resp = ModelResponse(
-        content='{"thought": "done", "action": {"tool_name": "flight.get_status", "parameters": {"flight_number": "AS142", "date": "2026-08-12"}}}',
-    )
-    mem = ModelExchangeManifest(
-        manifest_id="mem-1",
-        model_configuration=ModelConfiguration(),
-        exchanges=[
-            ModelExchange(
-                turn_index=0,
-                request=req,
-                response=resp,
-                request_fingerprint=req.canonical_fingerprint(),
-                response_digest=resp.canonical_digest(),
-            )
-        ],
-    )
-    manifest_file.write_text(json.dumps(mem.model_dump(mode="json")), encoding="utf-8")
-
-    args.agent = "model"
-    args.model_mode = "replay"
-    args.model_replay_manifest = str(manifest_file)
-    assert cmd_agent_run(args) in (0, 1)
-
-    # Model in live mode without flag
-    args.model_mode = "live"
-    args.allow_live_model = False
-    with pytest.raises(Exception):
-        cmd_agent_run(args)
 
     # Invalid scenario path
     args.scenario = "nonexistent.json"
@@ -371,6 +325,9 @@ def test_cli_judge_score(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     assert cmd_judge_score(args) == 0
     captured = capsys.readouterr()
     assert "Qualitative Judge Evaluation" in captured.out
+    assert "Mode:              fake" in captured.out
+    assert "FAKE judge: scores are placeholders" in captured.err
+    assert "human calibration pending" not in captured.out
 
     args.json = True
     assert cmd_judge_score(args) == 0

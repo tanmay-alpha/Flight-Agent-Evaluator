@@ -12,6 +12,16 @@ def test_redact_api_key_strings():
     assert "[REDACTED_SECRET]" in redacted
 
 
+def test_redact_project_and_service_account_keys() -> None:
+    for key in (
+        "sk-proj-AbCdEf_0123456789-ghijklmnopQRST",
+        "sk-svcacct-Z9y8X7w6V5u4T3s2R1q0_pon-mlk",
+    ):
+        redacted = redact_secrets(f"key={key}!")
+        assert key not in redacted
+        assert "proj-" not in redacted and "svcacct-" not in redacted
+
+
 def test_redact_bearer_tokens():
     raw_str = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test"
     redacted = redact_secrets(raw_str)

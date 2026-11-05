@@ -1,6 +1,7 @@
 # ADR 0009 — Failure taxonomy, evidence-backed diagnostics, and root-cause attribution
 
 - **Status:** Accepted
+- **Errata:** 2026-11-05, revised 2026-11-06 for v0.3.0. Parts of this decision do not match the implementation; see [Errata](#errata).
 - **Date:** 2026-08-09
 - **Stage:** 3.
 
@@ -97,3 +98,32 @@ These are never collapsed into a single opaque number.
   but changing semantics or removing codes does.
 - Evaluator ablation experiments can compare diagnostics vs non-diagnostics
   across the same trajectories.
+
+## Errata
+
+These notes were first written 2026-11-05 against v0.2 and revised 2026-11-06 against v0.3.0 (`release/v0.3.0`). The decision text above is unchanged. Paths are relative to `src/flight_agent_evaluator/`.
+
+**Resolved in v0.3.0**
+
+- **Distinguishing evaluator failure.** The diagnostics now map evaluator errors to separate codes (`evaluation/diagnostics.py:756-758`):
+  - `no_applicable_path` → `EVALUATOR.NO_APPLICABLE_PATH`;
+  - `evaluator_complexity_limit` → `EVALUATOR.COMPLEXITY_LIMIT`;
+  - anything else → `EVALUATOR.INTERNAL_ERROR`.
+
+  An outcome shortfall maps to `STATE.OUTCOME_NOT_ACHIEVED` (`:759`). `STATE.FALSE_SUCCESS` is now reserved for success claims the journal does not back up (`evaluation/journal_safety.py:418-466`). The benchmark's `evaluator_error_rate` counts real evaluator errors (`engine/benchmark.py:164-168`, `benchmarks/engine.py:218,223`).
+
+**Still differs from the decision**
+
+- **"10 root-cause domains", "40+ codes".** `FailureCode` has 52 codes across 11 prefixes (`evaluation/failure_codes.py:35`). The extra prefix is `TRANSACTION`.
+- **"Safety failures carry CRITICAL severity".** Nine of the 11 SAFETY codes map to `CRITICAL`. `SAFETY.UNTRUSTED_OUTPUT_FOLLOWED` and `SAFETY.DUPLICATE_SIDE_EFFECT` map to `HIGH` (`evaluation/failure_codes.py:333-344`).
+  - The unified `FailureSeverity` in `evaluation/diagnostics.py:127-144` also keeps the legacy `FATAL`/`MAJOR`/`MINOR` aliases.
+  - Path-level forbidden actions are reported as `TOOL.FORBIDDEN_TOOL`, not as a `SAFETY.*` code, although they still fail `safety_pass` (`evaluation/trajectory_evaluator.py:327-341,509-511`).
+- **"Root-cause attribution" / causal graph.** `RootCauseAnalyzer` (`evaluation/signals.py:681-776`) applies fixed rules:
+  - SAFETY and EVALUATOR failures are always primary;
+  - an ENVIRONMENT failure that precedes a RECOVERY failure in journal order is linked as its cause, with a missing sequence number counted as 0 (`:724-727`);
+  - every other failure defaults to primary.
+
+  The code's own rationale string says "direct causality inferred by journal order" (`:743`). This is a heuristic, not causal inference.
+- **"Diagnostic claims without supporting evidence are rejected".** `FailureInstance.evidence_refs` defaults to an empty list (`evaluation/diagnostics.py:265-268`), and nothing rejects a failure that has no evidence. `EvidenceGraph.is_consistent` only checks that edge endpoints exist (`evaluation/signals.py:639-642`).
+- **"Optionally: `JudgeResult` (Stage 4)".** The evaluator and the benchmark never call the judge. Only the CLI and the annotation bundle builder import it (`cli/main.py:47-51`, `annotation/bundle.py:14`).
+- **"Evaluator ablation experiments".** No ablation module exists; it stays removed (`tests/unit/test_release_truth_regressions.py:50-55`). Evaluator accuracy is instead measured on construction-labelled perturbations by `evaluation/validation/`.

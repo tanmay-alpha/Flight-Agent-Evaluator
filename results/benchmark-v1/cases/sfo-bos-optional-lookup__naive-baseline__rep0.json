@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "sfo-bos-optional-lookup",
   "scenario_version": 1,
   "scenario_resource_digest": "303ec1a09cfb9a437874f4583baace6f8a9cc0808e936d23a5c01ddd2102b273",
@@ -18,12 +18,13 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
-    "efficiency": 0.95
+    "efficiency": 0.95,
+    "composite_uncapped": 0.9283333333333332
   },
   "failure_codes": [],
-  "run_id": "8304a170-c0c6-5291-ab6a-37c4d2dd8b04",
-  "journal_digest": "44990b3defe67e5ffc799cb6267672783d11312ed53aed2d4a36f1e77705246f",
+  "run_id": "8d626e6a-8b41-5200-81db-ef58026847b2",
+  "journal_digest": "9c318906665705054f1ec9519b9be6e02a4c8d04e8f70df194d3c8d4400f7cf2",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.145399990491569,
-  "semantic_result_digest": "526fa9a4874ec84a13fe42f35f3227c8d5ad14110ef946e02adaca58d755d95d"
+  "wall_time_ms": 1.3411999971140176,
+  "semantic_result_digest": "11d0e70f10737c71f46d7eba3c61335561e790db0cb529fb9568a0db5bb9b0f2"
 }

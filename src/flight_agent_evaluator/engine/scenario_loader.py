@@ -10,8 +10,8 @@ Scenarios are machine-readable JSON files. The loader:
 - Rejects unsupported scenario schema major versions.
 - Validates the scenario against ``BenchmarkScenario``.
 - Computes a SHA-256 digest of the raw bytes for provenance.
-- Enforces path safety unconditionally.
-- Rejects symlinks.
+- Enforces path containment only when an explicit ``allowed_root`` is configured.
+- Rejects symlinks and files larger than the size limit before reading them.
 """
 
 from __future__ import annotations
@@ -109,10 +109,9 @@ class ScenarioLoader:
     """Load, validate, and digest benchmark scenarios from local JSON files.
 
     The constructor accepts an optional ``allowed_root`` for path-safety
-    enforcement. If provided, scenario files must exist below that
-    directory tree. If omitted, the loader enforces that the file is
-    inside the repository's own ``resources/scenarios`` directory (a
-    deterministic default safe tree).
+    enforcement. If provided, scenario files must resolve below that
+    directory tree. If omitted, no containment check is performed: callers
+    loading untrusted paths must pass ``allowed_root``.
     """
 
     def __init__(
@@ -221,8 +220,13 @@ class ScenarioLoader:
         return self.load_from_path(Path(ref.logical_path), expected_sha256=ref.expected_sha256)
 
     def load_builtin(self, scenario_id_or_path: str) -> LoadedScenario:
-        """Load a built-in packaged scenario by scenario ID or logical path."""
+        """Load a built-in packaged scenario by scenario ID or logical path.
+
+        A bare id (``approval-denied``) resolves to ``scenarios/<id>.json`` and then to
+        ``scenarios/transactional/<id>.json``.
+        """
         from flight_agent_evaluator.resources.contracts import (
+            BuiltinResourceNotFound,
             ResourceKind,
             ResourceOrigin,
             ResourceRef,
@@ -234,17 +238,27 @@ class ScenarioLoader:
 
         logical = scenario_id_or_path.strip()
         if not logical.endswith(".json") and "/" not in logical and "\\" not in logical:
-            logical = f"scenarios/{logical}.json"
+            candidates = [f"scenarios/{logical}.json", f"scenarios/transactional/{logical}.json"]
         elif not logical.startswith("scenarios/"):
-            logical = f"scenarios/{logical}"
+            candidates = [f"scenarios/{logical}"]
+        else:
+            candidates = [logical]
 
-        sanitized = sanitize_logical_path(logical)
-        ref = ResourceRef(
-            origin=ResourceOrigin.BUILTIN,
-            logical_path=sanitized,
-            kind=ResourceKind.SCENARIO,
-        )
-        return self.load_resource(ref, get_builtin_locator())
+        def _ref(path: str) -> ResourceRef:
+            return ResourceRef(
+                origin=ResourceOrigin.BUILTIN,
+                logical_path=sanitize_logical_path(path),
+                kind=ResourceKind.SCENARIO,
+            )
+
+        locator = get_builtin_locator()
+        *fallbacks_first, last = candidates
+        for candidate in fallbacks_first:
+            try:
+                return self.load_resource(_ref(candidate), locator)
+            except BuiltinResourceNotFound:
+                continue
+        return self.load_resource(_ref(last), locator)
 
     def load_from_path(self, path: Path, expected_sha256: str | None = None) -> LoadedScenario:
         """Load a scenario from an explicit filesystem Path."""
@@ -255,6 +269,11 @@ class ScenarioLoader:
         # Resolve and verify path safety.
         self._check_path_safety(path)
 
+        size = path.stat().st_size
+        if size > self._max_bytes:
+            raise ScenarioLoaderError(
+                f"Scenario file too large ({size} > {self._max_bytes} bytes): {path}"
+            )
         raw = path.read_bytes()
         return self.load_from_bytes(raw, expected_sha256=expected_sha256)
 

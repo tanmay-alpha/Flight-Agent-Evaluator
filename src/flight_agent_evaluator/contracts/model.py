@@ -110,11 +110,15 @@ class ModelUsage(BaseModel):
 
 
 class ModelRequest(BaseModel):
-    """Strict request submitted to a model client."""
+    """Strict, provider-neutral request submitted to a model client.
 
-    model_config = ConfigDict(frozen=True)
+    Tool names in ``tools`` and in assistant ``tool_calls`` messages are the
+    evaluator's internal (dotted) names; provider adapters translate them at
+    the wire boundary.
+    """
 
-    provider: str = "openai"
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     model_id: str = "gpt-4o-mini"
     prompt_policy_id: str
     prompt_policy_version: str
@@ -125,9 +129,12 @@ class ModelRequest(BaseModel):
     model_configuration: ModelConfiguration = Field(default_factory=ModelConfiguration)
 
     def canonical_fingerprint(self) -> str:
-        """SHA-256 request fingerprint based on stable non-secret fields."""
+        """SHA-256 fingerprint of every field that affects model behaviour.
+
+        The fingerprint never covers the transport (live, record, or replay
+        client), so a request recorded against a provider replays offline.
+        """
         payload = {
-            "provider": self.provider,
             "model_id": self.model_id,
             "prompt_policy_id": self.prompt_policy_id,
             "prompt_policy_version": self.prompt_policy_version,
@@ -226,7 +233,7 @@ class AgentTask(BaseModel):
 class AgentRunResult(BaseModel):
     """Public benchmark outcome of executing an agent."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     run_id: str
     agent_id: str

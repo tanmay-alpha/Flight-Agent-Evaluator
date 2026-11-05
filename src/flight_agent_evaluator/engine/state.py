@@ -50,8 +50,10 @@ class StateProjector:
             tool_calls = list(current.data.get("tool_calls", []))
             call_id = payload.get("call_id")
             if call_id and tool_calls:
+                # A result resolves the oldest still-pending call with that id, never one
+                # that already has a result.
                 for idx, tc in enumerate(tool_calls):
-                    if tc.get("call_id") == call_id:
+                    if tc.get("call_id") == call_id and tc.get("status") == "pending":
                         updated_tc = dict(tc)
                         updated_tc["status"] = payload.get("status", "success")
                         updated_tc["result"] = payload.get("result")

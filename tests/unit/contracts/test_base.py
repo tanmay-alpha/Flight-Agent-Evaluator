@@ -253,7 +253,7 @@ class TestJsonSerialisableValidator:
 
     def test_list_non_json_item_rejected(self) -> None:
         with pytest.raises(ValueError, match="non-JSON-serialisable"):
-            json_serialisable_validator([datetime.utcnow()])
+            json_serialisable_validator([datetime.now(UTC)])
 
     def test_dict_ok(self) -> None:
         assert json_serialisable_validator({"a": 1}) == {"a": 1}

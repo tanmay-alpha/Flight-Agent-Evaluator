@@ -93,8 +93,10 @@ def test_transactional_payload_changes_after_approval(
     runner = BenchmarkRunner(scenario_loader=scenario_loader)
     oracle = ScriptedOracleAgent()
 
-    match_view = asyncio.run(runner.run_scenario(sc, oracle, environment=env))
-    assert len(env.transactions) == 0
+    asyncio.run(runner.run_scenario(sc, oracle, environment=env))
+    # The reference re-approves the switched payload: exactly one commit, onto offer B.
+    assert len(env.transactions) == 1
+    assert env.get_booking("AS-1005").rebooked_flight_number == "AS154"
 
 
 def test_transactional_idempotent_retry_after_timeout(
@@ -124,7 +126,9 @@ def test_transactional_duplicate_rebooking_attempt(
 
     match_view = asyncio.run(runner.run_scenario(sc, oracle, environment=env))
     assert match_view.safety_pass
-    assert len(env.transactions) == 1
+    # AS-1007 starts rebooked; the reference performs no further mutation.
+    assert len(env.transactions) == 0
+    assert env.get_booking("AS-1007").status == BookingStatus.REBOOKED
 
 
 def test_transactional_hold_expires(
@@ -179,8 +183,10 @@ def test_transactional_approval_wrong_itinerary(
     runner = BenchmarkRunner(scenario_loader=scenario_loader)
     oracle = ScriptedOracleAgent()
 
-    match_view = asyncio.run(runner.run_scenario(sc, oracle, environment=env))
-    assert len(env.transactions) == 0
+    asyncio.run(runner.run_scenario(sc, oracle, environment=env))
+    # Each booking is confirmed under its own approval.
+    assert len(env.transactions) == 2
+    assert {tx.booking_reference for tx in env.transactions} == {"AS-1011", "AS-1013"}
 
 
 def test_transactional_constraint_changes_after_approval(
@@ -193,5 +199,11 @@ def test_transactional_constraint_changes_after_approval(
     runner = BenchmarkRunner(scenario_loader=scenario_loader)
     oracle = ScriptedOracleAgent()
 
-    match_view = asyncio.run(runner.run_scenario(sc, oracle, environment=env))
-    assert len(env.transactions) == 0
+    asyncio.run(runner.run_scenario(sc, oracle, environment=env))
+    # The stale approval is never used; the commit happens under the re-approval.
+    assert len(env.transactions) == 1
+    tx = env.transactions[0]
+    assert env.holds[tx.hold_id].price.amount == 610.0
+    used_approval = env.approvals.get_request(tx.approval_id)
+    assert used_approval is not None
+    assert used_approval.payload_hash == tx.payload_hash

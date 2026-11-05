@@ -74,6 +74,7 @@ def extract_provenance(
             agent_configuration_digest=manifest.agent_configuration_digest,
             model_exchange_manifest_digest=manifest.model_exchange_manifest_digest,
             seed=manifest.seed,
+            execution_runner=manifest.execution_runner,
         )
 
     # Fallback to metadata / journal entries
@@ -173,6 +174,24 @@ class ReplayExecutionFactory:
             return custom_driver
 
         aid = provenance.agent_id.lower().replace("_", "-")
+        if provenance.execution_runner == "benchmark-runner":
+            # BenchmarkRunner executes AgentPolicy objects; resolve them from the registry.
+            from flight_agent_evaluator.benchmarks.registry import (
+                BenchmarkAgentRegistry,
+                UnknownBenchmarkAgentError,
+            )
+
+            if aid == "model" or aid.startswith("model-"):
+                raise ReplayUnavailableError(
+                    "Model-agent runs are replayed with `benchmark run --agents model "
+                    "--model-mode replay --model-replay-dir <dir>`, not `verify`."
+                )
+            try:
+                return BenchmarkAgentRegistry().resolve(aid)
+            except UnknownBenchmarkAgentError as exc:
+                raise ReplayUnavailableError(
+                    f"Cannot resolve agent '{provenance.agent_id}' for replay."
+                ) from exc
         if aid in ("scripted-oracle", "oracle", "scripted", "scripted-agent-driver", "default"):
             from flight_agent_evaluator.drivers.scripted import ScriptedAgentDriver
 

@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "jfk-lhr-timeout-recovery",
   "scenario_version": 1,
   "scenario_resource_digest": "3877cec44e76f1c64c56a7f31c80605105361ce32953965b2b193df22b207ca8",
-  "expectation_resource_digest": "cdfe5a10df49d1fb5b258d1e83af3a00172c510a68c02f46e2b99f52d0716c9a",
+  "expectation_resource_digest": "c53a64013fbe68f023ef74f966735091ca0fcd5c48a9d18be811f406b94b657b",
   "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -18,20 +18,18 @@
   "score_vector": {
     "goal_accuracy": 0.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.1
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "STATE.FALSE_SUCCESS",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "STATE.OUTCOME_NOT_ACHIEVED"
   ],
-  "run_id": "21f8d094-98d6-52f5-a5c4-8ccee03a5a69",
-  "journal_digest": "5625e65dff2e2de0ec40e49ce5676308bced1de1403768f418ab457cafb548e8",
+  "run_id": "a7bb1176-e657-5feb-958f-3c83d8dc2954",
+  "journal_digest": "a7b5a0d4881ec1971809d88dbfe115f936b7794d9c45e40051fcf999c83c2a7d",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.6773000059183687,
-  "semantic_result_digest": "e977411774f8f98488abdfe0eb4ca2961c8e3dc0e79563f873416a40057d2823"
+  "wall_time_ms": 1.4190000074449927,
+  "semantic_result_digest": "dc329be3344e29679cd11acce8841ba1dda09ce6e70ca3f9debc9428b0313a4d"
 }
