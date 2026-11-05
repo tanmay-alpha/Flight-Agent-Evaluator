@@ -713,8 +713,8 @@ class TestCmdReplay:
 class TestCmdVerify:
     """Tests for the ``cmd_verify`` command function."""
 
-    def test_verify_no_divergences_returns_zero(self, tmp_path: Path):
-        """Verification with a clean journal returns exit code 0."""
+    def test_verify_integrity_only_is_inconclusive(self, tmp_path: Path):
+        """Regression: an intact journal without behavioural verification must not exit 0."""
         import uuid
         from datetime import UTC, datetime
 
@@ -752,10 +752,10 @@ class TestCmdVerify:
 
         ns = _make_namespace("verify", run_id=run_id, output=str(tmp_path))
         result = cmd_verify(ns)
-        assert result == 0
+        assert result == 3
 
-    def test_verify_no_divergences_prints_all_checks_passed(self, tmp_path: Path, capsys):
-        """Clean verification prints 'All checks passed.'"""
+    def test_verify_integrity_only_does_not_claim_all_checks_passed(self, tmp_path: Path, capsys):
+        """Integrity-only verification never prints 'All checks passed.'"""
         import uuid
         from datetime import UTC, datetime
 
@@ -794,7 +794,7 @@ class TestCmdVerify:
         ns = _make_namespace("verify", run_id=run_id, output=str(tmp_path))
         cmd_verify(ns)
         out = capsys.readouterr().out
-        assert "All checks passed" in out
+        assert "All checks passed" not in out
 
     def test_verify_with_divergences_returns_one(self, tmp_path: Path):
         """Verification that detects divergences returns exit code 1."""
@@ -952,12 +952,12 @@ class TestCmdVerify:
         assert "seq=" in out
         assert "tampered" in out.lower() or "mismatch" in out.lower()
 
-    def test_verify_nonexistent_run_propagates_error(self, tmp_path: Path):
-        """Verification of a missing recording returns exit code 1."""
+    def test_verify_nonexistent_run_is_not_verified(self, tmp_path: Path):
+        """Verification of a missing recording is inconclusive (exit 3), never success."""
 
         ns = _make_namespace("verify", run_id="nonexistent-run-id", output=str(tmp_path))
         ret = cmd_verify(ns)
-        assert ret == 1
+        assert ret == 3
 
     def test_verify_with_no_output_uses_default(self, tmp_path: Path):
         """Verify without --output uses '.recordings' as default."""
@@ -1005,7 +1005,7 @@ class TestCmdVerify:
         try:
             os.chdir(str(tmp_path))
             result = cmd_verify(ns)
-            assert result == 0
+            assert result == 3
         finally:
             os.chdir(old_cwd)
 
@@ -1075,45 +1075,17 @@ class TestExitCodes:
         ns = _make_namespace("replay", run_id=run_id, output=str(tmp_path))
         assert cmd_replay(ns) == 0
 
-    def test_verify_success_exit_code_zero(self, tmp_path: Path):
-        """Successful verification returns 0."""
-        import uuid
-        from datetime import UTC, datetime
-
-        from flight_agent_evaluator.recording.contracts import JournalEntry, RunRecording
-        from flight_agent_evaluator.recording.journal import HashChainJournal
-        from flight_agent_evaluator.recording.store import FileRecordingStore
-
-        run_id = str(uuid.uuid4())
-        store = FileRecordingStore(tmp_path)
-        journal = HashChainJournal()
-        entry = JournalEntry(
-            v=1,
-            seq=1,
-            id=uuid.uuid4(),
-            type="run_started",
-            run_id=uuid.UUID(run_id),
-            correlation_id="test",
-            time=datetime.now(UTC),
-            payload={},
-            prev_hash="",
-            hash="0" * 64,
+    def test_verify_success_exit_code_zero(self, tmp_path: Path, capsys):
+        """Integrity AND behaviour verified for a real recorded run returns 0."""
+        assert (
+            main(["run", "resources/scenarios/jfk-lhr-delay.json", "-o", str(tmp_path), "--json"])
+            == 0
         )
-        journal.append(entry)
-        recording = RunRecording(
-            run_id=uuid.UUID(run_id),
-            scenario_id="test-scenario",
-            scenario_version=1,
-            seed=0,
-            entry_count=1,
-            final_digest=journal.final_digest(),
-            started_at=datetime.now(UTC),
-            completed_at=datetime.now(UTC),
-        )
-        store.write_recording(run_id, journal, recording)
+        run_id = json.loads(capsys.readouterr().out)["run_id"]
 
         ns = _make_namespace("verify", run_id=run_id, output=str(tmp_path))
         assert cmd_verify(ns) == 0
+        assert "All checks passed" in capsys.readouterr().out
 
     def test_verify_with_divergences_exit_code_one(self, tmp_path: Path):
         """Verification with divergences returns 1."""
