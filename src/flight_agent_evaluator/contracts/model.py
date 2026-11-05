@@ -230,6 +230,27 @@ class AgentTask(BaseModel):
     tool_call_limit: int = 15
 
 
+class ModelProvenance(BaseModel):
+    """What produced a model-backed trajectory, without secrets.
+
+    Two runs with different ``model_id``, sampling configuration, prompt or tool
+    schemas must never share a run identity; this record is what distinguishes
+    them in benchmark artifacts. ``endpoint_host`` is the host name only (no
+    scheme, path, query or credentials).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider_label: str
+    model_id: str
+    endpoint_host: str | None = None
+    model_configuration_digest: str
+    prompt_policy_id: str
+    prompt_digest: str
+    tool_schema_digest: str
+    model_exchange_manifest_digest: str | None = None
+
+
 class AgentRunResult(BaseModel):
     """Public benchmark outcome of executing an agent."""
 
@@ -249,4 +270,8 @@ class AgentRunResult(BaseModel):
     usage: ModelUsage = Field(default_factory=ModelUsage)
     journal_digest: str | None = None
     model_exchange_digest: str | None = None
+    model_provenance: ModelProvenance | None = None
+    """Set by model-backed agents; identifies exactly what produced the trajectory."""
+    model_latency_ms: float | None = None
+    """Wall-clock time spent in model calls. Non-deterministic: never part of any digest."""
     warnings: list[str] = Field(default_factory=list)
