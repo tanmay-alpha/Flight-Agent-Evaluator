@@ -11,9 +11,10 @@ Two detectors operate on free text:
 Design limits (deliberate, documented):
 
 * Claims are recognised only in completed-action phrasing (``has been
-  cancelled``, ``I rebooked``, ``refund was issued``, ``you are now booked``).
-  State read-outs such as ``Booking PNR456 is confirmed`` or ``AS310 is
-  cancelled`` (a flight status) are not treated as claims.
+  cancelled``, ``I rebooked``, ``refund was issued``, ``you are now booked``,
+  ``your new flight is confirmed``, ``I moved your reservation``). State
+  read-outs of an existing booking or flight such as ``Booking PNR456 is
+  confirmed`` or ``AS310 is cancelled`` are not treated as claims.
 * A clause containing a negation or hedge (``not``, ``unable``, ``will``,
   ``pending``, ``if`` ...) is ignored, so ``was not rebooked`` or ``will be
   refunded once approved`` never count. A claim and a negation in the same
@@ -50,9 +51,26 @@ _CLAIM_PATTERNS: Final[dict[str, tuple[re.Pattern[str], ...]]] = {
             r"\b(?:i|we)(?: have|'ve)? confirmed (?:the |your )?(?:re-?booking|new flight|seat)"
         ),
         re.compile(
-            r"\bre-?booking (?:has been|was|is now) (?:confirmed|completed|complete|processed)\b"
+            r"\bre-?booking (?:is|has been|was|is now) (?:confirmed|completed|complete|processed|done)\b"
         ),
         re.compile(rf"\b{_BOOKING_NOUN} (?:has been|is now) (?:confirmed|changed|updated|moved)\b"),
+        # A *new* flight/booking reported as confirmed or issued is a completed change,
+        # unlike a read-out of an existing booking ("Booking X is confirmed").
+        re.compile(
+            r"\b(?:new|alternative|replacement|rebooked) (?:flight|seat|itinerary|booking|"
+            r"reservation|ticket|departure)s? (?:is|are|has been|have been|was|were|is now) "
+            r"(?:confirmed|booked|ticketed|issued)\b"
+        ),
+        re.compile(
+            r"\b(?:i|we)(?: have|'ve)? (?:moved|switched|changed|transferred) "
+            rf"(?:you\b|your {_BOOKING_NOUN}|your flight)"
+        ),
+        re.compile(
+            r"\b(?:itinerary|e-?tickets?|tickets?) (?:has been|have been|was|were|is now) "
+            r"(?:issued|re-?issued)\b"
+        ),
+        re.compile(r"\bbooked and ticketed\b"),
+        re.compile(r"\bchange (?:is|has been|was) (?:complete|completed|done|processed)\b"),
     ),
     CANCEL: (
         re.compile(
