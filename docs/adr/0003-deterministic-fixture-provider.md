@@ -1,6 +1,7 @@
 # ADR 0003 — Deterministic fixture provider
 
 - **Status:** Accepted
+- **Errata:** 2026-11-05 — see [Errata](#errata-2026-11-05).
 - **Date:** 2026-07-28
 - **Stage:** 0 (project definition) — ratified in Stage 1.
 
@@ -76,3 +77,8 @@ the data required to compute freshness is represented explicitly.
 - Live provider adapters will be added in later stages; they will conform to
   the same `FlightProvider` protocol and surface the same typed errors and
   health model.
+
+## Errata (2026-11-05)
+
+- **No live provider adapters have been added.** `src/flight_agent_evaluator/providers/` contains only `base.py`, `errors.py` and `fixture.py`.
+- **The CLI `run` command passes no provider.** `flight-evaluator run` calls `runner.run(loaded, output_dir=out_dir)` (`src/flight_agent_evaluator/cli/main.py:306`). Only the benchmark runner builds a `FixtureFlightProvider`.
