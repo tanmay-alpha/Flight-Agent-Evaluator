@@ -169,7 +169,11 @@ def compute_calibration_report(
         ValueError: If any judge result came from the fake judge; agreement with
             placeholder scores says nothing about a judge.
     """
-    fake_ids = [rec.evidence_package.package_id for rec in records if rec.judge_result.mode is JudgeMode.FAKE]
+    fake_ids = [
+        rec.evidence_package.package_id
+        for rec in records
+        if rec.judge_result.mode is JudgeMode.FAKE
+    ]
     if fake_ids:
         raise ValueError(
             f"Calibration requires real judge results; fake-mode results for packages {fake_ids}."

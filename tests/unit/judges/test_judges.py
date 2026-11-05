@@ -78,7 +78,6 @@ def test_fake_judge_results_are_marked_fake_and_low_confidence() -> None:
     result = asyncio.run(FakeJudgeClient().judge(pkg))
 
     assert result.mode is JudgeMode.FAKE
-    assert result.mode != JudgeMode.REPLAY
     assert result.judge_model_id is None
     for criterion_result in result.criteria_results:
         assert criterion_result.confidence == "low"
