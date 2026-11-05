@@ -23,10 +23,6 @@ class OfferUnavailableError(EnvironmentError):
     """Raised when an authoritative offer is expired or unavailable."""
 
 
-class TransactionConflictError(EnvironmentError):
-    """Raised when a competing mutation cannot safely be committed."""
-
-
 class ApprovalError(EnvironmentError):
     """Base exception for approval-related failures."""
 
@@ -49,6 +45,10 @@ class ApprovalScopeMismatchError(ApprovalError):
 
 class ApprovalDeniedError(ApprovalError):
     """Raised when an approval request was explicitly denied."""
+
+
+class ApprovalPendingError(ApprovalError):
+    """Raised when an approval request exists but has not been granted."""
 
 
 class IdempotencyError(EnvironmentError):

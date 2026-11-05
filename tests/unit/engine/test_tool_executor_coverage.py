@@ -111,8 +111,9 @@ def test_tool_executor_time_limit_exceeded():
     )
 
     res = asyncio.run(executor.execute(tc, context=context))
-    assert res.status == "timeout"
+    assert res.status == "failure"
     assert res.error is not None
+    assert res.error.error_type == "time_limit_exceeded"
     assert "Logical time limit exceeded" in res.error.message
 
 
