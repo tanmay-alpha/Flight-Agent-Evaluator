@@ -1,6 +1,7 @@
 # ADR 0002 — Contract versioning
 
 - **Status:** Accepted
+- **Errata:** 2026-11-05 — see [Errata](#errata-2026-11-05).
 - **Date:** 2026-07-28
 - **Stage:** 0 (project definition) — ratified in Stage 1.
 
@@ -73,3 +74,11 @@ parseable for replay of historical data.
   schema version.
 - Provider adapters map their wire format into the public contracts at the
   boundary and never leak upstream types.
+
+## Errata (2026-11-05)
+
+- **"`float` is forbidden" for money.** `Money.amount` is a `Decimal` (`src/flight_agent_evaluator/contracts/base.py:122`). However, the environment and tools carry prices as `float`: `price_amount: float` in `environment/engine.py:291,323`, and `float(arguments["price_amount"])` in `tools/booking_tools.py:99`.
+- **"`Any` is not used for convenience".** Several public contracts use `Any`:
+  - `BenchmarkScenario.initial_state: dict[str, Any]` (`contracts/scenarios.py:64`);
+  - `DomainEvent.payload: Any` (`contracts/events.py:234`);
+  - `AssertionOutcome.assertion: Any` (`contracts/evaluation.py:116`).

@@ -1,6 +1,7 @@
 # ADR 0007 — Contract consolidation and evaluation schema
 
 - **Status:** Accepted
+- **Errata:** 2026-11-05 — see [Errata](#errata-2026-11-05).
 - **Date:** 2026-08-06
 - **Stage:** 1 (Evaluator Core Correctness).
 
@@ -43,3 +44,12 @@ was typed as `Any`, and `AssertionStatus` lacked `evaluator_error`.
 - Breaking schema changes in `RunRecording` and `ReplayReport` are fully
   versioned and typed.
 - Arbitrary untyped evaluation structures in recordings are forbidden.
+
+## Errata (2026-11-05)
+
+The implementation differs from this decision in the following ways. Paths are relative to `src/flight_agent_evaluator/`.
+
+- **`RunRecording.evaluation`** is typed `EvaluationResult | dict[str, Any] | None` (`recording/contracts.py:132`), not `EvaluationResult | None`. Untyped evaluation dicts are therefore still accepted.
+- **`AssertionStatus`** is a `Literal` (`contracts/evaluation.py:112`), not an enum. `AssertionOutcome.assertion` is typed `Any` (`:116`).
+- **`ReplayOutcomeStatus`** is now a legacy property. `ReplayReport` reports `integrity_status` and `behaviour_status` separately (`recording/contracts.py:63-79,242-279`).
+- **`behaviour_verified`** does not currently mean that tool outputs matched. Replay projection reads `"value"` while the executor writes `"result"` (`replay/projection.py:110`, `engine/tool_executor.py:355`). Comparing values is **planned in v0.3 (in progress)**.

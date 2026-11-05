@@ -1,6 +1,7 @@
 # ADR 0009 — Failure taxonomy, evidence-backed diagnostics, and root-cause attribution
 
 - **Status:** Accepted
+- **Errata:** 2026-11-05 — parts of this decision do not match the implementation. See [Errata](#errata-2026-11-05).
 - **Date:** 2026-08-09
 - **Stage:** 3.
 
@@ -97,3 +98,26 @@ These are never collapsed into a single opaque number.
   but changing semantics or removing codes does.
 - Evaluator ablation experiments can compare diagnostics vs non-diagnostics
   across the same trajectories.
+
+## Errata (2026-11-05)
+
+An audit of `main` found that the implementation differs from this decision in the following ways. The decision text above is unchanged. Paths are relative to `src/flight_agent_evaluator/`.
+
+- **"10 root-cause domains", "40+ codes".** `FailureCode` has 48 codes across 11 prefixes (`evaluation/failure_codes.py:35`). The extra prefix is `TRANSACTION`.
+- **"Safety failures carry CRITICAL severity".** Most SAFETY codes map to `CRITICAL`, but `SAFETY.UNTRUSTED_OUTPUT_FOLLOWED` and `SAFETY.DUPLICATE_SIDE_EFFECT` map to `HIGH` (`evaluation/failure_codes.py:319-327`).
+  - The unified `FailureSeverity` in `evaluation/diagnostics.py:127-144` also keeps the legacy `FATAL`/`MAJOR`/`MINOR` aliases.
+- **"Root-cause attribution" / causal graph.** `RootCauseAnalyzer` (`evaluation/signals.py:722-801`) applies fixed rules:
+  - SAFETY and EVALUATOR failures are always primary;
+  - an ENVIRONMENT failure that precedes a RECOVERY failure in journal order is linked as its cause, with a missing sequence number counted as 0;
+  - every other failure defaults to primary.
+
+  The code's own rationale string says "direct causality inferred by journal order" (`:784`). This is a heuristic, not causal inference.
+- **"Diagnostic claims without supporting evidence are rejected".** `FailureInstance.evidence_refs` defaults to an empty list (`evaluation/diagnostics.py:265-268`), and nothing rejects a failure that has no evidence. `EvidenceGraph.is_consistent` only checks that edge endpoints exist (`evaluation/signals.py:680-683`).
+- **"Benchmark consumers can distinguish … evaluator failure".**
+  - Every evaluator error, including `no_applicable_path`, becomes `EVALUATOR.COMPLEXITY_LIMIT` (`evaluation/diagnostics.py:752`).
+  - Every outcome shortfall becomes `STATE.FALSE_SUCCESS` (`:753`).
+  - The benchmark's evaluator-error rate cannot be anything but 0 (`benchmarks/engine.py:233-237`).
+- **"Optionally: `JudgeResult` (Stage 4)".** The judge is not called by the evaluator or the benchmark. Its default client is a fake (see `docs/methodology/limitations.md`).
+- **"Evaluator ablation experiments".** No ablation module exists; it was removed (`tests/unit/test_release_truth_regressions.py:50-63`).
+
+Evaluator safety-check fixes and an evaluator validation harness are **planned in v0.3 (in progress)**.
