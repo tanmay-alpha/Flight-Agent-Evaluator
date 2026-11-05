@@ -9,7 +9,7 @@ and :class:`RootCauseAnalyzer`.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pydantic import Field
 
@@ -83,6 +83,12 @@ class DiagnosticSignalType(StrEnum):
     EVALUATOR_COMPLEXITY_ERROR = "evaluator_complexity_error"
     """The evaluator's bounded search budget was exhausted."""
 
+    NO_APPLICABLE_PATH = "no_applicable_path"
+    """No valid path of the expectation applied to the run's initial state."""
+
+    EVALUATOR_INTERNAL_ERROR = "evaluator_internal_error"
+    """The evaluator reported an error it does not classify more precisely."""
+
     OUTCOME_ASSERTION_FAILED = "outcome_assertion_failed"
     """A post-execution outcome assertion failed."""
 
@@ -110,6 +116,10 @@ class DiagnosticSignal(ContractModel):
     rule_id: str | None = Field(default=None, description="Constraint rule ID, if applicable.")
     tool_name: str | None = Field(default=None, description="Tool name, if applicable.")
     details: str = Field(default="", description="Human-readable details, safe for logging.")
+    failure_code: FailureCode | None = Field(
+        default=None,
+        description="Explicit taxonomy code when the producer already classified the finding.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -195,8 +205,18 @@ class SignalExtractor:
                     tool_name,
                     _json.dumps(args, sort_keys=True) if isinstance(args, dict) else str(args),
                 )
-                if call_key in seen_tool_calls and call_key[0]:
-                    earlier_seq, earlier_call_id = seen_tool_calls[call_key]
+                # A repeat is redundant only if the identical earlier call succeeded and no
+                # mutation has happened since (retries after failures and post-mutation
+                # state checks are legitimate).
+                earlier = seen_tool_calls.get(call_key)
+                earlier_result = tool_results_by_call_id.get(earlier[1]) if earlier else None
+                if (
+                    earlier is not None
+                    and call_key[0]
+                    and earlier_result is not None
+                    and earlier_result.get("status") == "success"
+                ):
+                    earlier_seq, earlier_call_id = earlier
                     signals.append(
                         DiagnosticSignal(
                             signal_type=DiagnosticSignalType.REDUNDANT_CALL,
@@ -208,6 +228,8 @@ class SignalExtractor:
                     )
                 else:
                     seen_tool_calls[call_key] = (entry.seq, call_id)
+                if payload.get("mutation_class") not in (None, "read_only"):
+                    seen_tool_calls.clear()
 
                 tool_calls_by_call_id[call_id] = payload
                 # track last required action position for premature-termination detection
@@ -329,28 +351,6 @@ class SignalExtractor:
                 )
             )
 
-        # Detect redundant calls: same (tool_name, frozen_args) appearing > once
-        call_signatures: dict[str, list[str]] = {}
-        for call_id, payload in tool_calls_by_call_id.items():
-            tool_name = str(payload.get("tool_name", ""))
-            args = payload.get("arguments", {})
-            import json as _json
-
-            sig = f"{tool_name}:{_json.dumps(args, sort_keys=True, separators=(',', ':'))}"
-            call_signatures.setdefault(sig, []).append(call_id)
-        for sig, cids in call_signatures.items():
-            if len(cids) > 1:
-                tool_name = sig.split(":")[0]
-                signals.extend(
-                    DiagnosticSignal(
-                        signal_type=DiagnosticSignalType.REDUNDANT_CALL,
-                        call_id=dup_call_id,
-                        tool_name=tool_name,
-                        details=f"Duplicate call to {tool_name!r} (first: {cids[0]}, dup: {dup_call_id}).",
-                    )
-                    for dup_call_id in cids[1:]
-                )
-
         # Detect premature termination: final_response before last_required_action_seq
         # (heuristic; the scorecard evidence provides precise node info)
         _ = last_required_action_seq  # used in Gate 6 cross-reference
@@ -379,23 +379,33 @@ class SignalExtractor:
         if path is None and expectation.valid_paths:
             path = expectation.valid_paths[0]
 
-        # Build evidence index
-        ev_by_node: dict[str, Any] = {}
-        for ev in scorecard.evidence_attribution:
-            ev_by_node[ev.node_id] = ev
-
         if path is None:
             return signals
 
-        # Extract evidence attribution signals
+        nodes_by_id = {a.node_id: a for a in path.expected_actions}
+
+        # Evidence-attribution signals: an unmapped required node is a missing action; a
+        # mapped node whose argument predicates failed is an argument mismatch.
         if scorecard.evidence_attribution:
             for ev in scorecard.evidence_attribution:
-                action = next(
-                    (a for a in (path.expected_actions if path else []) if a.node_id == ev.node_id),
-                    None,
-                )
+                action = nodes_by_id.get(ev.node_id)
                 tool_name = ev.tool_name or (action.selector.tool_name if action else None)
-                if not ev.matched:
+                if ev.argument_status == "failed":
+                    ptr = ev.pointer
+                    signals.append(
+                        DiagnosticSignal(
+                            signal_type=DiagnosticSignalType.ARGUMENT_PREDICATE_FAILED,
+                            journal_sequence=ev.sequence_number
+                            or (ptr.journal_sequence if ptr is not None else None),
+                            node_id=ev.node_id,
+                            call_id=ev.call_id or (ptr.call_id if ptr is not None else None),
+                            tool_name=tool_name,
+                            details=ev.details
+                            or (ptr.details if ptr is not None else "")
+                            or f"Argument predicate failed for node '{ev.node_id}'.",
+                        )
+                    )
+                elif not ev.matched and (action is None or action.required):
                     signals.append(
                         DiagnosticSignal(
                             signal_type=DiagnosticSignalType.MISSING_REQUIRED_NODE,
@@ -406,27 +416,7 @@ class SignalExtractor:
                             details=ev.details or f"Required node '{ev.node_id}' was not matched.",
                         )
                     )
-                elif ev.argument_status == "failed":
-                    ptr = getattr(ev, "pointer", None)
-                    seq = ev.sequence_number or (ptr.journal_sequence if ptr is not None else None)
-                    call_id = ev.call_id or (ptr.call_id if ptr is not None else None)
-                    details = (
-                        ev.details
-                        or (ptr.details if ptr is not None else None)
-                        or f"Argument predicate failed for node '{ev.node_id}'."
-                    )
-                    signals.append(
-                        DiagnosticSignal(
-                            signal_type=DiagnosticSignalType.ARGUMENT_PREDICATE_FAILED,
-                            journal_sequence=seq,
-                            node_id=ev.node_id,
-                            call_id=call_id,
-                            tool_name=tool_name,
-                            details=details,
-                        )
-                    )
-        elif path is not None and scorecard.required_recall < 1.0:
-            # Fallback to path.expected_actions only if required_recall < 1.0
+        elif not scorecard.evaluator_error and scorecard.required_recall < 1.0:
             signals.extend(
                 DiagnosticSignal(
                     signal_type=DiagnosticSignalType.MISSING_REQUIRED_NODE,
@@ -441,43 +431,22 @@ class SignalExtractor:
                 if action.required
             )
 
-        # Forbidden tool calls (per-path)
-        matched_tool_names: set[str] = set()
-        for ev in scorecard.evidence_attribution:
-            if getattr(ev, "matched", False) and getattr(ev, "tool_name", None):
-                matched_tool_names.add(str(ev.tool_name))
-
-        for forbidden in path.forbidden_actions:
-            ft = forbidden.selector.tool_name
-            if ft and ft in matched_tool_names:
-                signals.append(
-                    DiagnosticSignal(
-                        signal_type=DiagnosticSignalType.FORBIDDEN_TOOL_CALL,
-                        node_id=None,
-                        rule_id=forbidden.rule_id,
-                        tool_name=ft,
-                        details=f"Forbidden tool '{ft}' was called (rule: {forbidden.rule_id!r}).",
-                    )
-                )
-
-        # Recovery constraints: check if retryable failure occurred and retry was expected
-        # (signals from journal are merged here logically; exact merging in RootCauseAnalyzer)
-        for rec in path.recovery_constraints:
-            if rec.trigger_event in ("tool_error", "retryable_error"):
-                rec_ev = ev_by_node.get(rec.expected_node_id)
-                if rec_ev is None or not getattr(rec_ev, "matched", False):
-                    signals.append(
-                        DiagnosticSignal(
-                            signal_type=DiagnosticSignalType.RETRY_MISSING,
-                            node_id=rec.expected_node_id,
-                            rule_id=rec.rule_id,
-                            details=(
-                                f"Recovery rule '{rec.rule_id}' expects retry node "
-                                f"'{rec.expected_node_id}' after trigger '{rec.trigger_event}', "
-                                f"but the node was not observed."
-                            ),
-                        )
-                    )
+        # Recovery: only rules whose trigger failure was actually observed.
+        signals.extend(
+            DiagnosticSignal(
+                signal_type=DiagnosticSignalType.RETRY_MISSING,
+                journal_sequence=res.trigger_sequence,
+                node_id=res.expected_node_id,
+                call_id=res.trigger_call_id,
+                rule_id=res.rule_id,
+                details=(
+                    f"Recovery rule '{res.rule_id}' was triggered by call {res.trigger_call_id} "
+                    f"but recovery node '{res.expected_node_id}' did not succeed afterwards."
+                ),
+            )
+            for res in scorecard.recovery_results
+            if res.triggered and not res.satisfied
+        )
 
         return signals
 
@@ -492,16 +461,14 @@ class SignalExtractor:
         signals: list[DiagnosticSignal] = []
 
         if scorecard.evaluator_error:
-            # Any non-None evaluator_error indicates a complexity or structural evaluator problem.
-            details = (
-                f"Evaluator error: {scorecard.evaluator_error!r}."
-                if scorecard.evaluator_error != "evaluator_complexity_limit"
-                else "Evaluator complexity limit reached during bounded search."
-            )
+            error_signal = {
+                "evaluator_complexity_limit": DiagnosticSignalType.EVALUATOR_COMPLEXITY_ERROR,
+                "no_applicable_path": DiagnosticSignalType.NO_APPLICABLE_PATH,
+            }.get(scorecard.evaluator_error, DiagnosticSignalType.EVALUATOR_INTERNAL_ERROR)
             signals.append(
                 DiagnosticSignal(
-                    signal_type=DiagnosticSignalType.EVALUATOR_COMPLEXITY_ERROR,
-                    details=details,
+                    signal_type=error_signal,
+                    details=f"Evaluator error: {scorecard.evaluator_error!r}.",
                 )
             )
 
@@ -513,21 +480,16 @@ class SignalExtractor:
                 )
             )
 
-        if scorecard.ordering_score < 1.0:
-            signals.append(
-                DiagnosticSignal(
-                    signal_type=DiagnosticSignalType.PRECEDENCE_FAILED,
-                    details=f"Precedence ordering score is below 1.0 ({scorecard.ordering_score:.2f}).",
-                )
-            )
-
-        if scorecard.dependency_score < 1.0:
-            signals.append(
-                DiagnosticSignal(
-                    signal_type=DiagnosticSignalType.DEPENDENCY_FAILED,
-                    details=f"Dependency constraint score is below 1.0 ({scorecard.dependency_score:.2f}).",
-                )
-            )
+        # Ordering / dependency failures come from observed violations, never from
+        # sub-scores (which are zeroed when nothing required was achieved).
+        signals.extend(
+            DiagnosticSignal(signal_type=DiagnosticSignalType.PRECEDENCE_FAILED, details=v)
+            for v in scorecard.precedence_violations
+        )
+        signals.extend(
+            DiagnosticSignal(signal_type=DiagnosticSignalType.DEPENDENCY_FAILED, details=v)
+            for v in scorecard.dependency_violations
+        )
 
         if scorecard.efficiency_score < 0.8 and not any(
             s.signal_type == DiagnosticSignalType.REDUNDANT_CALL for s in signals
@@ -539,18 +501,15 @@ class SignalExtractor:
                 )
             )
 
-        if scorecard.argument_correctness_score < 1.0:
-            signals.append(
-                DiagnosticSignal(
-                    signal_type=DiagnosticSignalType.ARGUMENT_PREDICATE_FAILED,
-                    details=f"Argument correctness score is below 1.0 ({scorecard.argument_correctness_score:.2f}).",
-                )
-            )
-
         signals.extend(
             DiagnosticSignal(
                 signal_type=DiagnosticSignalType.SAFETY_VIOLATION,
-                details=viol,
+                journal_sequence=viol.journal_sequence,
+                call_id=viol.call_id,
+                rule_id=viol.rule_id,
+                tool_name=viol.tool_name,
+                details=viol.details,
+                failure_code=viol.code,
             )
             for viol in scorecard.safety_violations
         )
