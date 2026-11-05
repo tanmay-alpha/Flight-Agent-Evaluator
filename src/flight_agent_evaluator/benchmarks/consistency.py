@@ -6,7 +6,6 @@ import subprocess
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from shutil import which
 from typing import Any
 
 from flight_agent_evaluator.benchmarks.engine import compute_run_semantic_id
@@ -16,11 +15,13 @@ from flight_agent_evaluator.benchmarks.loader import (
 )
 from flight_agent_evaluator.benchmarks.registry import BenchmarkAgentRegistry
 from flight_agent_evaluator.benchmarks.results import (
+    PACKAGE_REPO_ROOT,
     BenchmarkAggregateMetrics,
     BenchmarkCaseResult,
     BenchmarkExecutionIdentity,
     BenchmarkRunArtifact,
     compute_source_tree_digest,
+    git_command,
     render_benchmark_report,
 )
 
@@ -391,15 +392,22 @@ class ResultBundleConsistencyVerifier:
         )
 
         # Source-tree provenance is authoritative even when Git commit topology changes.
-        try:
-            computed_source_digest = compute_source_tree_digest()
-            source_digest_matches = run_artifact.source_tree_digest == computed_source_digest
+        # Non-release runs record no provenance and never invoke git.
+        if run_artifact.source_tree_digest is None:
+            source_digest_matches = True
             source_details = (
-                f"recorded={run_artifact.source_tree_digest}, computed={computed_source_digest}"
+                "Source tree provenance is not recorded for this non-release execution."
             )
-        except Exception as exc:
-            source_digest_matches = False
-            source_details = f"Unable to compute source tree digest: {exc}"
+        else:
+            try:
+                computed_source_digest = compute_source_tree_digest()
+                source_digest_matches = run_artifact.source_tree_digest == computed_source_digest
+                source_details = (
+                    f"recorded={run_artifact.source_tree_digest}, computed={computed_source_digest}"
+                )
+            except Exception as exc:
+                source_digest_matches = False
+                source_details = f"Unable to compute source tree digest: {exc}"
         checks.append(
             BundleCheckItem(
                 check_id="BND-11-SOURCE-TREE-DIGEST",
@@ -423,17 +431,14 @@ class ResultBundleConsistencyVerifier:
                 "uv.lock",
             ]
             try:
-                git_path = which("git")
-                if git_path is None:
-                    raise FileNotFoundError("git executable is unavailable")
                 exists = (
-                    subprocess.run(  # noqa: S603, S607
-                        [
-                            git_path,
+                    subprocess.run(  # noqa: S603
+                        git_command(
+                            PACKAGE_REPO_ROOT,
                             "cat-file",
                             "-e",
                             f"{run_artifact.source_commit_sha}^{{commit}}",
-                        ],
+                        ),
                         check=False,
                         capture_output=True,
                         timeout=5.0,
@@ -442,14 +447,14 @@ class ResultBundleConsistencyVerifier:
                 )
                 ancestor = (
                     exists
-                    and subprocess.run(  # noqa: S603, S607
-                        [
-                            git_path,
+                    and subprocess.run(  # noqa: S603
+                        git_command(
+                            PACKAGE_REPO_ROOT,
                             "merge-base",
                             "--is-ancestor",
                             run_artifact.source_commit_sha,
                             "HEAD",
-                        ],
+                        ),
                         check=False,
                         capture_output=True,
                         timeout=5.0,
@@ -458,15 +463,15 @@ class ResultBundleConsistencyVerifier:
                 )
                 no_semantic_diff = (
                     ancestor
-                    and subprocess.run(  # noqa: S603, S607
-                        [
-                            git_path,
+                    and subprocess.run(  # noqa: S603
+                        git_command(
+                            PACKAGE_REPO_ROOT,
                             "diff",
                             "--quiet",
                             f"{run_artifact.source_commit_sha}..HEAD",
                             "--",
                             *semantic_paths,
-                        ],
+                        ),
                         check=False,
                         capture_output=True,
                         timeout=5.0,

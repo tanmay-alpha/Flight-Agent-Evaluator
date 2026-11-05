@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 import subprocess
 import tarfile
+import tempfile
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -24,10 +27,25 @@ _SEMANTIC_SOURCE_PREFIXES = ("src/flight_agent_evaluator/", "resources/")
 _SEMANTIC_SOURCE_FILES = {"pyproject.toml", "uv.lock"}
 
 
+PACKAGE_REPO_ROOT = Path(__file__).resolve().parents[3]
+"""Repository root of this package's source checkout (provenance is never read from the cwd)."""
+
+
+def git_command(root: Path, *args: str) -> list[str]:
+    """Build a git invocation that cannot run repository-configured fsmonitor hooks.
+
+    Raises FileNotFoundError when no git executable is on PATH.
+    """
+    git_path = which("git")
+    if git_path is None:
+        raise FileNotFoundError("git executable is unavailable")
+    return [git_path, "-c", "core.fsmonitor=false", "-C", str(root), *args]
+
+
 def _semantic_source_paths(root: Path) -> list[str]:
     """Return the versioned, tracked semantic source closure in deterministic order."""
     result = subprocess.run(  # noqa: S603
-        ["git", "-C", str(root), "ls-files", "-z"],  # noqa: S607
+        git_command(root, "ls-files", "-z"),
         capture_output=True,
         check=True,
         timeout=5.0,
@@ -40,16 +58,13 @@ def _semantic_source_paths(root: Path) -> list[str]:
     )
 
 
-def compute_source_tree_digest(root: Path | str = ".") -> str | None:
+def compute_source_tree_digest(root: Path | str = PACKAGE_REPO_ROOT) -> str | None:
     """Hash Git blob bytes of the versioned tracked runtime-source closure."""
     base = Path(root).resolve()
-    git_path = which("git")
-    if git_path is None:
-        return None
     try:
         source_paths = _semantic_source_paths(base)
         archive = subprocess.run(  # noqa: S603
-            [git_path, "-C", str(base), "archive", "--format=tar", "HEAD", "--", *source_paths],
+            git_command(base, "archive", "--format=tar", "HEAD", "--", *source_paths),
             check=True,
             capture_output=True,
             timeout=5.0,
@@ -68,22 +83,13 @@ def compute_source_tree_digest(root: Path | str = ".") -> str | None:
     return canonical_hash({"version": SOURCE_TREE_DIGEST_VERSION, "files": entries})
 
 
-def semantic_sources_clean(root: Path | str = ".") -> bool:
+def semantic_sources_clean(root: Path | str = PACKAGE_REPO_ROOT) -> bool:
     """Report whether tracked or untracked semantic sources are clean in Git."""
     base = Path(root).resolve()
     paths = [*_SEMANTIC_SOURCE_PREFIXES, *_SEMANTIC_SOURCE_FILES]
     try:
-        result = subprocess.run(  # noqa: S603, S607
-            [  # noqa: S607
-                "git",
-                "-C",
-                str(base),
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=all",
-                "--",
-                *paths,
-            ],
+        result = subprocess.run(  # noqa: S603
+            git_command(base, "status", "--porcelain=v1", "--untracked-files=all", "--", *paths),
             capture_output=True,
             check=False,
             timeout=5.0,
@@ -91,6 +97,39 @@ def semantic_sources_clean(root: Path | str = ".") -> bool:
     except (FileNotFoundError, subprocess.SubprocessError):
         return False
     return result.returncode == 0 and not result.stdout.strip()
+
+
+def source_commit_sha(root: Path | str = PACKAGE_REPO_ROOT) -> str | None:
+    """Return HEAD of the package checkout when its semantic sources are clean."""
+    base = Path(root).resolve()
+    if not semantic_sources_clean(base):
+        return None
+    try:
+        res = subprocess.run(  # noqa: S603
+            git_command(base, "rev-parse", "HEAD"),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5.0,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    sha = res.stdout.strip().lower()
+    return sha if res.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", sha) else None
+
+
+def ensure_bundle_output_dir(output_dir: Path | str) -> None:
+    """Refuse a non-empty directory that is not an existing benchmark output (no run.json).
+
+    Writing a bundle replaces README.md / run.json / summary.json and deletes stale
+    ``cases/*.json``; that must never happen to an unrelated directory by accident.
+    """
+    out_path = Path(output_dir)
+    if out_path.is_dir() and any(out_path.iterdir()) and not (out_path / "run.json").is_file():
+        raise FileExistsError(
+            f"Refusing to write a benchmark bundle into non-empty directory '{out_path}' "
+            "that is not an existing benchmark output (no run.json); use --force to override."
+        )
 
 
 class BenchmarkExecutionIdentity(ContractModel):
@@ -280,30 +319,52 @@ class BenchmarkRunArtifact(ContractModel):
         """Render authoritative markdown report for README.md directly from artifact state."""
         return render_benchmark_report(self)
 
-    def persist_verified_bundle(self, output_dir: Path | str) -> None:
-        """Persist an exact case set with atomic individual writes; caller verifies the completed bundle."""
+    def persist_verified_bundle(self, output_dir: Path | str, *, force: bool = False) -> None:
+        """Persist an exact case set with atomic individual writes; caller verifies the completed bundle.
+
+        Refuses to write into a non-empty directory that is not an existing benchmark
+        output (no ``run.json``) unless ``force`` is set, and refuses any case file whose
+        path would resolve outside ``<output_dir>/cases``.
+        """
         out_path = Path(output_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
+        if not force:
+            ensure_bundle_output_dir(out_path)
         cases_dir = out_path / "cases"
+        cases_root = cases_dir.resolve()
+        case_files: list[tuple[Path, BenchmarkCaseResult]] = []
+        for res in self.case_results:
+            case_file = (
+                cases_dir / f"{res.scenario_id}__{res.agent_id}__rep{res.repetition_index}.json"
+            )
+            if case_file.resolve().parent != cases_root:
+                raise ValueError(
+                    f"Case result file for scenario '{res.scenario_id}' / agent '{res.agent_id}' "
+                    "would be written outside the bundle's cases directory."
+                )
+            case_files.append((case_file, res))
+
+        out_path.mkdir(parents=True, exist_ok=True)
         cases_dir.mkdir(parents=True, exist_ok=True)
 
         def _atomic_write_file(file_path: Path, content: str) -> None:
-            tmp_path = file_path.with_suffix(f"{file_path.suffix}.tmp")
-            tmp_path.write_text(content, encoding="utf-8")
-            tmp_path.replace(file_path)
+            fd, tmp_name = tempfile.mkstemp(
+                dir=file_path.parent, prefix=f".{file_path.name}.", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(content)
+                os.replace(tmp_name, file_path)
+            except BaseException:
+                Path(tmp_name).unlink(missing_ok=True)
+                raise
 
-        expected_case_files = {
-            f"{res.scenario_id}__{res.agent_id}__rep{res.repetition_index}.json"
-            for res in self.case_results
-        }
+        expected_case_files = {case_file.name for case_file, _ in case_files}
         for stale_file in cases_dir.glob("*.json"):
             if stale_file.name not in expected_case_files:
                 stale_file.unlink()
 
         # 1. Write individual case results
-        for res in self.case_results:
-            case_file_name = f"{res.scenario_id}__{res.agent_id}__rep{res.repetition_index}.json"
-            case_file = cases_dir / case_file_name
+        for case_file, res in case_files:
             _atomic_write_file(case_file, res.model_dump_json(indent=2))
 
         # 2. Write summary.json

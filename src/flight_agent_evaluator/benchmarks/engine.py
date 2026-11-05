@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import importlib.metadata
 import logging
-import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -28,34 +27,15 @@ from flight_agent_evaluator.benchmarks.results import (
     BenchmarkInvocation,
     BenchmarkRunArtifact,
     compute_source_tree_digest,
+    ensure_bundle_output_dir,
     render_reproduction_command,
     semantic_sources_clean,
+    source_commit_sha,
 )
 from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
 
 logger = logging.getLogger(__name__)
-
-
-def _get_git_commit_sha() -> str | None:
-    """Attempt to retrieve the current git commit SHA without failing outside a git repo."""
-    if not semantic_sources_clean():
-        return None
-    try:
-        res = subprocess.run(  # noqa: S603
-            ["git", "rev-parse", "HEAD"],  # noqa: S607
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=2.0,
-        )
-        if res.returncode == 0:
-            sha = res.stdout.strip()
-            if len(sha) == 40 and all(c in "0123456789abcdefABCDEF" for c in sha):
-                return sha.lower()
-    except Exception:  # noqa: S110
-        pass
-    return None
 
 
 def compute_run_semantic_id(
@@ -138,8 +118,13 @@ class CanonicalBenchmarkEngine:
         output_dir: Path | str | None = None,
         repetitions: int | None = None,
         require_source_provenance: bool = False,
+        force_output: bool = False,
     ) -> BenchmarkRunArtifact:
         """Execute authoritative benchmark run across verified manifest cases and exact agents."""
+        # Refuse an unrelated non-empty --output before any case runs (agents may write
+        # side artifacts, e.g. model exchanges, into it during the run).
+        if output_dir is not None and not force_output:
+            ensure_bundle_output_dir(output_dir)
         manifest, cases = self.loader.load_manifest(manifest_path, verify_resources=True)
 
         if scenario_filter:
@@ -286,14 +271,17 @@ class CanonicalBenchmarkEngine:
             run_policy=run_policy_dict,
         )
 
-        source_tree_digest = compute_source_tree_digest()
-        source_commit_sha = _get_git_commit_sha()
-        if require_source_provenance and (
-            source_tree_digest is None or source_commit_sha is None or not semantic_sources_clean()
-        ):
-            raise BenchmarkIntegrityError(
-                "Source-release generation requires a clean Git semantic source tree and commit provenance."
-            )
+        # Git is only consulted (against the package checkout, never the cwd) for
+        # source-release runs; ordinary runs record no source provenance.
+        source_tree_digest: str | None = None
+        commit_sha: str | None = None
+        if require_source_provenance:
+            source_tree_digest = compute_source_tree_digest()
+            commit_sha = source_commit_sha()
+            if source_tree_digest is None or commit_sha is None or not semantic_sources_clean():
+                raise BenchmarkIntegrityError(
+                    "Source-release generation requires a clean Git semantic source tree and commit provenance."
+                )
         invocation = BenchmarkInvocation(
             manifest_reference=str(manifest_path),
             agent_ids=list(selected_agent_ids),
@@ -313,7 +301,7 @@ class CanonicalBenchmarkEngine:
             invocation=invocation,
             generation_command=generation_command,
             reproduction_method="cli" if generation_command else "python-api",
-            source_commit_sha=source_commit_sha,
+            source_commit_sha=commit_sha,
             environment_version=manifest.environment_version,
             evaluator_version=manifest.evaluator_version,
             taxonomy_version=manifest.taxonomy_version,
@@ -337,7 +325,7 @@ class CanonicalBenchmarkEngine:
         )
 
         if output_dir is not None:
-            artifact.persist_verified_bundle(output_dir)
+            artifact.persist_verified_bundle(output_dir, force=True)
             from flight_agent_evaluator.benchmarks.consistency import validate_benchmark_bundle
 
             validate_benchmark_bundle(output_dir, manifest_id_or_path=str(manifest_path))
