@@ -68,7 +68,13 @@ def test_r03_registered_benchmark_identities() -> None:
     """R03: Verify registered benchmark identities match canonical baselines."""
     registry = BenchmarkAgentRegistry()
     registered_ids = [a["agent_id"] for a in registry.list_agents()]
-    assert registered_ids == ["scripted-oracle", "naive-baseline", "no-op-baseline"]
+    assert registered_ids == [
+        "scripted-oracle",
+        "naive-baseline",
+        "no-op-baseline",
+        "unsafe-baseline",
+        "model",
+    ]
 
     assert isinstance(registry.resolve("scripted-oracle"), ScriptedOracleAgent)
     assert isinstance(registry.resolve("naive-baseline"), NaiveBaselineAgent)
@@ -109,9 +115,9 @@ def test_r06_model_agent_replay_manifest_required(capsys: pytest.CaptureFixture[
             "replay",
         ]
     )
-    assert exit_code == 1
+    assert exit_code == 2
     captured = capsys.readouterr()
-    assert "requires --model-replay-manifest PATH" in captured.err
+    assert "requires a recorded manifest (--model-replay-manifest PATH" in captured.err
 
 
 def test_r07_ablation_subcommand_removed(capsys: pytest.CaptureFixture[str]) -> None:

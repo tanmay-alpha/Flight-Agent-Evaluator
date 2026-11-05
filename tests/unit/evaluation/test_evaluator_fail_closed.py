@@ -82,8 +82,6 @@ class DoNothingAgent:
         context: RunContext,
     ) -> AgentRunResult:
         return AgentRunResult(
-            task_id=task.task_id,
-            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
@@ -879,8 +877,6 @@ class FailedRequiredActionAgent:
         )
         await executor.execute(call, context=context)
         return AgentRunResult(
-            task_id=task.task_id,
-            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
@@ -913,8 +909,6 @@ class WrongArgumentsAgent:
         )
         await executor.execute(call, context=context)
         return AgentRunResult(
-            task_id=task.task_id,
-            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
@@ -947,8 +941,6 @@ class ForbiddenActionAgent:
         )
         await executor.execute(call, context=context)
         return AgentRunResult(
-            task_id=task.task_id,
-            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
@@ -981,8 +973,6 @@ class PartialCompletionAgent:
         )
         await executor.execute(call, context=context)
         return AgentRunResult(
-            task_id=task.task_id,
-            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
@@ -1016,8 +1006,6 @@ class OverCallingAgent:
             )
             await executor.execute(call, context=context)
         return AgentRunResult(
-            task_id=task.task_id,
-            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
@@ -1067,8 +1055,6 @@ class WrongOrderAgent:
         )
         await executor.execute(call2, context=context)
         return AgentRunResult(
-            task_id=task.task_id,
-            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
@@ -1108,8 +1094,6 @@ class MissingDependencyAgent:
         )
         await executor.execute(call, context=context)
         return AgentRunResult(
-            task_id=task.task_id,
-            scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,

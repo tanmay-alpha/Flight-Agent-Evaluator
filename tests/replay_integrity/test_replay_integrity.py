@@ -305,7 +305,6 @@ def test_path_traversal_escapes_rejected(tmp_path: Path):
 async def test_replay_model_client_fingerprint_and_response_digest_integrity():
     """R-INV-11 & 12: ReplayModelClient verifies request fingerprint and response digest."""
     req = ModelRequest(
-        provider="replay",
         model_id="gpt-4o-mini",
         prompt_policy_id="default",
         prompt_policy_version="1.0.0",
