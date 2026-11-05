@@ -186,13 +186,23 @@ class BenchmarkRunner:
         authoritative: bool = False,
         execution_seed: int | None = None,
         execution_run_id: str | None = None,
+        scenario_source_digest: str | None = None,
     ) -> BenchmarkMetricVector:
-        """Run a single benchmark scenario against an agent policy."""
+        """Run a single benchmark scenario against an agent policy.
+
+        ``output_dir`` persists a replayable recording; it requires
+        ``scenario_source_digest`` (the SHA-256 of the scenario file bytes, i.e.
+        ``LoadedScenario.digest``), which replay provenance re-checks.
+        """
         if authoritative and expectation is None:
             raise ValueError(
                 f"Authoritative benchmark run for scenario '{scenario.scenario_id.id}' requires an explicit authored expectation."
             )
-
+        if output_dir is not None and not scenario_source_digest:
+            raise ValueError(
+                "Persisting a replayable recording requires scenario_source_digest "
+                "(the scenario file's byte digest)."
+            )
         # Ensure scenario mode matches scenario configuration
         scenario_mode = getattr(scenario, "scenario_mode", "read_only")
 
@@ -220,10 +230,15 @@ class BenchmarkRunner:
             scenario_version=scenario.scenario_id.version,
             seed=scenario.seed,
         )
+        # Deterministic, but distinct per agent so recordings of different agents on the
+        # same scenario never overwrite each other.
         run_id = (
             uuid.UUID(execution_run_id)
             if execution_run_id is not None
-            else id_factory.next(record_type="run", sequence=0)
+            else uuid.uuid5(
+                id_factory.next(record_type="run", sequence=0),
+                str(getattr(agent, "agent_id", type(agent).__name__)),
+            )
         )
         start_time: datetime.datetime
         if isinstance(scenario.reference_time, datetime.datetime):
@@ -422,10 +437,11 @@ class BenchmarkRunner:
             run_id=str(context.run_id),
             journal_digest=journal.final_digest(),
         )
-        if output_dir is not None:
+        if output_dir is not None and scenario_source_digest:
             self._persist_run(
                 output_dir=output_dir,
                 scenario=scenario,
+                scenario_source_digest=scenario_source_digest,
                 expectation=expectation,
                 agent=agent,
                 journal=journal,
@@ -439,6 +455,7 @@ class BenchmarkRunner:
         *,
         output_dir: Path,
         scenario: BenchmarkScenario,
+        scenario_source_digest: str,
         expectation: TrajectoryExpectation | None,
         agent: Any,
         journal: HashChainJournal,
@@ -447,7 +464,7 @@ class BenchmarkRunner:
     ) -> None:
         """Write the recording bundle (replayable by the CLI) and the metric vector."""
         run_id = str(metric_vector.run_id)
-        scenario_digest = scenario.canonical_digest()
+        scenario_digest = scenario_source_digest
         recording = RunRecording(
             run_id=uuid.UUID(run_id),
             scenario_id=scenario.scenario_id.id,
@@ -478,6 +495,7 @@ class BenchmarkRunner:
             ),
             agent_id=metric_vector.agent_id,
             agent_version=str(getattr(agent, "agent_version", "1.0.0")),
+            execution_runner="benchmark-runner",
             seed=scenario.seed,
             semantic_recording_digest=hashlib.sha256(
                 (journal.final_digest() + scenario_digest).encode("utf-8")
@@ -538,13 +556,12 @@ class BenchmarkRunner:
         self,
         scenarios: list[BenchmarkScenario],
         agents: list[AgentPolicy],
-        output_dir: Path | None = None,
     ) -> BenchmarkSuiteResult:
-        """Run benchmark suite across multiple scenarios and agents."""
+        """Run benchmark suite across multiple scenarios and agents (no persistence)."""
         metric_vectors: list[BenchmarkMetricVector] = []
         for scenario in scenarios:
             for agent in agents:
-                mv = await self.run_scenario(scenario, agent, output_dir=output_dir)
+                mv = await self.run_scenario(scenario, agent)
                 metric_vectors.append(mv)
 
         total_runs = len(metric_vectors)

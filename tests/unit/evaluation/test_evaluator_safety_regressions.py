@@ -89,6 +89,7 @@ def _run(
             ScriptedOracleAgent(golden_steps=steps),
             expectation=case.expectation,
             output_dir=output_dir,
+            scenario_source_digest=case.manifest_entry.scenario_sha256,
         )
     )
 

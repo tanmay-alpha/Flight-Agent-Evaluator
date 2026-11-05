@@ -241,23 +241,36 @@ class ReplayEngine:
         orig_semantic_events = tuple(project_semantic_event(e) for e in journal.entries)
         orig_semantic_digest = compute_semantic_recording_digest(orig_semantic_events)
 
-        # 5. Re-execute deterministically in isolated temporary directory
-        runner = factory.create_runner()
+        # 5. Re-execute deterministically in isolated temporary directory, through the same
+        #    execution path that produced the recording (their journals differ in shape).
         re_journal: HashChainJournal | None = None
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             try:
-                re_rec = asyncio.run(
-                    runner.run(
-                        loaded_scenario,
-                        provider=provider,
-                        output_dir=tmp_path,
-                        driver=agent_policy,
+                if provenance.execution_runner == "benchmark-runner":
+                    from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
+
+                    metrics = asyncio.run(
+                        BenchmarkRunner().run_scenario(
+                            loaded_scenario.scenario,
+                            agent_policy,
+                            output_dir=tmp_path,
+                            scenario_source_digest=loaded_scenario.digest,
+                        )
                     )
-                )
-                tmp_store = FileRecordingStore(tmp_path)
-                re_journal = tmp_store.read_recording(str(re_rec.run_id))
+                    re_run_id = str(metrics.run_id)
+                else:
+                    re_rec = asyncio.run(
+                        factory.create_runner().run(
+                            loaded_scenario,
+                            provider=provider,
+                            output_dir=tmp_path,
+                            driver=agent_policy,
+                        )
+                    )
+                    re_run_id = str(re_rec.run_id)
+                re_journal = FileRecordingStore(tmp_path).read_recording(re_run_id)
             except Exception as exc:
                 divergences.append(
                     SemanticDivergenceRecord(

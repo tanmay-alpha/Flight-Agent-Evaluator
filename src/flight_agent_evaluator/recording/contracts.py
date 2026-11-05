@@ -141,6 +141,11 @@ REPLAY_ALGORITHM_VERSION: str = "semantic-replay-v2"
 SEMANTIC_EVENT_PROJECTION_VERSION: str = "semantic-events-v2"
 
 
+ExecutionRunner = Literal["scenario-runner", "benchmark-runner"]
+"""``scenario-runner``: ``ScenarioRunner`` (``flight-evaluator run``); ``benchmark-runner``:
+``BenchmarkRunner.run_scenario`` (``agent run --output``). Their journals differ in shape."""
+
+
 class RecordingBundleManifest(ContractModel):
     """Cryptographic manifest cross-binding all recording files and metadata."""
 
@@ -175,6 +180,8 @@ class RecordingBundleManifest(ContractModel):
     fixture_manifest_digest: SHA256Digest | None = None
 
     seed: int = 42
+    execution_runner: ExecutionRunner = "scenario-runner"
+    """Which execution path produced the journal; replay must re-execute through the same one."""
     semantic_recording_digest: SHA256Digest
 
 
@@ -204,6 +211,7 @@ class ReplayProvenance(ContractModel):
 
     model_exchange_manifest_digest: str | None = None
     seed: int = 42
+    execution_runner: ExecutionRunner = "scenario-runner"
 
     replay_algorithm_version: str = REPLAY_ALGORITHM_VERSION
     semantic_projection_version: str = SEMANTIC_EVENT_PROJECTION_VERSION
