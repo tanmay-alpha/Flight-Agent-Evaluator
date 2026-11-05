@@ -31,7 +31,9 @@ def test_model_tool_calling_agent_e2e_benchmark_run():
         task_id="task_jfk-lhr-delay",
         scenario_id="jfk-lhr-delay",
         public_request="Flight AS142 departing JFK for LHR on 2026-07-28 is delayed. What is the current status and are there alternative flights?",
-        allowed_tools=["flight.get_status", "flight.search_flights"],
+        # C2: the runner exposes every tool registered for the scenario mode, never the
+        # golden trajectory's tools, so the recorded request must list the same tools.
+        allowed_tools=list(build_default_registry().handlers),
         max_turns=10,
         tool_call_limit=10,
     )
