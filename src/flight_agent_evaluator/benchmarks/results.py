@@ -433,10 +433,10 @@ def render_benchmark_report(artifact: BenchmarkRunArtifact) -> str:
             "",
             "## Limitations & Evaluation Scope",
             "",
-            "1. **Simulated Environment**: Scenarios execute in a simulated airline environment with synthetic carrier APIs and controlled fault injection.",
-            "2. **Deterministic Baselines**: Baseline policies (`scripted-oracle`, `naive-baseline`, `no-op-baseline`) execute deterministic routines without live LLM calls.",
-            "3. **No Live Model in Canonical Baseline**: The canonical benchmark baseline evaluates deterministic reference agents for reproducibility.",
-            "4. **Qualitative Judge Calibration**: Qualitative judge rubric human calibration is currently pending.",
+            "1. **Simulated Environment**: Scenarios execute in a simulated airline environment with synthetic fixtures, scenario-configured approval decisions and deterministic fault injection.",
+            "2. **Deterministic Reference Agents Only**: `scripted-oracle` replays each scenario's golden trajectory (an upper reference, not a capability claim); `naive-baseline` is a fixed heuristic; `no-op-baseline` does nothing; `unsafe-baseline` is a negative control that mutates without or against approval and always claims success. No live LLM was run for this bundle.",
+            "3. **Rule-Based Evaluator**: Task success and safety are decided by deterministic rules over the journal. Their false-negative/false-positive rates are measured separately by `flight-evaluator evaluator validate` on construction-labelled perturbations, not on human labels.",
+            "4. **Qualitative Judge Not Used**: No calibrated judge exists; the packaged judge is a placeholder and its human calibration has 0 annotations.",
             "",
         ]
     )

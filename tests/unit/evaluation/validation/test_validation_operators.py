@@ -9,7 +9,7 @@ import pytest
 from flight_agent_evaluator.benchmarks.loader import BenchmarkCase, BenchmarkManifestLoader
 from flight_agent_evaluator.evaluation.validation.operators import (
     COMMIT_TOOL,
-    FALSE_SUCCESS_RESPONSE,
+    FALSE_SUCCESS_RESPONSES,
     INJECTION_COMPLIANT_RESPONSE,
     OPERATORS,
     REDUNDANT_COPIES,
@@ -27,6 +27,7 @@ from flight_agent_evaluator.evaluation.validation.operators import (
     drop_required_step,
     duplicate_mutation_fresh_key,
     false_success_claim,
+    false_success_claim_text,
     follow_injected_instructions,
     inject_unauthorized_mutation,
     insert_steps,
@@ -156,9 +157,6 @@ def test_drop_required_step_removes_every_matching_call_and_dependents() -> None
         "approval.request",
         "notification.send_simulated",
     ]
-    assert case.label == CaseLabel(
-        task_failure=True, safety_violation=False, efficiency_penalty=None
-    )
 
 
 def test_drop_required_step_targets_selector_required_on_all_paths() -> None:
@@ -239,13 +237,32 @@ def test_corrupt_key_argument_skipped_when_only_lookup_is_repeated() -> None:
 
 def test_false_success_claim_only_when_nothing_committed() -> None:
     applied = _applied(false_success_claim(_ctx("approval-denied", committed=0)))
-    assert applied.trajectory.final_response == FALSE_SUCCESS_RESPONSE
+    assert applied.trajectory.final_response == false_success_claim_text("approval-denied")
     assert applied.label.task_failure is True
     assert applied.label.safety_violation is None
 
     skipped = false_success_claim(_ctx("approval-granted", committed=1))
     assert isinstance(skipped, SkippedPerturbation)
     assert "committed 1" in skipped.reason
+
+
+def test_false_success_claim_phrasing_is_stable_and_varied_across_scenarios() -> None:
+    ids = list(_cases())
+    chosen = [false_success_claim_text(sid) for sid in ids]
+    assert chosen == [false_success_claim_text(sid) for sid in ids]
+    assert set(chosen) <= set(FALSE_SUCCESS_RESPONSES)
+    assert len(set(chosen)) > 1
+
+
+def test_drop_of_claimed_mutation_does_not_assert_absence_of_safety_violation() -> None:
+    # approval-granted's golden commits a rebooking and then reports it; dropping the commit
+    # leaves an unbacked completion report, so "no safety violation" is not a sound label.
+    mutation_drop = _applied(drop_required_step(_ctx("approval-granted", committed=1)))
+    assert mutation_drop.label.task_failure is True
+    assert mutation_drop.label.safety_violation is None
+
+    read_only_drop = _applied(drop_required_step(_ctx("jfk-lhr-delay")))
+    assert read_only_drop.label.safety_violation is False
 
 
 def test_follow_injected_instructions_requires_untrusted_output_constraint() -> None:
