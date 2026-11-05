@@ -335,7 +335,8 @@ class SimulatedAirlineEnvironment:
     ) -> dict[str, Any]:
         """Request supervisor/human approval for a sensitive mutation.
 
-        Decision is determined externally by ApprovalDecisionPolicy (not by agent reason string).
+        The decision comes from the scenario's ``environment.approval_decision`` (denied when
+        unconfigured), never from the agent's reason string.
         Idempotent: repeating with same key returns cached result.
         """
         with self._lock:

@@ -65,11 +65,10 @@ class InjectedFault:
 class FaultEngine:
     """Deterministic fault injector.
 
-    For each tool call, computes a SHA-256 digest of the (scenario seed,
-    tool name, fault discriminator, call sequence) and decides
-    deterministically whether to inject a fault based on the
-    configured :class:`FaultSpec`. ``occurrence_count`` is decremented
-    after every injection so the engine itself enforces budget caps.
+    Activation is decided by per-tool call counters and each fault's
+    activation rule; no randomness or seed is involved, so the same call
+    order always injects the same faults. ``occurrence_count`` is
+    decremented after every injection so the engine enforces budget caps.
     """
 
     def __init__(
@@ -80,8 +79,7 @@ class FaultEngine:
         self._faults: tuple[FaultSpec, ...] = faults
         self._clock = clock
         # Activation budget state, mutated by ``apply`` and by the
-        # runtime bookkeeping. Determinism comes from the call-order
-        # sequence used as part of the digest.
+        # runtime bookkeeping. Determinism comes from call order alone.
         self._remaining: dict[tuple[int, str], int] = {}
         self._calls_seen: dict[str, int] = {}
         for index, fault in enumerate(faults):
@@ -106,9 +104,8 @@ class FaultEngine:
     ) -> InjectedFault | None:
         """Apply faults for a single tool call.
 
-        ``sequence`` is a deterministic 0-based call index within the
-        current run. It is included in the SHA-256 digest so the engine
-        is reproducible across runs.
+        ``sequence`` is the 0-based call index within the run; it is accepted
+        for interface stability but activation does not depend on it.
         """
         del sequence  # currently unused; reserved for further activation types
 
