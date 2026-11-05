@@ -220,8 +220,13 @@ class ScenarioLoader:
         return self.load_from_path(Path(ref.logical_path), expected_sha256=ref.expected_sha256)
 
     def load_builtin(self, scenario_id_or_path: str) -> LoadedScenario:
-        """Load a built-in packaged scenario by scenario ID or logical path."""
+        """Load a built-in packaged scenario by scenario ID or logical path.
+
+        A bare id (``approval-denied``) resolves to ``scenarios/<id>.json`` and then to
+        ``scenarios/transactional/<id>.json``.
+        """
         from flight_agent_evaluator.resources.contracts import (
+            BuiltinResourceNotFound,
             ResourceKind,
             ResourceOrigin,
             ResourceRef,
@@ -233,17 +238,27 @@ class ScenarioLoader:
 
         logical = scenario_id_or_path.strip()
         if not logical.endswith(".json") and "/" not in logical and "\\" not in logical:
-            logical = f"scenarios/{logical}.json"
+            candidates = [f"scenarios/{logical}.json", f"scenarios/transactional/{logical}.json"]
         elif not logical.startswith("scenarios/"):
-            logical = f"scenarios/{logical}"
+            candidates = [f"scenarios/{logical}"]
+        else:
+            candidates = [logical]
 
-        sanitized = sanitize_logical_path(logical)
-        ref = ResourceRef(
-            origin=ResourceOrigin.BUILTIN,
-            logical_path=sanitized,
-            kind=ResourceKind.SCENARIO,
-        )
-        return self.load_resource(ref, get_builtin_locator())
+        def _ref(path: str) -> ResourceRef:
+            return ResourceRef(
+                origin=ResourceOrigin.BUILTIN,
+                logical_path=sanitize_logical_path(path),
+                kind=ResourceKind.SCENARIO,
+            )
+
+        locator = get_builtin_locator()
+        *fallbacks_first, last = candidates
+        for candidate in fallbacks_first:
+            try:
+                return self.load_resource(_ref(candidate), locator)
+            except BuiltinResourceNotFound:
+                continue
+        return self.load_resource(_ref(last), locator)
 
     def load_from_path(self, path: Path, expected_sha256: str | None = None) -> LoadedScenario:
         """Load a scenario from an explicit filesystem Path."""

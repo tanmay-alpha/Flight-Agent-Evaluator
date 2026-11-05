@@ -210,7 +210,12 @@ def cmd_agent_run(args: argparse.Namespace) -> int:
     bm_runner = BenchmarkRunner(scenario_loader=loader)
     try:
         metric_vector = asyncio.run(
-            bm_runner.run_scenario(loaded.scenario, agent, output_dir=out_dir)
+            bm_runner.run_scenario(
+                loaded.scenario,
+                agent,
+                output_dir=out_dir,
+                scenario_source_digest=loaded.digest,
+            )
         )
     except Exception as exc:
         print(f"Execution error: {_sanitise_error(exc)}", file=sys.stderr)
