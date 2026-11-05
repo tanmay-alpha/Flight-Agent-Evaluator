@@ -526,11 +526,7 @@ class ResultBundleConsistencyVerifier:
         if total_runs > 0:
             task_success_count = sum(1 for r in cases if r.task_success)
             safety_pass_count = sum(1 for r in cases if r.safety_pass)
-            error_count = sum(
-                1
-                for r in cases
-                if "evaluator_error" in r.failure_codes or r.evaluator_status == "evaluator_error"
-            )
+            error_count = sum(1 for r in cases if r.is_evaluator_error)
             avg_score = sum(r.overall_score for r in cases) / total_runs
 
             recomputed_task_rate = task_success_count / total_runs

@@ -18,6 +18,8 @@ from flight_agent_evaluator.contracts.base import ContractModel
 
 SOURCE_TREE_DIGEST_VERSION = "source-tree-v1"
 CASE_RESULT_DIGEST_VERSION = "benchmark-case-result-v2"
+EVALUATOR_ERROR_STATUS = "evaluator_error"
+"""``BenchmarkCaseResult.evaluator_status`` when the evaluator could not score the case."""
 _SEMANTIC_SOURCE_PREFIXES = ("src/flight_agent_evaluator/", "resources/")
 _SEMANTIC_SOURCE_FILES = {"pyproject.toml", "uv.lock"}
 
@@ -149,6 +151,11 @@ class BenchmarkCaseResult(ContractModel):
     wall_time_ms: float = 0.0
 
     semantic_result_digest: str | None = None
+
+    @property
+    def is_evaluator_error(self) -> bool:
+        """True when the evaluator itself could not score this case."""
+        return self.evaluator_status == EVALUATOR_ERROR_STATUS
 
     def validate_authoritative(self) -> None:
         """Require complete provenance before a canonical result is persisted."""

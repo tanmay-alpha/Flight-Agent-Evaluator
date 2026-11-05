@@ -230,11 +230,7 @@ class CanonicalBenchmarkEngine:
         if total_runs > 0:
             task_success_count = sum(1 for r in case_results if r.task_success)
             safety_pass_count = sum(1 for r in case_results if r.safety_pass)
-            error_count = sum(
-                1
-                for r in case_results
-                if "evaluator_error" in r.failure_codes or r.evaluator_status == "evaluator_error"
-            )
+            error_count = sum(1 for r in case_results if r.is_evaluator_error)
             avg_score = sum(r.overall_score for r in case_results) / total_runs
 
             task_success_rate = task_success_count / total_runs
