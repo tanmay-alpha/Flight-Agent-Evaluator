@@ -17,14 +17,13 @@ Scenarios are machine-readable JSON files. The loader:
 from __future__ import annotations
 
 import hashlib
-import json
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Final
 
 from pydantic import ValidationError
 
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
+from flight_agent_evaluator.strict_json import StrictJSONError, loads_strict
 
 _DEFAULT_MAX_BYTES: Final[int] = 1_048_576  # 1 MiB
 _BOM = b"\xef\xbb\xbf"
@@ -48,61 +47,6 @@ class LoadedScenario:
         self.scenario = scenario
         self.digest = digest
         self.raw_bytes = raw_bytes
-
-
-def _pairs_to_dict(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
-    """Convert ordered pairs to a dict, rejecting duplicate keys."""
-    result: dict[str, Any] = {}
-    seen: set[str] = set()
-    for key, value in pairs:
-        if key in seen:
-            raise ScenarioLoaderError(f"Duplicate key in scenario JSON: {key!r}")
-        seen.add(key)
-        if (
-            isinstance(value, list)
-            and value
-            and all(
-                isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)
-                for item in value
-            )
-        ):
-            result[key] = _pairs_to_dict(value)
-        elif isinstance(value, list):
-            result[key] = [_reconstruct_list_item(item) for item in value]
-        else:
-            result[key] = value
-    return result
-
-
-def _reconstruct_list_item(item: Any) -> Any:
-    """Recursively convert any nested pairs-style structure into a dict/list."""
-    if (
-        isinstance(item, list)
-        and item
-        and all(
-            isinstance(sub, tuple) and len(sub) == 2 and isinstance(sub[0], str) for sub in item
-        )
-    ):
-        return _pairs_to_dict(item)
-    if isinstance(item, list):
-        return [_reconstruct_list_item(sub) for sub in item]
-    return item
-
-
-def _reject_nan(value: Any, path: str = "") -> None:
-    """Walk *value*; raise if NaN, Infinity, or -Infinity is present."""
-    if isinstance(value, float) and (
-        value != value or value == float("inf") or value == float("-inf")
-    ):
-        raise ScenarioLoaderError(
-            f"Non-finite float ({value!r}) at {path or 'root'} is not allowed"
-        )
-    if isinstance(value, dict):
-        for k, v in value.items():
-            _reject_nan(v, f"{path}.{k}")
-    elif isinstance(value, (list, tuple)):
-        for idx, item in enumerate(value):
-            _reject_nan(item, f"{path}[{idx}]")
 
 
 class ScenarioLoader:
@@ -140,24 +84,10 @@ class ScenarioLoader:
                 f"Scenario raw SHA-256 digest mismatch: expected '{expected_sha256}', got '{digest}'."
             )
 
-        # Parse JSON strictly: reject duplicate keys, reject NaN/Infinity.
         try:
-            pairs = json.loads(raw, object_pairs_hook=list)
-        except json.JSONDecodeError as exc:
-            raise ScenarioLoaderError(f"Invalid JSON: {exc}") from exc
-
-        if not isinstance(pairs, list) or (
-            pairs
-            and not all(
-                isinstance(p, tuple)
-                or (isinstance(p, list) and len(p) == 2 and isinstance(p[0], str))
-                for p in pairs
-            )
-        ):
-            raise ScenarioLoaderError("Scenario file must be a JSON object")
-
-        data = _pairs_to_dict(pairs)
-        _reject_nan(data)
+            data = loads_strict(raw, max_bytes=self._max_bytes, source="scenario")
+        except StrictJSONError as exc:
+            raise ScenarioLoaderError(str(exc)) from exc
 
         if not isinstance(data, dict):
             raise ScenarioLoaderError("Scenario file must be a JSON object")
