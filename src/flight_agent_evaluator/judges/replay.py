@@ -1,8 +1,10 @@
 """Replay judge client — deterministic, zero network.
 
 Uses a pre-recorded JudgeExchangeManifest to replay judge responses
-without any live model inference. Binds evidence package semantic digest,
-rubric version, raw response digest, and parsed result integrity.
+without any live model inference. An exchange is found only by its full request
+fingerprint (evidence package semantic digest, rubric version and prompt policy).
+The returned result is parsed from the digest-verified raw response text; nothing
+else recorded in the manifest is trusted as a judgment.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from pathlib import Path
 from flight_agent_evaluator.judges.contracts import (
     JudgeEvidencePackage,
     JudgeExchangeManifest,
+    JudgeMode,
     JudgeRequestFingerprintV1,
     JudgeResult,
 )
@@ -21,6 +24,7 @@ from flight_agent_evaluator.judges.errors import (
     JudgeReplayCorruptedError,
     JudgeReplayNotFoundError,
 )
+from flight_agent_evaluator.judges.prompt import parse_judge_response
 
 
 class ReplayJudgeClient:
@@ -60,68 +64,71 @@ class ReplayJudgeClient:
             prompt_policy_id: Must match the prompt policy.
 
         Returns:
-            The pre-recorded, verified JudgeResult.
+            The JudgeResult parsed from the verified recorded raw response.
 
         Raises:
-            JudgeReplayNotFoundError: If no exchange matches or if verification fails.
+            JudgeReplayNotFoundError: If no exchange matches the request fingerprint.
+            JudgeReplayCorruptedError: If the matched exchange fails verification.
         """
         sem_digest = evidence_package.semantic_digest()
-        fingerprint_obj = JudgeRequestFingerprintV1(
+        fingerprint = JudgeRequestFingerprintV1(
             evidence_package_semantic_digest=sem_digest,
             rubric_version=rubric_version,
             prompt_policy_id=prompt_policy_id,
-        )
-        fingerprint = fingerprint_obj.canonical_fingerprint()
+        ).canonical_fingerprint()
 
-        # Lookup by request fingerprint or package digest
-        exchange = self._manifest.get_exchange(fingerprint) or self._manifest.get_exchange(
-            sem_digest
-        )
+        exchange = self._manifest.get_exchange(fingerprint)
         if exchange is None:
             raise JudgeReplayNotFoundError(
-                f"No recorded judge exchange found for evidence digest {sem_digest!r} / fingerprint {fingerprint!r}. "
-                "Run with --allow-live-judge --record to record exchanges first."
+                f"No recorded judge exchange found for fingerprint {fingerprint!r} "
+                f"(evidence digest {sem_digest!r}, rubric {rubric_version!r}, "
+                f"prompt policy {prompt_policy_id!r})."
             )
 
-        # Enforce rubric version binding
-        if exchange.rubric_version and exchange.rubric_version != rubric_version:
-            raise JudgeReplayNotFoundError(
-                f"Rubric version mismatch: recorded under {exchange.rubric_version!r}, requested {rubric_version!r}."
+        if exchange.package_digest != sem_digest:
+            raise JudgeReplayCorruptedError(
+                f"Exchange package digest {exchange.package_digest!r} does not match the "
+                f"evidence package {sem_digest!r} its fingerprint was computed from."
+            )
+        if exchange.rubric_version != rubric_version:
+            raise JudgeReplayCorruptedError(
+                f"Exchange rubric version {exchange.rubric_version!r} does not match the "
+                f"fingerprinted rubric version {rubric_version!r}."
             )
 
-        # 1. Verify raw response digest
         recorded_digest = hashlib.sha256(exchange.response_text.encode("utf-8")).hexdigest()
         if recorded_digest != exchange.response_digest:
-            raise JudgeReplayNotFoundError(
+            raise JudgeReplayCorruptedError(
                 f"Recorded exchange raw response digest mismatch for package {sem_digest!r}. "
                 "The recording text has been tampered with."
             )
 
-        # 2. Verify parsed result digest if stored
-        result = exchange.parsed_result
-        if exchange.parsed_result_digest:
-            actual_res_digest = result.canonical_digest()
-            if actual_res_digest != exchange.parsed_result_digest:
-                raise JudgeReplayNotFoundError(
-                    f"Parsed result digest mismatch: expected {exchange.parsed_result_digest}, got {actual_res_digest}"
-                )
+        try:
+            criteria_results = parse_judge_response(exchange.response_text)
+        except ValueError as exc:
+            raise JudgeReplayCorruptedError(
+                f"Recorded raw response for package {sem_digest!r} is not a valid judge response: {exc}"
+            ) from exc
 
-        # 3. Verify package digest in parsed result matches current package
-        if result.package_digest and result.package_digest != sem_digest:
-            raise JudgeReplayNotFoundError(
-                f"Parsed result package digest {result.package_digest!r} does not match current evidence package {sem_digest!r}"
-            )
-
-        # 4. Verify all evidence IDs exist in current package
         known_evidence_ids = {obs.evidence_id for obs in evidence_package.trusted_observations}
-        for cr in result.criteria_results:
+        for cr in criteria_results:
             for eid in cr.evidence_ids:
                 if eid not in known_evidence_ids:
-                    raise JudgeReplayNotFoundError(
+                    raise JudgeReplayCorruptedError(
                         f"Judge result references unknown evidence_id {eid!r} not in current evidence package."
                     )
 
-        return result
+        overall = sum(cr.score for cr in criteria_results) / len(criteria_results)
+        return JudgeResult(
+            package_id=evidence_package.package_id,
+            package_digest=sem_digest,
+            judge_model_id=exchange.model_id,
+            mode=JudgeMode.REPLAY,
+            rubric_version=rubric_version,
+            criteria_results=criteria_results,
+            overall_score=round(overall, 4),
+            created_at=exchange.recorded_at,
+        )
 
     @property
     def manifest(self) -> JudgeExchangeManifest:

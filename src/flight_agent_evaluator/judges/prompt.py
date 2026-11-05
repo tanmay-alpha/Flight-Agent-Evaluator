@@ -12,8 +12,13 @@ The prompt is deterministic given the rubric version.
 
 from __future__ import annotations
 
+import json
+
+from pydantic import TypeAdapter, ValidationError
+
 from flight_agent_evaluator.judges.contracts import (
     JudgeCriterion,
+    JudgeCriterionResult,
     JudgeEvidencePackage,
     JudgeRubric,
 )
@@ -103,3 +108,30 @@ Evaluate it against the trusted observations above.
 
 Now evaluate using the rubric.  Remember: use ONLY trusted_observations as ground truth.
 """
+
+
+_CRITERIA_ADAPTER = TypeAdapter(list[JudgeCriterionResult])
+
+
+def parse_judge_response(response_text: str) -> list[JudgeCriterionResult]:
+    """Parse a raw judge response in the OUTPUT FORMAT this prompt requires.
+
+    The response must be a JSON object whose only key is ``criteria_results``, scoring
+    every criterion exactly once.
+
+    Raises:
+        ValueError: If the response does not follow the required format.
+    """
+    try:
+        payload = json.loads(response_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Judge response is not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict) or set(payload) != {"criteria_results"}:
+        raise ValueError("Judge response must be a JSON object with only 'criteria_results'.")
+    try:
+        criteria = _CRITERIA_ADAPTER.validate_python(payload["criteria_results"])
+    except ValidationError as exc:
+        raise ValueError(f"Judge response criteria_results are invalid: {exc}") from exc
+    if sorted(result.criterion for result in criteria) != sorted(JudgeCriterion):
+        raise ValueError("Judge response must score every criterion exactly once.")
+    return criteria

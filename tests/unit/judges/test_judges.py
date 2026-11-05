@@ -13,6 +13,7 @@ from flight_agent_evaluator.judges.contracts import (
     JudgeExchange,
     JudgeExchangeManifest,
     JudgeMode,
+    JudgeRequestFingerprintV1,
     JudgeValidationStatus,
     TrustedObservation,
 )
@@ -98,19 +99,27 @@ def test_replay_judge_client() -> None:
         public_task="Find flight to LHR",
         final_response="Found flight BA178",
     )
-    fake = FakeJudgeClient()
-    fake_result = asyncio.run(fake.judge(pkg))
-
     import hashlib
+    import json
 
-    raw_resp = fake_result.model_dump_json()
+    raw_resp = json.dumps(
+        {
+            "criteria_results": [
+                {"criterion": c.value, "score": 3, "rationale": "recorded"} for c in JudgeCriterion
+            ]
+        }
+    )
     resp_digest = hashlib.sha256(raw_resp.encode("utf-8")).hexdigest()
 
     exchange = JudgeExchange(
+        request_fingerprint=JudgeRequestFingerprintV1(
+            evidence_package_semantic_digest=pkg.semantic_digest(),
+            rubric_version="judge-rubric-v1",
+            prompt_policy_id="standard",
+        ).canonical_fingerprint(),
         package_digest=pkg.digest(),
         request_messages=[{"role": "user", "content": "test"}],
         response_text=raw_resp,
-        parsed_result=fake_result,
         model_id="test-model",
         recorded_at=datetime.now(UTC),
         response_digest=resp_digest,
@@ -123,6 +132,8 @@ def test_replay_judge_client() -> None:
     replay_client = ReplayJudgeClient(manifest)
     replayed = asyncio.run(replay_client.judge(pkg))
     assert replayed.package_digest == pkg.digest()
+    assert replayed.mode is JudgeMode.REPLAY
+    assert replayed.overall_score == 3.0
 
     # Test not found
     missing_pkg = build_evidence_package(
