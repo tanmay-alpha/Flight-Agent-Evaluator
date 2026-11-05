@@ -28,15 +28,16 @@ from flight_agent_evaluator.contracts.model import (
 )
 from flight_agent_evaluator.judges.contracts import (
     JudgeCriterion,
-    JudgeCriterionResult,
     JudgeEvidencePackage,
     JudgeExchange,
     JudgeExchangeManifest,
     JudgeRequestFingerprintV1,
-    JudgeResult,
     TrustedObservation,
 )
-from flight_agent_evaluator.judges.errors import JudgeReplayNotFoundError
+from flight_agent_evaluator.judges.errors import (
+    JudgeReplayCorruptedError,
+    JudgeReplayNotFoundError,
+)
 from flight_agent_evaluator.judges.replay import ReplayJudgeClient
 from flight_agent_evaluator.judges.resolver import VerifiedEvidenceResolver
 from flight_agent_evaluator.recording.contracts import (
@@ -396,24 +397,19 @@ async def test_judge_replay_client_strict_binding():
     )
     fp = fp_obj.canonical_fingerprint()
 
-    judge_result = JudgeResult(
-        schema_version="judge-schema-v1",
-        package_id="pkg-1",
-        package_digest=pkg_digest,
-        mode="replay",
-        criteria_results=[
-            JudgeCriterionResult(
-                criterion=JudgeCriterion.GROUNDEDNESS,
-                score=4,
-                evidence_ids=["obs-1"],
-                rationale="Accurate report matching observation",
-            )
-        ],
-        overall_score=4.0,
-        created_at=datetime.now(UTC),
+    resp_text = json.dumps(
+        {
+            "criteria_results": [
+                {
+                    "criterion": criterion.value,
+                    "score": 4,
+                    "evidence_ids": ["obs-1"],
+                    "rationale": "Accurate report matching observation",
+                }
+                for criterion in JudgeCriterion
+            ]
+        }
     )
-
-    resp_text = json.dumps(judge_result.model_dump(mode="json"))
     resp_digest = hashlib.sha256(resp_text.encode("utf-8")).hexdigest()
 
     exchange = JudgeExchange(
@@ -424,8 +420,6 @@ async def test_judge_replay_client_strict_binding():
         request_messages=[{"role": "user", "content": "Grade"}],
         response_text=resp_text,
         response_digest=resp_digest,
-        parsed_result=judge_result,
-        parsed_result_digest=judge_result.canonical_digest(),
         model_id="gpt-4o",
         recorded_at=datetime.now(UTC),
     )
@@ -440,8 +434,8 @@ async def test_judge_replay_client_strict_binding():
     res = await client.judge(pkg, rubric_version="judge-rubric-v1", prompt_policy_id="standard")
     assert res.overall_score == 4.0
 
-    # Mismatched rubric version rejected
-    with pytest.raises(JudgeReplayNotFoundError, match="Rubric version mismatch"):
+    # A different rubric version is a different request: no recorded exchange.
+    with pytest.raises(JudgeReplayNotFoundError):
         await client.judge(pkg, rubric_version="judge-rubric-v2", prompt_policy_id="standard")
 
     # Tampered raw response text rejected
@@ -452,7 +446,7 @@ async def test_judge_replay_client_strict_binding():
         created_at=datetime.now(UTC),
     )
     tampered_client = ReplayJudgeClient(tampered_manifest)
-    with pytest.raises(JudgeReplayNotFoundError, match="raw response digest mismatch"):
+    with pytest.raises(JudgeReplayCorruptedError, match="raw response digest mismatch"):
         await tampered_client.judge(
             pkg, rubric_version="judge-rubric-v1", prompt_policy_id="standard"
         )
