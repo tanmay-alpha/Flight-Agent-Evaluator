@@ -128,9 +128,13 @@ class AnnotationBundle(ContractModel):
             "Tasks cannot be added or modified."
         ),
     )
-    annotation_status: Literal["pending", "in_progress", "complete"] = Field(
+    annotation_status: Literal["template", "pending", "in_progress", "complete"] = Field(
         default="pending",
-        description="Overall annotation status.",
+        description=(
+            "Overall annotation status. 'template' marks a bundle whose tasks hold "
+            "placeholder content rather than real agent outputs: it documents the format "
+            "and must not be distributed for annotation or used for calibration."
+        ),
     )
     calibration_note: str = Field(
         default=(
