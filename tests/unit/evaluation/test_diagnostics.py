@@ -23,6 +23,8 @@ from flight_agent_evaluator.evaluation.diagnostics import (
     FailureDiagnosticEngine,
     FailureSeverity,
 )
+from flight_agent_evaluator.evaluation.failure_codes import FailureCode
+from flight_agent_evaluator.evaluation.journal_safety import SafetyViolation
 from flight_agent_evaluator.evaluation.trajectory_evaluator import (
     EvidenceAttribution,
     EvidencePointer,
@@ -36,6 +38,14 @@ from flight_agent_evaluator.evaluation.trajectory_evaluator import (
 _SCENARIO_ID = "test-scenario-001"
 _RUN_ID = "run-abc123"
 _PATH_ID = "path_direct"
+
+
+def _viol(
+    details: str,
+    code: FailureCode = FailureCode.SAFETY__PROHIBITED_TOOL,
+    tool_name: str | None = None,
+) -> SafetyViolation:
+    return SafetyViolation(code=code, rule_id="rule-1", details=details, tool_name=tool_name)
 
 
 def _base_scorecard(**overrides) -> TrajectoryScorecard:
@@ -174,7 +184,9 @@ class TestSafetyViolations:
         engine = FailureDiagnosticEngine()
         sc = _base_scorecard(
             safety_pass=False,
-            safety_violations=["Called forbidden tool: delete_booking"],
+            safety_violations=[
+                _viol("Called forbidden tool: delete_booking", tool_name="delete_booking")
+            ],
             overall_pass=False,
         )
         report = engine.diagnose(sc, _base_expectation())
@@ -186,11 +198,25 @@ class TestSafetyViolations:
         assert safety_diags[0].severity == FailureSeverity.FATAL
         assert "delete_booking" in safety_diags[0].root_cause_explanation
 
+    def test_safety_violation_keeps_its_own_failure_code(self):
+        engine = FailureDiagnosticEngine()
+        sc = _base_scorecard(
+            safety_pass=False,
+            safety_violations=[
+                _viol("denied confirm", code=FailureCode.SAFETY__DENIED_APPROVAL_OVERRIDE)
+            ],
+            overall_pass=False,
+        )
+        report = engine.diagnose_report(sc, _base_expectation())
+        assert [f.failure_code for f in report.failures] == [
+            FailureCode.SAFETY__DENIED_APPROVAL_OVERRIDE
+        ]
+
     def test_multiple_safety_violations_each_get_own_diagnosis(self):
         engine = FailureDiagnosticEngine()
         sc = _base_scorecard(
             safety_pass=False,
-            safety_violations=["Violation A", "Violation B", "Violation C"],
+            safety_violations=[_viol("Violation A"), _viol("Violation B"), _viol("Violation C")],
             overall_pass=False,
         )
         report = engine.diagnose(sc, _base_expectation())
@@ -217,7 +243,7 @@ class TestSafetyViolations:
         engine = FailureDiagnosticEngine()
         sc = _base_scorecard(
             safety_pass=False,
-            safety_violations=["V1", "V2"],
+            safety_violations=[_viol("V1"), _viol("V2")],
             overall_pass=False,
         )
         report = engine.diagnose(sc, _base_expectation())
@@ -239,8 +265,13 @@ class TestOutcomeAssertionFailure:
             d for d in report.diagnoses if d.category == FailureCategory.OUTCOME_ASSERTION
         ]
         assert len(outcome_diags) == 1
-        assert outcome_diags[0].severity == FailureSeverity.FATAL
+        # An unmet outcome is a goal-completion failure, not a (critical) false success claim.
+        assert outcome_diags[0].severity == FailureSeverity.MAJOR
         assert "0.50" in outcome_diags[0].summary
+        report_full = engine.diagnose_report(sc, _base_expectation())
+        assert [f.failure_code for f in report_full.failures] == [
+            FailureCode.STATE__OUTCOME_NOT_ACHIEVED
+        ]
 
     def test_outcome_score_exactly_1_no_diagnosis(self):
         engine = FailureDiagnosticEngine()
@@ -385,9 +416,13 @@ class TestArgumentPredicateFailure:
 
 
 class TestDependencyOrderingFailure:
-    def test_ordering_score_below_1_produces_major_diagnosis(self):
+    def test_precedence_violation_produces_ordering_diagnosis(self):
         engine = FailureDiagnosticEngine()
-        sc = _base_scorecard(ordering_score=0.5, overall_pass=False)
+        sc = _base_scorecard(
+            ordering_score=0.5,
+            precedence_violations=["Precedence violation: a did not precede b."],
+            overall_pass=False,
+        )
         report = engine.diagnose(sc, _base_expectation())
 
         order_diags = [
@@ -395,9 +430,13 @@ class TestDependencyOrderingFailure:
         ]
         assert any("precedence" in d.summary for d in order_diags)
 
-    def test_dependency_score_below_1_produces_major_diagnosis(self):
+    def test_dependency_violation_produces_dependency_diagnosis(self):
         engine = FailureDiagnosticEngine()
-        sc = _base_scorecard(dependency_score=0.5, overall_pass=False)
+        sc = _base_scorecard(
+            dependency_score=0.5,
+            dependency_violations=["Dependency violation: b depends on a."],
+            overall_pass=False,
+        )
         report = engine.diagnose(sc, _base_expectation())
 
         dep_diags = [
@@ -407,13 +446,35 @@ class TestDependencyOrderingFailure:
 
     def test_both_ordering_and_dependency_fail_produce_two_diagnoses(self):
         engine = FailureDiagnosticEngine()
-        sc = _base_scorecard(ordering_score=0.3, dependency_score=0.0, overall_pass=False)
+        sc = _base_scorecard(
+            ordering_score=0.3,
+            dependency_score=0.0,
+            precedence_violations=["Precedence violation: a did not precede b."],
+            dependency_violations=["Dependency violation: b depends on a."],
+            overall_pass=False,
+        )
         report = engine.diagnose(sc, _base_expectation())
 
         dep_order_diags = [
             d for d in report.diagnoses if d.category == FailureCategory.DEPENDENCY_ORDERING
         ]
         assert len(dep_order_diags) == 2
+
+    def test_zeroed_subscores_without_violations_do_not_cascade(self):
+        """Zero recall zeroes ordering/dependency/argument scores; no symptom codes follow."""
+        engine = FailureDiagnosticEngine()
+        sc = _base_scorecard(
+            required_recall=0.0,
+            ordering_score=0.0,
+            dependency_score=0.0,
+            argument_correctness_score=0.0,
+            evidence_attribution=[_unmatched_attribution("get_status")],
+            overall_pass=False,
+        )
+        report = engine.diagnose_report(sc, _base_expectation())
+        assert [f.failure_code for f in report.failures] == [
+            FailureCode.PLANNING__MISSING_REQUIRED_ACTION
+        ]
 
     def test_ordering_exactly_1_no_diagnosis(self):
         engine = FailureDiagnosticEngine()
@@ -473,17 +534,19 @@ class TestSeverityRanking:
         engine = FailureDiagnosticEngine()
         sc = _base_scorecard(
             outcome_score=0.5,
-            ordering_score=0.0,
+            safety_pass=False,
+            safety_violations=[_viol("V1")],
             overall_pass=False,
         )
         report = engine.diagnose(sc, _base_expectation())
-        # outcome failure is FATAL, ordering is MAJOR
-        assert report.primary_root_cause == FailureCategory.OUTCOME_ASSERTION.value
+        # safety violation is FATAL, outcome shortfall is MAJOR
+        assert report.primary_root_cause == FailureCategory.SAFETY_VIOLATION.value
 
     def test_major_is_primary_root_cause_over_minor(self):
         engine = FailureDiagnosticEngine()
         sc = _base_scorecard(
             ordering_score=0.0,
+            precedence_violations=["Precedence violation: a did not precede b."],
             efficiency_score=0.5,
             overall_pass=False,
         )
@@ -497,7 +560,7 @@ class TestSeverityRanking:
         sc = _base_scorecard(
             evaluator_error="ERROR",
             safety_pass=False,
-            safety_violations=["V1"],
+            safety_violations=[_viol("V1")],
             overall_pass=False,
         )
         report = engine.diagnose(sc, _base_expectation())
@@ -521,7 +584,7 @@ class TestSummaryCounts:
         engine = FailureDiagnosticEngine()
         sc = _base_scorecard(
             outcome_score=0.5,
-            safety_violations=["V1", "V2"],
+            safety_violations=[_viol("V1"), _viol("V2")],
             safety_pass=False,
             overall_pass=False,
         )
@@ -549,10 +612,11 @@ class TestCompoundFailures:
         sc = _base_scorecard(
             evaluator_error="TIMEOUT",
             safety_pass=False,
-            safety_violations=["V1"],
+            safety_violations=[_viol("V1")],
             outcome_score=0.0,
             ordering_score=0.0,
             dependency_score=0.0,
+            precedence_violations=["Precedence violation: a did not precede b."],
             efficiency_score=0.0,
             overall_pass=False,
             evidence_attribution=[
@@ -575,7 +639,7 @@ class TestCompoundFailures:
         engine = FailureDiagnosticEngine()
         sc = _base_scorecard(
             safety_pass=False,
-            safety_violations=["V1", "V2"],
+            safety_violations=[_viol("V1"), _viol("V2")],
             outcome_score=0.5,
             overall_pass=False,
         )
@@ -668,7 +732,7 @@ class TestReportSerialization:
         engine = FailureDiagnosticEngine()
         sc = _base_scorecard(
             safety_pass=False,
-            safety_violations=["Danger"],
+            safety_violations=[_viol("Danger")],
             overall_pass=False,
         )
         report = engine.diagnose(sc, _base_expectation())
