@@ -297,6 +297,10 @@ class JudgeValidationStatus(StrEnum):
 class JudgeMode(StrEnum):
     """Judge operational mode."""
 
+    FAKE = "fake"
+    """Deterministic test double (``FakeJudgeClient``). Scores are configured
+    placeholders, not model or human judgments, and must never be reported as such."""
+
     REPLAY = "replay"
     """Zero network; replays pre-recorded judge exchanges. Default for CI."""
 
