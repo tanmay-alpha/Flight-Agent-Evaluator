@@ -34,29 +34,9 @@ from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 from flight_agent_evaluator.runtime.state import StateSnapshot
-from flight_agent_evaluator.tools.base import build_registry_for_scenario
+from flight_agent_evaluator.tools.base import build_registry_for_scenario, default_allowed_tools
 
 logger = logging.getLogger(__name__)
-
-
-def _default_allowed_tools(scenario: BenchmarkScenario) -> list[str]:
-    """Tools an agent may use: the scenario's explicit ``allowed_tools`` or its mode's registry.
-
-    Never derived from the scenario's golden trajectory (contract C2). Identical to
-    ``tools.base.default_allowed_tools`` on the execution-safety branch; replace this
-    with that helper at integration.
-    """
-    registry = build_registry_for_scenario(scenario)
-    explicit = getattr(scenario, "allowed_tools", None)
-    if explicit:
-        unknown = [name for name in explicit if name not in registry.handlers]
-        if unknown:
-            raise ValueError(
-                f"Scenario allowed_tools not registered for mode "
-                f"'{getattr(scenario, 'scenario_mode', 'read_only')}': {unknown}"
-            )
-        return list(explicit)
-    return list(registry.handlers)
 
 
 class BenchmarkMetricVector(BaseModel):
@@ -223,7 +203,7 @@ class BenchmarkRunner:
             or scenario.metadata.description
         )
 
-        allowed_tools = _default_allowed_tools(scenario)
+        allowed_tools = default_allowed_tools(scenario)
 
         task = AgentTask(
             task_id=f"task_{scenario.scenario_id.id}",
