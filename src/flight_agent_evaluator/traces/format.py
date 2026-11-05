@@ -19,6 +19,8 @@ from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from flight_agent_evaluator.agent.tool_names import from_provider_tool_name
+
 TRACE_SCHEMA_VERSION = "1.0"
 """Current (and only) supported trace ``schema_version``."""
 
@@ -30,17 +32,6 @@ _BUILTIN_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,127}$"
 
 class TraceFormatError(ValueError):
     """Raised when a trace document cannot be parsed or fails validation."""
-
-
-def _provider_to_internal_tool_name(name: str) -> str:
-    """Map a provider-sanitized tool name back to its dotted internal name.
-
-    Provider function names cannot contain ``.``, so the agent adapter encodes
-    ``flight.get_status`` as ``flight__get_status``. Already-dotted names pass
-    through unchanged. This is the single decoding point for imported traces;
-    it mirrors ``flight_agent_evaluator.agent.tool_names.from_provider_tool_name``.
-    """
-    return name.replace("__", ".")
 
 
 class _StrictModel(BaseModel):
@@ -111,7 +102,7 @@ class TraceToolCall(_StrictModel):
     @field_validator("tool_name")
     @classmethod
     def _decode_tool_name(cls, value: str) -> str:
-        return _provider_to_internal_tool_name(value)
+        return from_provider_tool_name(value)
 
     @model_validator(mode="after")
     def _single_observation(self) -> TraceToolCall:

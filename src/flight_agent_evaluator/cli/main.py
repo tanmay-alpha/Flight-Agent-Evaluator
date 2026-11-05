@@ -48,6 +48,7 @@ from flight_agent_evaluator.judges import (
     FakeJudgeClient,
     JudgeEvidencePackage,
 )
+from flight_agent_evaluator.judges.fake import FAKE_JUDGE_WARNING
 from flight_agent_evaluator.recording.contracts import (
     BehaviourVerificationStatus,
     RecordingIntegrityStatus,
@@ -82,9 +83,6 @@ def _build_runner(output: Path | None, loaded: LoadedScenario) -> ScenarioRunner
         if dt.tzinfo is None or dt.utcoffset() is None:
             raise ValueError(f"Scenario reference_time must be timezone-aware, got {ref!r}")
     return ScenarioRunner()
-
-
-FAKE_JUDGE_WARNING = "FAKE judge: scores are placeholders, not model or human judgments."
 
 
 def _agent_class_name(meta: dict[str, Any]) -> str:
@@ -841,6 +839,7 @@ def cmd_benchmark_run(args: argparse.Namespace) -> int:
             output_dir=output_dir,
             repetitions=repetitions,
             require_source_provenance=source_release_output,
+            force_output=bool(getattr(args, "force", False)),
         )
         if getattr(args, "json", False):
             print(json.dumps(artifact.model_dump(mode="json"), indent=2))
@@ -879,9 +878,27 @@ def cmd_benchmark_run(args: argparse.Namespace) -> int:
                 "================================================================================\n"
             )
         return 0 if artifact.metrics.evaluator_error_rate == 0.0 else 1
+    except FileExistsError as exc:
+        print(f"Error: {_sanitise_error(exc)} (use --force to override)", file=sys.stderr)
+        return 2
     except Exception as exc:
         print(f"Error executing benchmark run: {_sanitise_error(exc)}", file=sys.stderr)
         return 1
+
+
+def cmd_trace_evaluate(args: argparse.Namespace) -> int:
+    """CLI handler: evaluate an external agent trace (exit 0 pass, 1 fail, 2 input error)."""
+    from flight_agent_evaluator.traces.cli import main as trace_main
+
+    argv = [str(args.trace)] + (["--json"] if getattr(args, "json", False) else [])
+    return trace_main(argv)
+
+
+def cmd_evaluator_validate(args: argparse.Namespace) -> int:
+    """CLI handler: run the evaluator validation harness and write report.json/report.md."""
+    from flight_agent_evaluator.evaluation.validation.__main__ import main as validation_main
+
+    return validation_main(["--output", str(args.output), "--benchmark", str(args.benchmark)])
 
 
 def cmd_demo_run(args: argparse.Namespace) -> int:
@@ -1233,6 +1250,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
         "--model-replay-dir",
         help="Directory of recorded per-run model exchange manifests (model replay mode).",
     )
+    bm_run_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow writing into a non-empty --output directory that is not a benchmark bundle.",
+    )
     bm_run_p.set_defaults(func=cmd_benchmark_run)
 
     bm_val_p = bm_sub.add_parser(
@@ -1341,6 +1363,32 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     eval_p.add_argument("--scenario", help="Optional explicit path to scenario JSON file.")
     eval_p.add_argument("--output", "-o", help="Recording output directory.", default=".recordings")
     eval_p.set_defaults(func=cmd_evaluate)
+
+    # trace subcommand (framework-agnostic external agent traces)
+    trace_p = subparsers.add_parser(
+        "trace", help="Evaluate externally produced agent traces.", parents=[json_parent]
+    )
+    trace_sub = trace_p.add_subparsers(dest="trace_command", required=True)
+    trace_eval = trace_sub.add_parser(
+        "evaluate",
+        help="Re-execute a tool-call trace in the simulated environment and score it.",
+        parents=[json_parent],
+    )
+    trace_eval.add_argument("trace", help="Path to a trace JSON file (tool_calls or openai_chat).")
+    trace_eval.set_defaults(func=cmd_trace_evaluate)
+
+    # evaluator subcommand (evaluation of the evaluator)
+    evaluator_p = subparsers.add_parser(
+        "evaluator", help="Measure the trajectory evaluator itself.", parents=[json_parent]
+    )
+    evaluator_sub = evaluator_p.add_subparsers(dest="evaluator_command", required=True)
+    evaluator_val = evaluator_sub.add_parser(
+        "validate",
+        help="Measure evaluator FP/FN rates on construction-labelled perturbed trajectories.",
+    )
+    evaluator_val.add_argument("--output", "-o", required=True, help="Report output directory.")
+    evaluator_val.add_argument("--benchmark", default="benchmark-v1", help="Built-in benchmark id.")
+    evaluator_val.set_defaults(func=cmd_evaluator_validate)
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
     is_json_flag = "--json" in raw_argv

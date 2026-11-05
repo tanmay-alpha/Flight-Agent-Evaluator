@@ -11,7 +11,6 @@ import pytest
 from flight_agent_evaluator.traces import format as trace_format
 from flight_agent_evaluator.traces.format import (
     TraceFormatError,
-    _provider_to_internal_tool_name,
     load_trace,
     parse_trace,
 )
@@ -128,7 +127,8 @@ def test_native_tool_names_are_unsanitized() -> None:
     ],
 )
 def test_provider_tool_name_unsanitizing(provider: str, internal: str) -> None:
-    assert _provider_to_internal_tool_name(provider) == internal
+    trace = parse_trace(_native(calls=[{"tool_name": provider}]))
+    assert trace.calls[0].tool_name == internal
 
 
 # ---------------------------------------------------------------------------
