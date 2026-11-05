@@ -23,7 +23,8 @@ defaults:
 
 jobs:
   quality:
-    name: Quality Gates (${{ matrix.os }}, ${{ matrix.python-version }})
+    # Linux jobs keep the "Quality Gates (<python>)" names that branch protection requires.
+    name: ${{ matrix.os == 'windows-latest' && format('Quality Gates (windows, {0})', matrix.python-version) || format('Quality Gates ({0})', matrix.python-version) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.os == 'windows-latest' && 30 || 15 }}
     strategy:
