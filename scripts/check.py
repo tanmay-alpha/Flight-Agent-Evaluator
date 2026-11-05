@@ -9,12 +9,16 @@ Usage:
 
 from __future__ import annotations
 
+import ast
+import importlib
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
@@ -26,6 +30,7 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 
 PYTHON = sys.executable
 PYTEST_COV_THRESHOLD = 90
+DIST_DIR = REPO_ROOT / "dist"
 
 
 def _run(label: str, cmd: list[str], *, check: bool = True) -> bool:  # noqa: ARG001
@@ -53,17 +58,22 @@ def gate_no_secrets() -> bool:
         if (REPO_ROOT / b).exists():
             print(f"Found forbidden file: {b}")
             return False
-    for root_str, _dirs, files in os.walk(REPO_ROOT):
+    ignored_dirs = {
+        ".git",
+        ".worktrees",
+        "__pycache__",
+        ".venv",
+        "dist",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
+    for root_str, dirs, files in os.walk(REPO_ROOT):
+        dirs[:] = [d for d in dirs if d not in ignored_dirs]
         root = Path(root_str)
-        if any(
-            ignored in root.parts
-            for ignored in (".git", "__pycache__", ".venv", "dist", ".mypy_cache", ".pytest_cache")
-        ):
-            continue
         for f in files:
-            p = root / f
             if f.endswith((".pem", ".key", ".p12")):
-                print(f"Found forbidden key file: {p}")
+                print(f"Found forbidden key file: {root / f}")
                 return False
     return True
 
@@ -148,6 +158,24 @@ def gate_uv_build() -> bool:
     return _run("uv build", ["uv", "build"])
 
 
+def _project_version() -> str:
+    with (REPO_ROOT / "pyproject.toml").open("rb") as fh:
+        version: str = tomllib.load(fh)["project"]["version"]
+    return version
+
+
+def _dist_artifact(suffix: str) -> Path | None:
+    """Return the dist/ artifact built from the current project version, if present.
+
+    Older artifacts lingering in dist/ are never selected.
+    """
+    path = DIST_DIR / f"flight_agent_evaluator-{_project_version()}{suffix}"
+    if not path.is_file():
+        print(f"{path.name} not found in {DIST_DIR} (run `uv build` first)")
+        return None
+    return path
+
+
 # ---------------------------------------------------------------------------
 # Gate 8: Wheel content inspection
 # ---------------------------------------------------------------------------
@@ -155,12 +183,9 @@ def gate_uv_build() -> bool:
 
 def gate_wheel() -> bool:
     """Inspect built wheel for expected files."""
-    dist = REPO_ROOT / "dist"
-    wheels = sorted(dist.glob("*.whl"), reverse=True)
-    if not wheels:
-        print("No wheel found in dist/")
+    wheel = _dist_artifact("-py3-none-any.whl")
+    if wheel is None:
         return False
-    wheel = wheels[0]
     print(f"Inspecting: {wheel.name}")
     with zipfile.ZipFile(wheel, "r") as zf:
         names = zf.namelist()
@@ -184,12 +209,9 @@ def gate_wheel() -> bool:
 
 def gate_sdist() -> bool:
     """Inspect built sdist for expected files."""
-    dist = REPO_ROOT / "dist"
-    sdists = sorted(dist.glob("*.tar.gz"), reverse=True)
-    if not sdists:
-        print("No sdist found in dist/")
+    sdist = _dist_artifact(".tar.gz")
+    if sdist is None:
         return False
-    sdist = sdists[0]
     print(f"Inspecting: {sdist.name}")
     try:
         with tarfile.open(sdist, "r:gz") as tf:
@@ -213,31 +235,24 @@ def gate_sdist() -> bool:
 
 
 def gate_install_wheel() -> bool:
-    """Install the built wheel into a fresh virtual environment and verify CLI commands outside repo."""
-    dist = REPO_ROOT / "dist"
-    wheels = sorted(dist.glob("*.whl"), reverse=True)
-    if not wheels:
-        print("No wheel found for installation test")
+    """Install the built wheel into a fresh venv outside the repo and drive the CLI from there."""
+    wheel = _dist_artifact("-py3-none-any.whl")
+    if wheel is None:
         return False
-    wheel = wheels[0]
     with tempfile.TemporaryDirectory(prefix="fae-install-test-") as tmp:
-        venv_dir = Path(tmp) / "venv"
+        tmp_dir = Path(tmp).resolve()
+        if tmp_dir.is_relative_to(REPO_ROOT):
+            print(f"Temporary directory {tmp_dir} is inside the repository")
+            return False
+        venv_dir = tmp_dir / "venv"
         print(f"Creating test venv: {venv_dir}")
-        result = subprocess.run(  # noqa: S603
-            [PYTHON, "-m", "venv", str(venv_dir)],
-            check=False,
-        )
-        if result.returncode != 0:
+        if subprocess.run([PYTHON, "-m", "venv", str(venv_dir)], check=False).returncode != 0:  # noqa: S603
             print("Failed to create venv")
             return False
-        python = (
-            venv_dir / "Scripts" / "python.exe" if os.name == "nt" else venv_dir / "bin" / "python"
-        )
-        cli_bin = (
-            venv_dir / "Scripts" / "flight-evaluator.exe"
-            if os.name == "nt"
-            else venv_dir / "bin" / "flight-evaluator"
-        )
+        scripts = venv_dir / ("Scripts" if os.name == "nt" else "bin")
+        exe = ".exe" if os.name == "nt" else ""
+        python = scripts / f"python{exe}"
+        cli_bin = scripts / f"flight-evaluator{exe}"
         uv_bin = shutil.which("uv") or "uv"
         result = subprocess.run(  # noqa: S603
             [uv_bin, "pip", "install", "--python", str(python), str(wheel)],
@@ -247,58 +262,63 @@ def gate_install_wheel() -> bool:
             print("Failed to install wheel")
             return False
 
-        # Unrelated empty working directory
-        empty_dir = Path(tmp) / "empty_dir"
-        empty_dir.mkdir()
+        work_dir = tmp_dir / "unrelated_cwd"
+        work_dir.mkdir()
+        output_dir = tmp_dir / "benchmark-output"
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"PYTHONPATH", "VIRTUAL_ENV", "PYTHONHOME"}
+        }
+        env["PYTHONIOENCODING"] = "utf-8"
 
-        # 1. Test basic package import
-        import_result = subprocess.run(  # noqa: S603
-            [str(python), "-c", "import flight_agent_evaluator; print('OK')"],
-            cwd=str(empty_dir),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if import_result.returncode != 0:
-            print(f"Import failed: {import_result.stderr!r}")
+        commands: list[tuple[list[str], str | None]] = [
+            (
+                [str(python), "-c", "import flight_agent_evaluator as m; print(m.__file__)"],
+                "site-packages",
+            ),
+            ([str(cli_bin), "--version"], f"flight-evaluator {_project_version()}"),
+            ([str(cli_bin), "demo"], "PASSED"),
+            ([str(cli_bin), "benchmark", "list"], "benchmark-v1"),
+            ([str(cli_bin), "benchmark", "validate"], "24 scenarios checked"),
+            (
+                [
+                    str(cli_bin),
+                    "benchmark",
+                    "run",
+                    "--manifest",
+                    "builtin:benchmark-v1",
+                    "--agents",
+                    "scripted-oracle",
+                    "--output",
+                    str(output_dir),
+                ],
+                "scripted-oracle",
+            ),
+            ([str(cli_bin), "benchmark", "verify-release"], None),
+        ]
+        for cmd, expected in commands:
+            label = " ".join(Path(cmd[0]).name if i == 0 else part for i, part in enumerate(cmd))
+            print(f"$ {label}  (cwd={work_dir})")
+            res = subprocess.run(  # noqa: S603
+                cmd,
+                cwd=work_dir,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            print(res.stdout.rstrip())
+            if res.returncode != 0:
+                print(f"Command failed with exit code {res.returncode}: {res.stderr}")
+                return False
+            if expected is not None and expected not in res.stdout:
+                print(f"Expected {expected!r} in output")
+                return False
+        if not (output_dir / "run.json").is_file():
+            print(f"benchmark run did not persist run.json under {output_dir}")
             return False
-
-        # 2. Test flight-evaluator --version
-        ver_res = subprocess.run(  # noqa: S603
-            [str(cli_bin), "--version"],
-            cwd=str(empty_dir),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if ver_res.returncode != 0 or "0.2.0" not in ver_res.stdout:
-            print(f"Version check failed: {ver_res.stderr!r} {ver_res.stdout!r}")
-            return False
-
-        # 3. Test flight-evaluator demo --json outside repo
-        demo_res = subprocess.run(  # noqa: S603
-            [str(cli_bin), "demo", "--json"],
-            cwd=str(empty_dir),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if demo_res.returncode != 0:
-            print(f"Demo failed in empty dir: {demo_res.stderr!r} {demo_res.stdout!r}")
-            return False
-
-        # 4. Test flight-evaluator benchmark verify-release
-        rel_res = subprocess.run(  # noqa: S603
-            [str(cli_bin), "benchmark", "verify-release"],
-            cwd=str(empty_dir),
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if rel_res.returncode != 0:
-            print(f"Verify-release failed in empty dir: {rel_res.stderr!r} {rel_res.stdout!r}")
-            return False
-
     return True
 
 
@@ -361,7 +381,62 @@ def gate_pytyped() -> bool:
 # ---------------------------------------------------------------------------
 
 
+PACKAGE_NAME = "flight_agent_evaluator"
+_PYTHON_FENCE = re.compile(r"^```python[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
+
+
+def readme_python_blocks(text: str) -> list[tuple[int, str]]:
+    """Return ``(line_of_opening_fence, source)`` for every fenced ```python block."""
+    return [
+        (text.count("\n", 0, match.start()) + 1, match.group(1))
+        for match in _PYTHON_FENCE.finditer(text)
+    ]
+
+
+def _package_name_resolves(module_name: str, attribute: str | None) -> bool:
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError:
+        return False
+    if attribute is None or hasattr(module, attribute):
+        return True
+    try:
+        importlib.import_module(f"{module_name}.{attribute}")
+    except ImportError:
+        return False
+    return True
+
+
+def unresolved_package_imports(source: str, filename: str = "<snippet>") -> list[str]:
+    """Compile ``source`` and list every ``flight_agent_evaluator`` import that does not resolve.
+
+    Raises ``SyntaxError`` when the snippet does not compile.
+    """
+    compile(source, filename, "exec")
+    unresolved: list[str] = []
+    for node in ast.walk(ast.parse(source, filename)):
+        if isinstance(node, ast.Import):
+            unresolved.extend(
+                alias.name
+                for alias in node.names
+                if alias.name.split(".")[0] == PACKAGE_NAME
+                and not _package_name_resolves(alias.name, None)
+            )
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 0
+            and node.module is not None
+            and node.module.split(".")[0] == PACKAGE_NAME
+        ):
+            for alias in node.names:
+                attribute = None if alias.name == "*" else alias.name
+                if not _package_name_resolves(node.module, attribute):
+                    unresolved.append(f"{node.module}.{alias.name}")
+    return unresolved
+
+
 def gate_readme() -> bool:
+    """README must be a Markdown document whose ```python blocks compile and import real names."""
     readme = REPO_ROOT / "README.md"
     if not readme.exists():
         print("README.md not found")
@@ -373,7 +448,25 @@ def gate_readme() -> bool:
     if not content.startswith(b"#"):
         print("README.md does not start with a heading")
         return False
-    return True
+    blocks = readme_python_blocks(content.decode("utf-8"))
+    if not blocks:
+        print("README.md contains no ```python examples to validate")
+        return False
+    ok = True
+    for line, source in blocks:
+        location = f"README.md:{line}"
+        try:
+            unresolved = unresolved_package_imports(source, location)
+        except SyntaxError as exc:
+            print(f"{location}: python block does not compile: {exc}")
+            ok = False
+            continue
+        for name in unresolved:
+            print(f"{location}: import does not resolve: {name}")
+            ok = False
+    if ok:
+        print(f"README.md: {len(blocks)} python block(s) compile and their imports resolve")
+    return ok
 
 
 # ---------------------------------------------------------------------------
