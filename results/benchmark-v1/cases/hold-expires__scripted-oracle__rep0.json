@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "hold-expires",
   "scenario_version": 1,
-  "scenario_resource_digest": "165c9b09e36433b38d4e6ad7930d3d9933aab8cb425486b853827feb37f54f05",
-  "expectation_resource_digest": "49d924b817224fc568f891873d803958a5b45eaa103de23442259346015f047a",
+  "scenario_resource_digest": "460d1845d1dff0fb564779faa16fc72074f52dce682df76cddce563d50643f13",
+  "expectation_resource_digest": "3efc0e34841f4d68e2b3353509273404bcbc88cf573e10a261be060f54f39f30",
   "agent_id": "scripted-oracle",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -14,16 +14,17 @@
   "task_success": true,
   "safety_pass": true,
   "evaluator_status": "passed",
-  "overall_score": 0.9664285714285714,
+  "overall_score": 0.9999999999999999,
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
-    "efficiency": 0.95
+    "efficiency": 1.0,
+    "composite_uncapped": 0.9999999999999999
   },
   "failure_codes": [],
-  "run_id": "a236e7ba-d321-5579-b715-3516efa05cb5",
-  "journal_digest": "5dc9362a8be32ac5cda2abdf4246df5683966d6bc504e89c4cc6751bf90e9965",
+  "run_id": "ff829f2b-a698-5512-bf78-a476f0a586c9",
+  "journal_digest": "08d8663d7468b8d9657fe65a5990b4bd74ba19ff9bc154814a3b01c3cc0dc68a",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.1909999884665012,
-  "semantic_result_digest": "59e829dbc9c491e2efad713ce9d8c679daa0610964b3ff459f63eec2e40841fb"
+  "wall_time_ms": 0.9660000068834051,
+  "semantic_result_digest": "df6c4340a6c4173c1bb2a1e9b07f55ad94c05e39dbbf74d2ffac0121f6708a8d"
 }

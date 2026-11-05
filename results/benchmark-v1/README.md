@@ -1,30 +1,31 @@
-# Benchmark Run Report: `bm_run_affc708ed0a1b8ac`
+# Benchmark Run Report: `bm_run_56765103dbcf460e`
 
 - **Benchmark ID**: `benchmark-v1` (v1.0.0)
-- **Package Version**: `0.2.0`
-- **Source Tree Digest**: `454a67a2734c3b1e7d06379e10cf1cf8584505258bd2a41abf70b82a31d62b0f` (source-tree-v1)
-- **Canonical Generation Command**: `flight-evaluator benchmark run --manifest builtin:benchmark-v1 --agents scripted-oracle,no-op-baseline,naive-baseline --repetitions 1 --output results/benchmark-v1`
-- **Source Commit SHA**: `e969f7a7f0cee61ef2cc7e7c06c2d4e5e77d34b1`
-- **Manifest Digest**: `5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1`
-- **Run Semantic ID**: `bm_run_affc708ed0a1b8ac`
+- **Package Version**: `0.3.0`
+- **Source Tree Digest**: `9bc0652d657e89db28199a35e31d6d9f8efe4a33beeb416558d818a3dfa34741` (source-tree-v1)
+- **Canonical Generation Command**: `flight-evaluator benchmark run --manifest builtin:benchmark-v1 --agents scripted-oracle,no-op-baseline,naive-baseline,unsafe-baseline --repetitions 1 --output results/benchmark-v1`
+- **Source Commit SHA**: `1354286d4c73e01f7328b74fb17b89509803f9c0`
+- **Manifest Digest**: `a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6`
+- **Run Semantic ID**: `bm_run_56765103dbcf460e`
 - **Scenario Count**: 24
-- **Total Executions**: 72
-- **Task Success Rate**: 47.2%
-- **Safety Pass Rate**: 100.0%
-- **Average Overall Score**: 0.627 / 1.000
+- **Total Executions**: 96
+- **Task Success Rate**: 35.4%
+- **Safety Pass Rate**: 75.0%
+- **Average Overall Score**: 0.473 / 1.000
 - **Evaluator Error Rate**: 0.0%
 
 ## Agent Leaderboard
 
 | Agent ID | Task Success Rate | Safety Pass Rate | Average Overall Score | Total Runs |
 |---|---|---|---|---|
-| `scripted-oracle` | 100.0% | 100.0% | 0.987 | 24 |
+| `scripted-oracle` | 100.0% | 100.0% | 0.998 | 24 |
 | `no-op-baseline` | 0.0% | 100.0% | 0.250 | 24 |
 | `naive-baseline` | 41.7% | 100.0% | 0.644 | 24 |
+| `unsafe-baseline` | 0.0% | 0.0% | 0.000 | 24 |
 
 ## Limitations & Evaluation Scope
 
-1. **Simulated Environment**: Scenarios execute in a simulated airline environment with synthetic carrier APIs and controlled fault injection.
-2. **Deterministic Baselines**: Baseline policies (`scripted-oracle`, `naive-baseline`, `no-op-baseline`) execute deterministic routines without live LLM calls.
-3. **No Live Model in Canonical Baseline**: The canonical benchmark baseline evaluates deterministic reference agents for reproducibility.
-4. **Qualitative Judge Calibration**: Qualitative judge rubric human calibration is currently pending.
+1. **Simulated Environment**: Scenarios execute in a simulated airline environment with synthetic fixtures, scenario-configured approval decisions and deterministic fault injection.
+2. **Deterministic Reference Agents Only**: `scripted-oracle` replays each scenario's golden trajectory (an upper reference, not a capability claim); `naive-baseline` is a fixed heuristic; `no-op-baseline` does nothing; `unsafe-baseline` is a negative control that mutates without or against approval and always claims success. No live LLM was run for this bundle.
+3. **Rule-Based Evaluator**: Task success and safety are decided by deterministic rules over the journal. Their false-negative/false-positive rates are measured separately by `flight-evaluator evaluator validate` on construction-labelled perturbations, not on human labels.
+4. **Qualitative Judge Not Used**: No calibrated judge exists; the packaged judge is a placeholder and its human calibration has 0 annotations.

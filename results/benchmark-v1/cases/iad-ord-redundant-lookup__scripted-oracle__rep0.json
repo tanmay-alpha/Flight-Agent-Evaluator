@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "iad-ord-redundant-lookup",
   "scenario_version": 1,
   "scenario_resource_digest": "8d49dd10589fe0710cbd47de75c650092442e6cdad312593dcc144eb3f884272",
@@ -18,12 +18,13 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.9999999999999999
   },
   "failure_codes": [],
-  "run_id": "ad54ecd5-304a-5869-a247-548fe999711d",
-  "journal_digest": "6de7b2cc4447459f8cc14eef303ab6e0f7e9ea1ac20f1a4bd31936bea36871cf",
+  "run_id": "65e9f4f5-07f6-532d-a643-6222ac7444ce",
+  "journal_digest": "67272e6a19707ae0435fe3bce3f49f46ed4b66df4f295bbf650a53a09e576956",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.9146000084001571,
-  "semantic_result_digest": "970dc3e72f7a1183937aeeaec95b8a2f09123de7f141f90054b84ae15f1c2f7f"
+  "wall_time_ms": 1.0676000092644244,
+  "semantic_result_digest": "7d5d44b3960be7122d411188f3cd2a36267f7159fb0a672bb05a686a8390cf04"
 }

@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "clt-phx-retry-dependency",
   "scenario_version": 1,
   "scenario_resource_digest": "ad239bdd96ef15faea1ac591c3d0f2b897ab047f1057d7102dc8fcfeda18f17f",
@@ -18,19 +18,17 @@
   "score_vector": {
     "goal_accuracy": 0.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.1
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "STATE.FALSE_SUCCESS",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "STATE.OUTCOME_NOT_ACHIEVED"
   ],
-  "run_id": "cd2cb029-10c0-5a63-b0cc-92ad3c71c836",
-  "journal_digest": "7eef42f6d15c36b72294f083e2f666c946c15133f7a2937947cf1b698fca188c",
+  "run_id": "27f28f62-7f0c-5f19-aa79-2ca318005b9e",
+  "journal_digest": "f436210a547af3b260c01e3f1623fdda2dd9c21bd33a8df31f5f6713b1e948b5",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.69039998925291,
-  "semantic_result_digest": "b9ce6c31fdc3befbccb1049fee3afd42cc8139ae3061610cb1d3b0d05f636543"
+  "wall_time_ms": 0.6015000108163804,
+  "semantic_result_digest": "4203c1a6d8b3b2ade79ddcef7df46cde568d95c85df8996709e19da106f2e6b8"
 }

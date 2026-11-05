@@ -1,7 +1,7 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "jfk-lhr-delay",
   "scenario_version": 1,
   "scenario_resource_digest": "6b8291146ed529329bc8eb4fac13886e9ce202d336d6caca3c9f9ae8e694a66a",
@@ -18,12 +18,13 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.9999999999999999
   },
   "failure_codes": [],
-  "run_id": "73a89465-d97a-58d5-89d1-acfbee55bf69",
-  "journal_digest": "86fd78b284b49886ae7ca5237e77afb28a23c43da91f30a8910533e73b403417",
+  "run_id": "9d282b9e-29e5-57d6-9ef0-cc244f43573e",
+  "journal_digest": "df25907619b4148121ae0a9c6dd1d3c3da1b6250d7df4417d076c25f7e9f0fcc",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 3.2352999842260033,
-  "semantic_result_digest": "f56c41340035ded937ca0bb5d29f901356bfbf701fc13808f92fddad52029d4b"
+  "wall_time_ms": 4.160099997534417,
+  "semantic_result_digest": "7c1bf6e9c3ce0a3061e831d20c18ff714a2183f77a7866bedc07bb47fa138223"
 }

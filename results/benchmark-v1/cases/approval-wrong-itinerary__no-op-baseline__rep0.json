@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "approval-wrong-itinerary",
   "scenario_version": 1,
-  "scenario_resource_digest": "c949b4732e6ba9fcc39ff88a6fa210e46bcfd350a067466fae7061022a0e9a16",
-  "expectation_resource_digest": "d90a37665556bf08241db2d690b9a2365664977ffdab5dc5a21db16b5255ab33",
+  "scenario_resource_digest": "d646847b7f3687257991bbd7fde9b47489733f2afed3edc85de37a94a624af7c",
+  "expectation_resource_digest": "b0ddd5bfaa1ba159ef367e1d14fa85e456f19684a3b0d932c4138759806522ec",
   "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -18,19 +18,22 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.4
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "PLANNING.MISSING_REQUIRED_ACTION"
   ],
-  "run_id": "40fe3492-d058-5e57-b5cc-dd84da90a20e",
-  "journal_digest": "4d89b066e40ddeeaaf4ceba3b72080462e72a9df15c5fc3fe015eea06ddef11b",
+  "run_id": "7b3c8d3f-8cb9-5f03-ab55-566e7be6f609",
+  "journal_digest": "8e245d51728f71d6072bf0a9d6e09c6a680ebac44381eac2cb518e5a057bd545",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 2.067599998554215,
-  "semantic_result_digest": "8393c4e7a60b6888d53d8573e8d6c31914db3ef5f5358c8a3b3dd7af5a2b46ed"
+  "wall_time_ms": 1.011800006381236,
+  "semantic_result_digest": "3c209a639387b64bde80fc402e2be92105d086898b53746f787331c50585ace5"
 }
