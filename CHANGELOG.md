@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Model agent record/replay**: `--model-mode record --allow-live-model` persists one `ModelExchangeManifest` per scenario run (`<scenario>__<run_id>.model-exchanges.json`, secrets redacted); `ReplayModelClient` replays it offline. `benchmark run --agents model` with `--model-replay-dir`, plus `--base-url` (Ollama/vLLM/OpenRouter) and `--api-key-env`.
+- **`unsafe-baseline` negative control**: deterministic agent that confirms rebookings without/against approval and always claims success; exists to prove the safety metric discriminates.
+
+### Changed
+- `OpenAIResponsesModelClient` renamed to `OpenAIChatCompletionsClient` (it always used Chat Completions). Tool names are mapped `.` ↔ `__` at the provider boundary only.
+- Request fingerprints no longer include the transport/provider label (`ModelRequest.provider` removed), so record → replay round-trips.
+- `judge score` requires an explicit `--mode`; fake mode prints a placeholder-score banner.
+- `verify` exits 0 only when integrity and behaviour are both verified (1 tampered/diverged, 3 not verifiable).
+
+### Fixed
+- Empty tool allowlist no longer exposes every tool to the model; invalid model tool arguments are journaled and charged to the tool budget.
+- `agent run --model-mode live` without `--allow-live-model` exits 2 with a clean error instead of a traceback.
+
+---
+
 ## [0.2.0] - 2026-08-20
 
 ### Added
