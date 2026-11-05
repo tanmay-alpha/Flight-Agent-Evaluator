@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import tempfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -69,46 +70,17 @@ from flight_agent_evaluator.replay.projection import (
 
 
 def _create_clean_journal(run_id: str) -> HashChainJournal:
+    """Journal produced by the real ScenarioRunner for jfk-lhr-delay, re-keyed to ``run_id``."""
+    from flight_agent_evaluator.engine.runner import ScenarioRunner
+    from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
+
+    loaded = ScenarioLoader().load_from_path(Path("resources/scenarios/jfk-lhr-delay.json"))
+    with tempfile.TemporaryDirectory() as tmp:
+        recording = asyncio.run(ScenarioRunner().run(loaded, output_dir=Path(tmp)))
+        source = FileRecordingStore(Path(tmp)).read_recording(str(recording.run_id))
     j = HashChainJournal()
-    j.append_event(
-        "run_started",
-        run_id,
-        "c0",
-        datetime(2026, 7, 28, 10, 0, 0, tzinfo=UTC),
-        {"scenario_id": "jfk-lhr-delay", "seed": 42},
-    )
-    j.append_event(
-        "tool_call",
-        run_id,
-        "c1",
-        datetime(2026, 7, 28, 10, 0, 1, tzinfo=UTC),
-        {
-            "tool_name": "flight.get_status",
-            "arguments": {"flight_id": "AS142"},
-            "call_id": "call-1",
-        },
-    )
-    j.append_event(
-        "tool_result",
-        run_id,
-        "c1",
-        datetime(2026, 7, 28, 10, 0, 2, tzinfo=UTC),
-        {"call_id": "call-1", "status": "SUCCESS", "value": {"status": "DELAYED"}},
-    )
-    j.append_event(
-        "final_response",
-        run_id,
-        "c2",
-        datetime(2026, 7, 28, 10, 0, 3, tzinfo=UTC),
-        {"response": "Flight AS142 is delayed."},
-    )
-    j.append_event(
-        "run_completed",
-        run_id,
-        "c3",
-        datetime(2026, 7, 28, 10, 0, 4, tzinfo=UTC),
-        {"stop_reason": "completed"},
-    )
+    for entry in source.entries:
+        j.append_event(entry.type, run_id, entry.correlation_id, entry.time, dict(entry.payload))
     return j
 
 
@@ -455,27 +427,29 @@ def test_verified_evidence_resolver():
     """VerifiedEvidenceResolver maps evidence observations back to journal entries."""
     run_id = str(uuid.uuid4())
     j = _create_clean_journal(run_id)
+    first_call = next(e for e in j.entries if e.type == "tool_call")
+    call_id = first_call.payload["call_id"]
 
     obs1 = TrustedObservation(
         evidence_id="obs-1",
-        source="seq:2",
+        source=f"seq:{first_call.seq}",
         description="Tool call for status",
-        value='{"flight_id": "AS142"}',
+        value=json.dumps(first_call.payload["arguments"]),
     )
     obs2 = TrustedObservation(
         evidence_id="obs-2",
-        source="call:call-1",
+        source=f"call:{call_id}",
         description="Call ID reference",
-        value='{"status": "SUCCESS"}',
+        value='{"status": "success"}',
     )
 
     resolver = VerifiedEvidenceResolver(j)
     r1 = resolver.resolve_observation(obs1)
-    assert r1["resolved_entry_seq"] == 2
+    assert r1["resolved_entry_seq"] == first_call.seq
     assert r1["resolved_entry_type"] == "tool_call"
 
     r2 = resolver.resolve_observation(obs2)
-    assert r2["resolved_entry_seq"] == 2
+    assert r2["resolved_entry_seq"] == first_call.seq
     assert r2["resolved_entry_type"] == "tool_call"
 
 

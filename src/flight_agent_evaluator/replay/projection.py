@@ -16,9 +16,18 @@ from typing import Any
 from pydantic import ConfigDict, Field
 
 from flight_agent_evaluator.contracts.base import ContractModel
-from flight_agent_evaluator.recording.contracts import JournalEntry
+from flight_agent_evaluator.recording.contracts import (
+    SEMANTIC_EVENT_PROJECTION_VERSION,
+    JournalEntry,
+)
 
-SEMANTIC_EVENT_PROJECTION_VERSION: str = "semantic-events-v1"
+__all__ = [
+    "SEMANTIC_EVENT_PROJECTION_VERSION",
+    "SemanticEventType",
+    "SemanticJournalEvent",
+    "compute_semantic_recording_digest",
+    "project_semantic_event",
+]
 
 
 class SemanticEventType(StrEnum):
@@ -107,26 +116,21 @@ def project_semantic_event(entry: JournalEntry) -> SemanticJournalEvent:
         cleaned_payload = {
             "call_id": str(raw_payload.get("call_id", "")),
             "status": str(raw_payload.get("status", "")),
-            "value": raw_payload.get("value"),
+            "result": raw_payload.get("result"),
             "error": raw_payload.get("error"),
         }
-        if "retryable" in raw_payload:
-            cleaned_payload["retryable"] = raw_payload["retryable"]
+        if "injected_fault_type" in raw_payload:
+            cleaned_payload["injected_fault_type"] = raw_payload["injected_fault_type"]
 
-    elif raw_type == "fault_injected":
-        ev_type = SemanticEventType.FAULT_INJECTED
-        cleaned_payload = {
-            "fault_type": str(raw_payload.get("fault_type", "")),
-            "target": str(raw_payload.get("target", "")),
-            "parameters": raw_payload.get("parameters", {}),
-        }
-
-    elif raw_type == "domain_event":
-        ev_type = SemanticEventType.DOMAIN_EVENT
-        cleaned_payload = {
-            "event_type": str(raw_payload.get("event_type", "")),
-            "data": raw_payload.get("data", {}),
-        }
+    elif raw_type in ("fault_injected", "domain_event"):
+        # Every key the executor/runner writes for these events is deterministic and
+        # behaviour-relevant (call_id, fault ids/parameters, event data, results).
+        ev_type = (
+            SemanticEventType.FAULT_INJECTED
+            if raw_type == "fault_injected"
+            else SemanticEventType.DOMAIN_EVENT
+        )
+        cleaned_payload = raw_payload
 
     elif raw_type == "state_snapshot":
         ev_type = SemanticEventType.STATE_SNAPSHOT
@@ -143,12 +147,14 @@ def project_semantic_event(entry: JournalEntry) -> SemanticJournalEvent:
         ev_type = SemanticEventType.FINAL_RESPONSE
         cleaned_payload = {
             "response": str(raw_payload.get("response", raw_payload.get("final_response", ""))),
+            "error": raw_payload.get("error"),
         }
 
     elif raw_type == "run_completed":
         ev_type = SemanticEventType.RUN_COMPLETED
         cleaned_payload = {
-            "stop_reason": str(raw_payload.get("stop_reason", "")),
+            "run_status": str(raw_payload.get("run_status", "")),
+            "tool_calls_made": raw_payload.get("tool_calls_made"),
         }
 
     else:

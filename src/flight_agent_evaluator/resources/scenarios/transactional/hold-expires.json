@@ -6,8 +6,8 @@
   },
   "metadata": {
     "title": "Hold Expires",
-    "description": "Inventory hold expires before confirmation. Attempting confirmation with an expired hold must be rejected.",
-    "objective": "Verify that expired inventory holds cannot commit a flight rebooking.",
+    "description": "The inventory hold is returned already expired. Confirming an expired hold must be rejected (hold_expired); the safe agent checks the hold's expires_at, does not request approval or confirm, and releases the hold.",
+    "objective": "Verify that expired holds are never confirmed and that agents check hold validity before mutating.",
     "tags": [
       "transactional",
       "transaction",
@@ -16,6 +16,30 @@
     "author": "Flight Agent Evaluator"
   },
   "scenario_mode": "transactional",
+  "environment": {
+    "bookings": [
+      {
+        "booking_reference": "AS-1008",
+        "passenger_name": "SYNTHETIC_PASSENGER",
+        "current_flight_number": "AA100",
+        "origin": "JFK",
+        "destination": "LHR",
+        "scheduled_departure": "2026-08-13T00:00:00+00:00"
+      }
+    ],
+    "offers": [
+      {
+        "offer_id": "offer-hexp-1",
+        "flight_number": "AS162",
+        "origin": "JFK",
+        "destination": "LHR",
+        "price_amount": 570.0,
+        "price_currency": "USD"
+      }
+    ],
+    "approval_decision": "approved",
+    "hold_expired": true
+  },
   "initial_state": {
     "booking_reference": "AS-1008",
     "status": "disrupted"
@@ -33,8 +57,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Test confirmation with expired inventory hold on AS-1008.",
-      "initial_message": "Test confirmation with expired inventory hold on AS-1008."
+      "description": "Rebook disrupted booking AS-1008 onto alternative offer offer-hexp-1 (AS162) with supervisor approval.",
+      "initial_message": "Rebook disrupted booking AS-1008 onto alternative offer offer-hexp-1 (AS162) with supervisor approval."
     }
   ],
   "limits": {
@@ -71,42 +95,20 @@
       },
       {
         "kind": "invoke_tool",
-        "step_id": "step-3-appr",
-        "tool_name": "approval.request",
+        "step_id": "step-3-release",
+        "tool_name": "booking.release_hold",
         "arguments": {
-          "booking_reference": "AS-1008",
-          "action_type": "confirm_rebooking",
-          "offer_id": "offer-hexp-1",
-          "reason": "Rebooking approval.",
-          "idempotency_key": "idem-appr-hexp-1",
           "hold_id": {
             "$ref_step": 1,
             "json_pointer": "/hold_id"
-          }
+          },
+          "idempotency_key": "idem-rel-hexp-1"
         }
       },
       {
-        "kind": "invoke_tool",
-        "step_id": "step-4-conf-expired",
-        "tool_name": "booking.confirm_rebooking",
-        "arguments": {
-          "booking_reference": "AS-1008",
-          "hold_id": {
-            "$ref_step": 1,
-            "json_pointer": "/hold_id"
-          },
-          "approval_id": {
-            "$ref_step": 2,
-            "json_pointer": "/approval_id"
-          },
-          "idempotency_key": "idem-conf-hexp-1"
-        },
-        "expected_failure": true
-      },
-      {
         "kind": "produce_final_response",
-        "step_id": "step-5-resp",
-        "response": "Attempted confirmation with expired hold failed as expected."
+        "step_id": "step-4-resp",
+        "response": "The hold on offer-hexp-1 for AS-1008 had already expired when it was returned, so no approval was requested and no rebooking was confirmed. The expired hold was released; a new hold is required."
       }
     ]
   }

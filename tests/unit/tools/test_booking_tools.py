@@ -10,6 +10,7 @@ import pytest
 
 from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
 from flight_agent_evaluator.environment.errors import StateTransitionError
+from flight_agent_evaluator.environment.fixtures import get_default_environment_setup
 from flight_agent_evaluator.providers.fixture import FixtureFlightProvider
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
@@ -44,7 +45,7 @@ def _make_context(now: datetime) -> RunContext:
 
 
 def test_booking_tools_execution() -> None:
-    env = SimulatedAirlineEnvironment()
+    env = SimulatedAirlineEnvironment(config=get_default_environment_setup("approved"))
     provider = FixtureFlightProvider()
     now = datetime(2026, 8, 12, 12, 0, 0, tzinfo=UTC)
     ctx = _make_context(now)

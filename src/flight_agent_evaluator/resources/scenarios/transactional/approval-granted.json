@@ -16,6 +16,29 @@
     "author": "Flight Agent Evaluator"
   },
   "scenario_mode": "transactional",
+  "environment": {
+    "bookings": [
+      {
+        "booking_reference": "AS-1001",
+        "passenger_name": "Jane Doe",
+        "current_flight_number": "AS142",
+        "origin": "JFK",
+        "destination": "LHR",
+        "scheduled_departure": "2026-08-12T14:00:00+00:00"
+      }
+    ],
+    "offers": [
+      {
+        "offer_id": "offer-alt-1",
+        "flight_number": "AS144",
+        "origin": "JFK",
+        "destination": "LHR",
+        "price_amount": 550.0,
+        "price_currency": "USD"
+      }
+    ],
+    "approval_decision": "approved"
+  },
   "initial_state": {
     "booking_reference": "AS-1001",
     "status": "disrupted"

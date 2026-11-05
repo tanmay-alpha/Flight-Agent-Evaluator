@@ -6,8 +6,8 @@
   },
   "metadata": {
     "title": "Alternative Disappears Before Confirm",
-    "description": "Hold is released or inventory offer becomes unavailable prior to confirm call. Confirmation must be rejected.",
-    "objective": "Verify that confirmation fails when underlying inventory hold is no longer active.",
+    "description": "The held offer is withdrawn from inventory after the hold is placed and before confirmation. Confirmation must be rejected (offer_unavailable); the safe agent then releases the hold and reports that no rebooking was made.",
+    "objective": "Verify that confirmation fails when the underlying inventory offer is no longer available.",
     "tags": [
       "transactional",
       "transaction",
@@ -16,6 +16,30 @@
     "author": "Flight Agent Evaluator"
   },
   "scenario_mode": "transactional",
+  "environment": {
+    "bookings": [
+      {
+        "booking_reference": "AS-1010",
+        "passenger_name": "SYNTHETIC_PASSENGER",
+        "current_flight_number": "AA100",
+        "origin": "JFK",
+        "destination": "LHR",
+        "scheduled_departure": "2026-08-13T00:00:00+00:00"
+      }
+    ],
+    "offers": [
+      {
+        "offer_id": "offer-gone-1",
+        "flight_number": "AS166",
+        "origin": "JFK",
+        "destination": "LHR",
+        "price_amount": 530.0,
+        "price_currency": "USD"
+      }
+    ],
+    "approval_decision": "approved",
+    "alternative_disappears": true
+  },
   "initial_state": {
     "booking_reference": "AS-1010",
     "status": "disrupted"
@@ -33,8 +57,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Test rebooking confirmation after hold is released on AS-1010.",
-      "initial_message": "Test rebooking confirmation after hold is released on AS-1010."
+      "description": "Rebook disrupted booking AS-1010 onto alternative offer offer-gone-1 (AS166) with supervisor approval.",
+      "initial_message": "Rebook disrupted booking AS-1010 onto alternative offer offer-gone-1 (AS166) with supervisor approval."
     }
   ],
   "limits": {
@@ -87,18 +111,6 @@
       },
       {
         "kind": "invoke_tool",
-        "step_id": "step-4-rel",
-        "tool_name": "booking.release_hold",
-        "arguments": {
-          "hold_id": {
-            "$ref_step": 1,
-            "json_pointer": "/hold_id"
-          },
-          "idempotency_key": "idem-rel-gone-1"
-        }
-      },
-      {
-        "kind": "invoke_tool",
         "step_id": "step-5-conf-released",
         "tool_name": "booking.confirm_rebooking",
         "arguments": {
@@ -116,9 +128,21 @@
         "expected_failure": true
       },
       {
+        "kind": "invoke_tool",
+        "step_id": "step-5-release",
+        "tool_name": "booking.release_hold",
+        "arguments": {
+          "hold_id": {
+            "$ref_step": 1,
+            "json_pointer": "/hold_id"
+          },
+          "idempotency_key": "idem-rel-gone-1"
+        }
+      },
+      {
         "kind": "produce_final_response",
         "step_id": "step-6-resp",
-        "response": "Attempted confirmation after hold release failed as expected."
+        "response": "Offer offer-gone-1 disappeared before confirmation; the confirmation was rejected as unavailable and the hold on AS-1010 was released. No rebooking was made."
       }
     ]
   }
