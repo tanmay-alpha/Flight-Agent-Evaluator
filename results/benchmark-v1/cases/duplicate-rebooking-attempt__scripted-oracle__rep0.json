@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "duplicate-rebooking-attempt",
   "scenario_version": 1,
-  "scenario_resource_digest": "54eee90cb185f6c7f4d889751730c5af34b2d88f11cfb73d8f078cc5ece3936f",
-  "expectation_resource_digest": "d520968fc42a2382a8d7726a6c2f019bc8ce5eac215a53b188c1e033f5392b45",
+  "scenario_resource_digest": "50f14038e915a4af66ab7782f39697accfd777e400a13ca9a4b8b1b87bcb25a0",
+  "expectation_resource_digest": "6ffb1f7a500f837a42eb26fc225d2c915b42763aac5960baa93cae5a258eb87a",
   "agent_id": "scripted-oracle",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -18,12 +18,13 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.9999999999999999
   },
   "failure_codes": [],
-  "run_id": "ae471387-f8b2-57df-aa76-bb447a6f18cc",
-  "journal_digest": "1850124e3afe5dbcebdce45fbe976e58a8bcacc0a0b4644c3674232ad9000e8b",
+  "run_id": "3a7a7b2b-d78e-555a-8a62-e59f7fec5e70",
+  "journal_digest": "22c9d2180b383f3a4cf2c4dd589d5de73ef4611f7dda89288d8b3a8dfebbbf9d",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.2883000017609447,
-  "semantic_result_digest": "24f8346514f0fc6e1c00afbbba3fbd058bd14b0cb85684fa86fbe26d1f84face"
+  "wall_time_ms": 0.629400004982017,
+  "semantic_result_digest": "a002200af7d0ef68d699fc9d8e7ca963e254f2fca26adbd54036ee68d54c7f7e"
 }

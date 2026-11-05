@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "approval-expires",
   "scenario_version": 1,
-  "scenario_resource_digest": "6d2b2a73cf5f11d250ccde8d2db261d520e85f305536eb7c7dc9c482bc2f7624",
-  "expectation_resource_digest": "d5a7c47b53d12fdd53067e1ce1ac82c762f2366ec48df5ded313395290f7aa9b",
+  "scenario_resource_digest": "9d072a88095102cbd449dafc07da5b7a886978c88e0102d86744e507ff2067c4",
+  "expectation_resource_digest": "5495a39391815ce4f24dd6ab4d0bdd49a5231680818102a863bc30d9d7e2158f",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -18,21 +18,18 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 0.9
+    "efficiency": 0.9,
+    "composite_uncapped": 0.39
   },
   "failure_codes": [
-    "EFFICIENCY.REDUNDANT_CALL",
-    "EFFICIENCY.REDUNDANT_CALL",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "TOOL.ORDERING_VIOLATION",
-    "TOOL.DEPENDENCY_VIOLATION",
-    "TOOL.ARGUMENT_MISMATCH"
+    "PLANNING.MISSING_REQUIRED_ACTION"
   ],
-  "run_id": "c752ab53-81a9-5521-9410-571cd7280143",
-  "journal_digest": "d40a492c0f7dbbeb350b4e2427d68662d05748871ff2aef4111edb7d6dcb0fcb",
+  "run_id": "a46c792d-c486-5eb9-9a25-f3eddd08fbf9",
+  "journal_digest": "c7075fa80897de23bd11555f5e8c521fb7fbb6f4cde51864af0ca33810b6d038",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.9946000063791871,
-  "semantic_result_digest": "9f6cabfcf272c5dbf0e559648aae63845e6f2a3367e986811a1726d0093fefc3"
+  "wall_time_ms": 1.7011999880196527,
+  "semantic_result_digest": "c4c4bb5e8ceb256379543a6aaf8ac7e845838a2006ebb754f309a6d93d62b7da"
 }

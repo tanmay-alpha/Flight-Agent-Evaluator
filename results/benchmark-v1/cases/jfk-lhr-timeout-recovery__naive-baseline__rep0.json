@@ -1,11 +1,11 @@
 {
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "5732b6d0b54f2edfb388e4e137d2fb8899aec05e574b12002e5d556bfe1cdba1",
+  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
   "scenario_id": "jfk-lhr-timeout-recovery",
   "scenario_version": 1,
   "scenario_resource_digest": "3877cec44e76f1c64c56a7f31c80605105361ce32953965b2b193df22b207ca8",
-  "expectation_resource_digest": "cdfe5a10df49d1fb5b258d1e83af3a00172c510a68c02f46e2b99f52d0716c9a",
+  "expectation_resource_digest": "c53a64013fbe68f023ef74f966735091ca0fcd5c48a9d18be811f406b94b657b",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
@@ -18,16 +18,16 @@
   "score_vector": {
     "goal_accuracy": 1.0,
     "constraint_satisfaction": 1.0,
-    "efficiency": 1.0
+    "efficiency": 1.0,
+    "composite_uncapped": 0.9999999999999999,
+    "recovery": 1.0
   },
   "failure_codes": [
-    "ENVIRONMENT.PROVIDER_TIMEOUT",
-    "EFFICIENCY.REDUNDANT_CALL",
-    "EFFICIENCY.REDUNDANT_CALL"
+    "ENVIRONMENT.PROVIDER_TIMEOUT"
   ],
-  "run_id": "4c53036e-dbfd-5aef-b770-e448a30c3656",
-  "journal_digest": "67d5d804181d39b6559e9dfd7e491b52b91b0034de48245a67cd8090b62b6482",
+  "run_id": "bcac633e-24db-5ceb-ab2f-7161656d562e",
+  "journal_digest": "41e1b9c5bd4560da1d7fbf95b617fd3214037cf8c6896f1cbb8f24ea4c7d0a05",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.9298999977763742,
-  "semantic_result_digest": "7430cbd43e95dfe8adff38d104032ba73cbb2df0dd2b0dde2f9007f4e35084be"
+  "wall_time_ms": 2.2210000024642795,
+  "semantic_result_digest": "a2dc225d2bd3e1bea83b14967c703f7ea2b5561333c51924c5f8ac870452c1da"
 }
