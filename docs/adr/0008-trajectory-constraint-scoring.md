@@ -1,7 +1,7 @@
 # ADR 0008 — Trajectory constraint scoring and multiple valid paths
 
 - **Status:** Accepted
-- **Errata:** 2026-11-05 — parts of this decision do not match the implementation. See [Errata](#errata-2026-11-05).
+- **Errata:** 2026-11-05, revised 2026-11-06 for v0.3.0. Parts of this decision do not match the implementation; see [Errata](#errata).
 - **Date:** 2026-08-06
 - **Stage:** 2.
 
@@ -67,25 +67,37 @@ from the scenario file itself.
 - The complexity bound prevents pathological exponential blowup while
   reporting the bound as an evaluator metric when reached.
 
-## Errata (2026-11-05)
+## Errata
 
-An audit of `main` found that the implementation differs from this decision in the following ways. The decision text above is unchanged. Paths are relative to `src/flight_agent_evaluator/`.
+These notes were first written 2026-11-05 against v0.2 and revised 2026-11-06 against v0.3.0 (`release/v0.3.0`). The decision text above is unchanged. Paths are relative to `src/flight_agent_evaluator/`.
 
-- **"Branch-and-bound", "optimal".** `DeterministicBoundedMatcher` runs an exhaustive depth-first search that tries every candidate, or a skip, for each node. It does no bounding or pruning (`evaluation/matcher.py:306-341`).
-  - Candidates are filtered only by tool-name glob and mutation class, then cut to the first 10 per node **before** arguments are checked (`:226-236`).
-  - The search stops after 10,000 states (`:313-316`).
-  - The result is optimal only among the candidates kept, and a legitimate trajectory can hit the cap.
-  - It maximises a lexicographic tuple of counts (`:296-304`), not a weighted multi-dimensional score.
-- **"Dependency rules: node A must produce output used by node B".** A dependency constraint is met when its required node was satisfied (`evaluation/matcher.py:465-474`). Neither order nor data flow is checked. Data flow can only be expressed with the `reference_equals` argument operator (`:123-134`), and no shipped expectation uses it.
-- **"Recovery chains".** `recovery_score` is hard-coded to `1.0` (`evaluation/trajectory_evaluator.py:559`). Recovery constraints are only read by diagnostics.
-- **Scorecard fields.** The output is a `TrajectoryScorecard`, not a `TrajectoryScore`. It has `overall_pass`, `safety_pass`, `tool_precision`, `required_recall`, `tool_f1`, `argument_correctness_score`, `dependency_score`, `ordering_score`, `efficiency_score`, `recovery_score` and `composite_score` (`trajectory_evaluator.py:545-564`).
-  - `task_success`, `recovery_success` and `redundant_call_count` do not exist on it.
-  - `task_success` is computed separately by the benchmark runner (`engine/benchmark.py:371-377`).
-  - `safety_pass` covers more than forbidden tools; there are four rule types (`trajectory_evaluator.py:200-321`).
-- **Safety is not reflected in the composite score** (`trajectory_evaluator.py:427-436`). Only `overall_pass` fails.
-- **"Multiple valid paths".** This is supported, but only `ord-sea-dual-order` of the 24 shipped expectations declares more than one path. Path-level forbidden actions are applied across **all** applicable paths, not only the selected one (`trajectory_evaluator.py:302-321`).
-- **"Public/hidden separation".** Expectations are stored separately, but the tool allowlist given to the agent is built from the scenario's scripted reference trajectory (`engine/benchmark.py:193-198`, `engine/runner.py:135-137`). The agent therefore learns which tools the reference solution uses.
-- **"Reporting the bound as an evaluator metric".** The evaluator returns `evaluator_complexity_limit` (`trajectory_evaluator.py:369`). The benchmark's evaluator-error rate counts only the literal `"evaluator_error"` (`benchmarks/engine.py:233-237`), so this outcome never appears in that metric.
-- **"Comparing exact-sequence, outcome-only, and constraint-graph scoring".** No such ablation exists; the ablation module was removed (`tests/unit/test_release_truth_regressions.py:50-63`).
+**Resolved in v0.3.0**
 
-Fixes to the evaluator's safety checks and an evaluator validation harness are **planned in v0.3 (in progress)**.
+- **Branch-and-bound.**
+  - v0.2 ran an exhaustive search and cut candidates before checking arguments.
+  - `DeterministicBoundedMatcher` now ranks the calls that qualify locally first, and only then applies the 10-candidate cap (`evaluation/matcher.py:240-264`).
+  - It prunes branches whose admissible upper bound cannot beat the best alignment found so far (`:293-348`, `:431`).
+  - `max_search_states = 10000` remains a hard work budget (`:226`, `:419-422`).
+- **Recovery chains.**
+  - v0.2 hard-coded `recovery_score` to 1.0.
+  - It is now the share of triggered `recovery_constraints` that are satisfied by a later call, or `None` when no rule was triggered (`evaluation/trajectory_evaluator.py:344-391`, `:647-651`).
+  - A path with `recovery_score < 1.0` does not pass (`:654-664`).
+- **Safety in the score.**
+  - The benchmark now reports `overall_score = apply_safety_cap(composite, safety_pass)`, which is 0.0 for unsafe runs (`engine/benchmark.py:372`, `evaluation/trajectory_evaluator.py:57,64-66`).
+  - The uncapped value is kept as `score_vector["composite_uncapped"]` (`engine/benchmark.py:400`).
+- **Forbidden actions on multiple paths.** Path-level forbidden actions now apply only to the selected path (`trajectory_evaluator.py:509-511`). Path selection prefers a passing path (`:505-507`).
+- **Public/hidden separation.** The tool allowlist now comes from `default_allowed_tools`, i.e. the scenario's explicit `allowed_tools` or every tool for its mode, never from the golden trajectory (`tools/base.py:191-209`, `engine/benchmark.py:206`, `engine/runner.py:148`).
+- **Reporting the bound.** The benchmark sets `evaluator_status="evaluator_error"` whenever the evaluator returns `evaluator_complexity_limit` or `no_applicable_path` (`engine/benchmark.py:164-168`). `evaluator_error_rate` counts those cases (`benchmarks/engine.py:218,223`).
+- **Evaluator validity.** Exact-sequence/outcome-only ablations were not built, and the ablation module stays removed (`tests/unit/test_release_truth_regressions.py:50-55`). Instead, `evaluation/validation/` measures detection on construction-labelled perturbations; see `validation/evaluator-validation-v1/report.md`.
+
+**Still differs from the decision**
+
+- **"Optimal … maximising a weighted multi-dimensional score".** The matcher maximises a lexicographic tuple of counts (`evaluation/matcher.py:400-408`), not the weighted score. The weighted composite is computed afterwards, per path.
+- **"Dependency rules: node A must produce output used by node B".**
+  - A dependency constraint is met when its required node was satisfied. Neither order nor data flow is checked (`evaluation/matcher.py:571-584`).
+  - Data flow is expressed with the `reference_equals` argument operator instead (`:123-134`). Three transactional expectations use it: `approval-wrong-itinerary`, `constraint-changes-after-approval` and `payload-changes-after-approval`.
+- **Scorecard fields.**
+  - The output is a `TrajectoryScorecard` (`trajectory_evaluator.py:112`), not a `TrajectoryScore`. `task_success`, `recovery_success` and `redundant_call_count` do not exist on it.
+  - `task_success` is computed by the benchmark runner (`engine/benchmark.py:365-371`).
+  - `safety_pass` covers the journal safety checks (`evaluation/journal_safety.py:341-415`) and four authored rule types (`trajectory_evaluator.py:254-324`), not only forbidden tools.
+- **"Multiple valid paths".** This is supported, but only `ord-sea-dual-order` of the 24 shipped expectations declares more than one path.

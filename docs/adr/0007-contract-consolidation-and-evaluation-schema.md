@@ -47,9 +47,14 @@ was typed as `Any`, and `AssertionStatus` lacked `evaluator_error`.
 
 ## Errata (2026-11-05)
 
-The implementation differs from this decision in the following ways. Paths are relative to `src/flight_agent_evaluator/`.
+The implementation differs from this decision in the following ways. Revised 2026-11-06 against v0.3.0. Paths are relative to `src/flight_agent_evaluator/`.
 
 - **`RunRecording.evaluation`** is typed `EvaluationResult | dict[str, Any] | None` (`recording/contracts.py:132`), not `EvaluationResult | None`. Untyped evaluation dicts are therefore still accepted.
 - **`AssertionStatus`** is a `Literal` (`contracts/evaluation.py:112`), not an enum. `AssertionOutcome.assertion` is typed `Any` (`:116`).
-- **`ReplayOutcomeStatus`** is now a legacy property. `ReplayReport` reports `integrity_status` and `behaviour_status` separately (`recording/contracts.py:63-79,242-279`).
-- **`behaviour_verified`** does not currently mean that tool outputs matched. Replay projection reads `"value"` while the executor writes `"result"` (`replay/projection.py:110`, `engine/tool_executor.py:355`). Comparing values is **planned in v0.3 (in progress)**.
+- **`ReplayOutcomeStatus`** is a legacy view.
+  - `ReplayReport` reports `integrity_status`, `behaviour_status` and `provenance_status` separately (`recording/contracts.py:63-79,245-293`).
+  - The `ReplayOutcomeStatus` literal now has 11 values (`:217-229`). Besides the five listed above, it adds `recording_incomplete`, `provenance_mismatch` and `reexecution_error`, plus the unused legacy `verified`, `tampered` and `diverged`.
+- **Resolved in v0.3.0: `behaviour_verified` now covers tool outputs.**
+  - Projection `semantic-events-v2` reads the `result` key that the executor writes (`replay/projection.py:114-123`, `engine/tool_executor.py:352-353`).
+  - The comparator reports `TOOL_RESULT_VALUE_MISMATCH` when values differ (`replay/comparator.py:189-199`).
+  - Only the scenario digest is re-checked at provenance time (`replay/provenance.py:120-157`).
