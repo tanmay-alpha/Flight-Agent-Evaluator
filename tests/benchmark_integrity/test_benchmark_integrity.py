@@ -214,7 +214,6 @@ def test_bi_013_hidden_expectation_absent_from_agent_task() -> None:
 def test_bi_014_hidden_expectation_absent_from_model_request() -> None:
     """BI-014: Hidden expectation answers are never serialized into ModelRequest."""
     req = ModelRequest(
-        request_id="req-1",
         prompt_policy_id="policy-1",
         prompt_policy_version="1.0.0",
         prompt_digest="a" * 64,

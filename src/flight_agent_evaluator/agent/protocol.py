@@ -7,6 +7,8 @@ from typing import Protocol, runtime_checkable
 from flight_agent_evaluator.contracts.model import (
     AgentRunResult,
     AgentTask,
+    ModelConfiguration,
+    ModelExchangeManifest,
     ModelRequest,
     ModelResponse,
 )
@@ -42,22 +44,28 @@ class AgentPolicy(Protocol):
 
 @runtime_checkable
 class ModelClient(Protocol):
-    """Provider-neutral model client protocol."""
+    """Provider-neutral model client protocol.
+
+    A client is bound to one agent run at a time: ``begin_run`` selects (or
+    resets) the exchange log for the run and ``end_run`` returns the run's
+    :class:`ModelExchangeManifest`.
+    """
 
     @property
     def provider(self) -> str:
-        """Model provider name (e.g., 'openai', 'replay')."""
+        """Transport label for diagnostics only (never part of fingerprints)."""
         ...
 
-    @property
-    def model_id(self) -> str:
-        """Model identifier (e.g., 'gpt-4o-mini')."""
+    def begin_run(
+        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration
+    ) -> None:
+        """Start a run; replay clients load and verify the run's recorded manifest."""
         ...
 
     async def create_completion(self, request: ModelRequest) -> ModelResponse:
         """Create a completion response for a given model request."""
         ...
 
-    def reset(self) -> None:
-        """Reset internal turn counters or state if necessary."""
+    async def end_run(self) -> ModelExchangeManifest:
+        """Finish the run and return its exchange manifest (record mode persists it)."""
         ...

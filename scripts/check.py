@@ -388,7 +388,7 @@ def gate_leakage_scanner() -> bool:
         "from flight_agent_evaluator.agent.security import scan_request_for_reference_leakage; "
         "secret = 'SECRET_ORACLE_ANSWER_MARKER_999'; "
         "req = ModelRequest("
-        "   provider='openai', model_id='gpt-4o-mini', prompt_policy_id='p1', prompt_policy_version='1.0', "
+        "   model_id='gpt-4o-mini', prompt_policy_id='p1', prompt_policy_version='1.0', "
         "   prompt_digest='dig', turn_index=0, messages=[{'role': 'user', 'content': 'Hello'}], "
         "   tools=[], model_configuration=ModelConfiguration()"
         "); "

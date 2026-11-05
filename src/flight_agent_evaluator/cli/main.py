@@ -15,22 +15,26 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from flight_agent_evaluator.agent import AgentPolicy, ModelClient, ModelMode
-from flight_agent_evaluator.agent.baselines import (
-    NaiveBaselineAgent,
-    NoOpBaselineAgent,
-    ScriptedOracleAgent,
-)
+from flight_agent_evaluator.agent import AgentPolicy
+from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
+from flight_agent_evaluator.agent.errors import ModelClientConfigurationError, ModelReplayError
 from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
 from flight_agent_evaluator.agent.model_client import (
-    OpenAIResponsesModelClient,
-    ReplayModelClient,
+    DEFAULT_API_KEY_ENV,
+    ModelAgentSettings,
+    ModelMode,
+    build_model_client,
+    load_model_exchange_manifest,
 )
 from flight_agent_evaluator.annotation import (
     AnnotationBundle,
     verify_bundle_digest,
 )
-from flight_agent_evaluator.contracts.model import ModelExchangeManifest
+from flight_agent_evaluator.benchmarks.registry import (
+    BenchmarkAgentRegistry,
+    UnknownBenchmarkAgentError,
+)
+from flight_agent_evaluator.contracts.model import ModelConfiguration
 from flight_agent_evaluator.contracts.trajectory_expectation import (
     TrajectoryExpectation,
     validate_trajectory_expectation,
@@ -43,6 +47,11 @@ from flight_agent_evaluator.evaluation.trajectory_evaluator import TrajectoryEva
 from flight_agent_evaluator.judges import (
     FakeJudgeClient,
     JudgeEvidencePackage,
+)
+from flight_agent_evaluator.recording.contracts import (
+    BehaviourVerificationStatus,
+    RecordingIntegrityStatus,
+    ReplayReport,
 )
 from flight_agent_evaluator.recording.store import FileRecordingStore
 from flight_agent_evaluator.replay.engine import ReplayEngine
@@ -75,33 +84,24 @@ def _build_runner(output: Path | None, loaded: LoadedScenario) -> ScenarioRunner
     return ScenarioRunner()
 
 
+FAKE_JUDGE_WARNING = "FAKE judge: scores are placeholders, not model or human judgments."
+
+
+def _agent_class_name(meta: dict[str, Any]) -> str:
+    return str(meta["implementation"]).rsplit(".", 1)[-1]
+
+
 def cmd_agents_list(args: argparse.Namespace) -> int:
-    """List available agent policies."""
+    """List registered agent policies."""
+    registry = BenchmarkAgentRegistry()
     agents_data = [
         {
-            "id": "scripted-oracle",
-            "name": "ScriptedOracleAgent",
-            "type": "deterministic",
-            "description": "Executes golden reference trajectory steps.",
-        },
-        {
-            "id": "naive-baseline",
-            "name": "NaiveBaselineAgent",
-            "type": "heuristic",
-            "description": "Fixed status lookup and simple alternative search heuristic.",
-        },
-        {
-            "id": "no-op-baseline",
-            "name": "NoOpBaselineAgent",
-            "type": "negative_control",
-            "description": "Deterministic negative control that performs no task actions.",
-        },
-        {
-            "id": "model",
-            "name": "ModelToolCallingAgent",
-            "type": "llm",
-            "description": "LLM-driven tool calling agent executing via ModelClient.",
-        },
+            "id": meta["agent_id"],
+            "name": _agent_class_name(meta),
+            "type": meta["agent_type"],
+            "description": meta["description"],
+        }
+        for meta in registry.list_agents()
     ]
 
     if getattr(args, "json", False):
@@ -114,71 +114,72 @@ def cmd_agents_list(args: argparse.Namespace) -> int:
 
 
 def cmd_agents_describe(args: argparse.Namespace) -> int:
-    """Describe a specific agent policy."""
+    """Describe a registered agent policy (canonical id or alias)."""
     agent_id = args.agent
-    descriptions = {
-        "oracle": {
-            "id": "scripted-oracle",
-            "class": "ScriptedOracleAgent",
-            "mode": "deterministic",
-            "capabilities": ["reference_trajectory_execution"],
-        },
-        "scripted-oracle": {
-            "id": "scripted-oracle",
-            "class": "ScriptedOracleAgent",
-            "mode": "deterministic",
-            "capabilities": ["reference_trajectory_execution"],
-        },
-        "naive": {
-            "id": "naive-baseline",
-            "class": "NaiveBaselineAgent",
-            "mode": "heuristic",
-            "capabilities": ["read_only_status", "retry_once", "alternative_search"],
-        },
-        "naive-baseline": {
-            "id": "naive-baseline",
-            "class": "NaiveBaselineAgent",
-            "mode": "heuristic",
-            "capabilities": ["read_only_status", "retry_once", "alternative_search"],
-        },
-        "noop": {
-            "id": "no-op-baseline",
-            "class": "NoOpBaselineAgent",
-            "mode": "negative_control",
-            "capabilities": ["negative_control_no_actions"],
-        },
-        "no-op": {
-            "id": "no-op-baseline",
-            "class": "NoOpBaselineAgent",
-            "mode": "negative_control",
-            "capabilities": ["negative_control_no_actions"],
-        },
-        "no-op-baseline": {
-            "id": "no-op-baseline",
-            "class": "NoOpBaselineAgent",
-            "mode": "negative_control",
-            "capabilities": ["negative_control_no_actions"],
-        },
-        "model": {
-            "id": "model",
-            "class": "ModelToolCallingAgent",
-            "mode": "llm",
-            "capabilities": ["dynamic_tool_calling", "untrusted_output_handling"],
-        },
-    }
-
-    if agent_id not in descriptions:
+    registry = BenchmarkAgentRegistry()
+    try:
+        meta = registry.get_metadata(agent_id)
+    except UnknownBenchmarkAgentError:
         print(f"Unknown agent: '{agent_id}'", file=sys.stderr)
         return 1
 
-    data = descriptions[agent_id]
+    data = {
+        "id": meta.get("alias_of", meta["agent_id"]),
+        "class": _agent_class_name(meta),
+        "mode": meta["agent_type"],
+        "version": meta["agent_version"],
+        "description": meta["description"],
+    }
     if getattr(args, "json", False):
         print(json.dumps(data))
     else:
         print(f"Agent '{agent_id}':")
         print(f"  Class: {data['class']}")
         print(f"  Mode:  {data['mode']}")
+        print(f"  About: {data['description']}")
     return 0
+
+
+def _model_settings_from_args(
+    args: argparse.Namespace, *, record_dir: Path | None
+) -> ModelAgentSettings:
+    """Translate CLI flags into model agent settings (offline replay by default).
+
+    A single ``--model-replay-manifest`` is authoritative for the model
+    configuration it was recorded with.
+    """
+    raw_mode = str(getattr(args, "model_mode", None) or "replay")
+    if raw_mode not in ("replay", "record", "live"):
+        raise ModelClientConfigurationError(f"Unknown model mode '{raw_mode}'.")
+    mode: ModelMode = raw_mode  # type: ignore[assignment]
+    manifest_arg = getattr(args, "model_replay_manifest", None)
+    replay_dir_arg = getattr(args, "model_replay_dir", None)
+    replay_manifest = Path(manifest_arg) if manifest_arg else None
+
+    configuration = ModelConfiguration(model_id=getattr(args, "model", None) or "gpt-4o-mini")
+    if mode == "replay" and replay_manifest is not None:
+        configuration = load_model_exchange_manifest(replay_manifest).model_configuration
+
+    return ModelAgentSettings(
+        mode=mode,
+        model_configuration=configuration,
+        replay_manifest=replay_manifest,
+        replay_dir=Path(replay_dir_arg) if replay_dir_arg else None,
+        record_dir=record_dir,
+        allow_live_model=bool(getattr(args, "allow_live_model", False)),
+        base_url=getattr(args, "base_url", None),
+        api_key_env=getattr(args, "api_key_env", None) or DEFAULT_API_KEY_ENV,
+    )
+
+
+def _build_cli_model_agent(
+    args: argparse.Namespace, *, record_dir: Path | None
+) -> ModelToolCallingAgent:
+    settings = _model_settings_from_args(args, record_dir=record_dir)
+    return ModelToolCallingAgent(
+        model_client=build_model_client(settings),
+        model_configuration=settings.model_configuration,
+    )
 
 
 def cmd_agent_run(args: argparse.Namespace) -> int:
@@ -192,57 +193,23 @@ def cmd_agent_run(args: argparse.Namespace) -> int:
         return 1
 
     agent_type = getattr(args, "agent", "oracle")
-    raw_mode = str(getattr(args, "model_mode", "replay"))
-    model_mode: ModelMode = "replay" if raw_mode not in ("live", "record") else raw_mode  # type: ignore[assignment]
-    allow_live = bool(getattr(args, "allow_live_model", False))
+    out_dir = Path(args.output) if getattr(args, "output", None) else None
 
     agent: AgentPolicy
-    if agent_type in ("oracle", "scripted-oracle", "scripted"):
-        agent = ScriptedOracleAgent()
-    elif agent_type in ("naive", "naive-baseline"):
-        agent = NaiveBaselineAgent()
-    elif agent_type in ("noop", "no-op", "no-op-baseline"):
-        agent = NoOpBaselineAgent()
-    elif agent_type == "model":
-        client: ModelClient
-        if model_mode == "replay":
-            manifest_path = getattr(args, "model_replay_manifest", None)
-            if not manifest_path:
-                print(
-                    "Error: Model replay mode requires --model-replay-manifest PATH.",
-                    file=sys.stderr,
-                )
-                return 1
-            mp = Path(manifest_path)
-            if not mp.is_file():
-                print(
-                    f"Error: Model replay manifest not found: {manifest_path}",
-                    file=sys.stderr,
-                )
-                return 1
-            try:
-                manifest_data = json.loads(mp.read_text(encoding="utf-8"))
-                mem = ModelExchangeManifest.model_validate(manifest_data)
-                client = ReplayModelClient(mem)
-            except Exception as exc:
-                print(
-                    f"Error loading model replay manifest: {_sanitise_error(exc)}", file=sys.stderr
-                )
-                return 1
+    try:
+        if agent_type == "model":
+            # Record mode persists one ModelExchangeManifest per run next to the run output.
+            agent = _build_cli_model_agent(args, record_dir=out_dir)
         else:
-            client = OpenAIResponsesModelClient(
-                model_id=getattr(args, "model", "gpt-4o-mini"),
-                mode=model_mode,
-                allow_live_model=allow_live,
-            )
-        agent = ModelToolCallingAgent(model_client=client)
-    else:
+            agent = BenchmarkAgentRegistry().resolve(agent_type)
+    except (ModelClientConfigurationError, ModelReplayError) as exc:
+        print(f"Error: {_sanitise_error(exc)}", file=sys.stderr)
+        return 2
+    except UnknownBenchmarkAgentError:
         print(f"Unknown agent type: '{agent_type}'", file=sys.stderr)
         return 1
 
     bm_runner = BenchmarkRunner(scenario_loader=loader)
-    out_dir = Path(args.output) if getattr(args, "output", None) else None
-
     try:
         metric_vector = asyncio.run(
             bm_runner.run_scenario(loaded.scenario, agent, output_dir=out_dir)
@@ -317,6 +284,30 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+VERIFY_EXIT_FAILED = 1
+VERIFY_EXIT_INCONCLUSIVE = 3
+
+
+def _verification_exit_code(report: ReplayReport) -> int:
+    """0 only when integrity AND behaviour are VERIFIED.
+
+    Tampered recordings and behavioural divergence exit 1; anything that could
+    not be verified (behaviour unavailable, provenance mismatch, re-execution
+    error) exits 3.
+    """
+    if (
+        report.integrity_status == RecordingIntegrityStatus.VERIFIED
+        and report.behaviour_status == BehaviourVerificationStatus.VERIFIED
+    ):
+        return 0
+    if (
+        report.integrity_status == RecordingIntegrityStatus.TAMPERED
+        or report.behaviour_status == BehaviourVerificationStatus.DIVERGED
+    ):
+        return VERIFY_EXIT_FAILED
+    return VERIFY_EXIT_INCONCLUSIVE
+
+
 def cmd_replay(args: argparse.Namespace) -> int:
     """Replay a recorded run in playback or verification mode."""
     output = Path(args.output) if args.output else None
@@ -340,11 +331,9 @@ def cmd_replay(args: argparse.Namespace) -> int:
                     print(f"  Divergences: {len(report.divergences)}")
                     for d in report.divergences:
                         print(f"    seq={d.sequence}: [{d.kind}] {d.detail}")
-                else:
+                elif _verification_exit_code(report) == 0:
                     print("  All checks passed.")
-            return (
-                0 if report.status in ("verified", "integrity_valid", "behaviour_verified") else 1
-            )
+            return _verification_exit_code(report)
         else:
             result = engine.playback(args.run_id)
             if getattr(args, "json", False):
@@ -710,7 +699,7 @@ def cmd_judge_score(args: argparse.Namespace) -> int:
         print(f"Package file not found: {package_path.name}", file=sys.stderr)
         return 1
 
-    mode = getattr(args, "mode", "fake")
+    mode = args.mode
     try:
         data = json.loads(package_path.read_text(encoding="utf-8"))
         package = JudgeEvidencePackage.model_validate(data)
@@ -725,16 +714,18 @@ def cmd_judge_score(args: argparse.Namespace) -> int:
             client = ReplayJudgeClient.from_manifest(Path(manifest_p))
             result = asyncio.run(client.judge(package))
         else:
-            # Deterministic test double
+            # Deterministic test double: never a model or human judgment.
+            print(FAKE_JUDGE_WARNING, file=sys.stderr)
             fake_client = FakeJudgeClient()
             result = asyncio.run(fake_client.judge(package))
 
         if getattr(args, "json", False):
             print(json.dumps(result.model_dump(mode="json"), indent=2))
         else:
-            print(f"Qualitative Judge Evaluation ({mode} mode): {package.package_id}")
+            print(f"Qualitative Judge Evaluation: {package.package_id}")
+            print(f"Mode:              {mode}")
             print(f"Overall Score:     {result.overall_score:.2f} / 4.00 (0..4 ordinal scale)")
-            print(f"Validation Status: {result.validation_status} (human calibration pending)")
+            print(f"Validation Status: {result.validation_status}")
             print("Criteria Scores (0..4):")
             for cr in result.criteria_results:
                 print(f"  - {cr.criterion.value:<26}: {cr.score}/4 ({cr.rationale})")
@@ -816,7 +807,33 @@ def cmd_benchmark_run(args: argparse.Namespace) -> int:
         output_dir is not None and Path(output_dir).as_posix().rstrip("/") == "results/benchmark-v1"
     )
 
-    engine = CanonicalBenchmarkEngine()
+    registry = BenchmarkAgentRegistry()
+    if "model" in agent_ids:
+        model_mode = str(getattr(args, "model_mode", None) or "replay")
+        if model_mode != "replay" and source_release_output:
+            print(
+                "Error: network model runs cannot be written as offline source-release evidence.",
+                file=sys.stderr,
+            )
+            return 2
+        if model_mode == "record" and output_dir is None:
+            print(
+                "Error: Model record mode requires --output DIR (manifests are written to "
+                "DIR/model-exchanges).",
+                file=sys.stderr,
+            )
+            return 2
+        record_dir = Path(output_dir) / "model-exchanges" if output_dir is not None else None
+        try:
+            settings = _model_settings_from_args(args, record_dir=record_dir)
+            # Fail fast on unsafe or incomplete model configuration before any case runs.
+            build_model_client(settings)
+        except (ModelClientConfigurationError, ModelReplayError) as exc:
+            print(f"Error: {_sanitise_error(exc)}", file=sys.stderr)
+            return 2
+        registry = BenchmarkAgentRegistry(model_settings=settings)
+
+    engine = CanonicalBenchmarkEngine(registry=registry)
     try:
         artifact = engine.run_benchmark(
             manifest_path=manifest_path,
@@ -1033,6 +1050,34 @@ def cmd_benchmark_report(args: argparse.Namespace) -> int:
         return 1
 
 
+def _add_model_arguments(parser: argparse.ArgumentParser) -> None:
+    """Register the model-agent flags shared by ``agent run`` and ``benchmark run``."""
+    parser.add_argument(
+        "--model", default="gpt-4o-mini", help="Model id for the model tool-calling agent."
+    )
+    parser.add_argument(
+        "--model-mode",
+        choices=["replay", "record", "live"],
+        default="replay",
+        help="'replay' (offline, default) or network modes 'record'/'live'.",
+    )
+    parser.add_argument(
+        "--allow-live-model",
+        action="store_true",
+        help="Explicitly permit network model execution (required for record/live).",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="OpenAI-compatible endpoint base URL (e.g. Ollama, vLLM, OpenRouter).",
+    )
+    parser.add_argument(
+        "--api-key-env",
+        default=DEFAULT_API_KEY_ENV,
+        help=f"Environment variable holding the API key (default {DEFAULT_API_KEY_ENV}).",
+    )
+
+
 def _get_version() -> str:
     try:
         import importlib.metadata
@@ -1073,7 +1118,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     list_p = agents_sub.add_parser("list", help="List available agents.", parents=[json_parent])
     list_p.set_defaults(func=cmd_agents_list)
     desc_p = agents_sub.add_parser("describe", help="Describe an agent.", parents=[json_parent])
-    desc_p.add_argument("agent", help="Agent identifier (oracle, naive, random, model).")
+    desc_p.add_argument(
+        "agent",
+        help="Registered agent identifier or alias (see 'flight-evaluator agents list').",
+    )
     desc_p.set_defaults(func=cmd_agents_describe)
 
     # agent run subcommand
@@ -1081,33 +1129,25 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     ag_sub = ag_run_p.add_subparsers(dest="agent_command", required=True)
     ar_p = ag_sub.add_parser("run", help="Run an agent against a scenario.", parents=[json_parent])
     ar_p.add_argument("scenario", help="Path to scenario JSON file.")
+    registered_agent_ids = sorted(
+        str(meta["agent_id"]) for meta in BenchmarkAgentRegistry().list_agents(include_aliases=True)
+    )
     ar_p.add_argument(
         "--agent",
-        choices=[
-            "oracle",
-            "naive",
-            "noop",
-            "no-op",
-            "model",
-            "scripted-oracle",
-            "naive-baseline",
-            "no-op-baseline",
-        ],
+        choices=registered_agent_ids,
         default="oracle",
         help="Agent policy identifier to execute.",
     )
-    ar_p.add_argument(
-        "--model", default="gpt-4o-mini", help="Model name for ModelToolCallingAgent."
-    )
-    ar_p.add_argument("--model-mode", choices=["replay", "record", "live"], default="replay")
+    _add_model_arguments(ar_p)
     ar_p.add_argument(
         "--model-replay-manifest",
-        help="Path to recorded ModelExchangeManifest JSON file (required for model replay mode).",
+        help="Recorded ModelExchangeManifest JSON file to replay (model replay mode).",
     )
     ar_p.add_argument(
-        "--allow-live-model", action="store_true", help="Explicitly permit network model execution."
+        "--output",
+        "-o",
+        help="Run output directory; model record mode writes the exchange manifest here.",
     )
-    ar_p.add_argument("--output", "-o", help="Recording output directory.")
     ar_p.set_defaults(func=cmd_agent_run)
 
     # trajectory subcommands
@@ -1180,7 +1220,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
         "--repetitions", type=int, default=1, help="Number of repetitions per case."
     )
     bm_run_p.add_argument("--scenarios", default=None, help="Deprecated alias for scenarios path.")
-    bm_run_p.add_argument("--output", "-o", help="Output directory for persistent artifacts.")
+    bm_run_p.add_argument(
+        "--output",
+        "-o",
+        help=(
+            "Output directory for persistent artifacts; model record mode writes one "
+            "exchange manifest per scenario run to DIR/model-exchanges."
+        ),
+    )
+    _add_model_arguments(bm_run_p)
+    bm_run_p.add_argument(
+        "--model-replay-dir",
+        help="Directory of recorded per-run model exchange manifests (model replay mode).",
+    )
     bm_run_p.set_defaults(func=cmd_benchmark_run)
 
     bm_val_p = bm_sub.add_parser(
@@ -1243,8 +1295,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     jdg_score.add_argument(
         "--mode",
         choices=["fake", "replay"],
-        default="fake",
-        help="Judge evaluation mode: 'fake' (deterministic test double) or 'replay' (recorded exchanges).",
+        required=True,
+        help=(
+            "Judge evaluation mode: 'fake' (placeholder test double, not a real judgment) "
+            "or 'replay' (recorded exchanges)."
+        ),
     )
     jdg_score.add_argument(
         "--manifest",
