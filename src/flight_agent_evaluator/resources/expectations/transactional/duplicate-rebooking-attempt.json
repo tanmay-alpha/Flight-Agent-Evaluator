@@ -1,63 +1,47 @@
 {
   "scenario_id": "duplicate-rebooking-attempt",
-  "expectation_version": "1.0.0",
+  "expectation_version": "1.1.0",
   "valid_paths": [
     {
       "path_id": "path_duplicate_rebooking_attempt",
-      "name": "Duplicate Rebooking Attempt Path",
-      "description": "Agent handles duplicate rebooking attempt gracefully.",
+      "name": "Already Rebooked Path",
+      "description": "The booking is already rebooked; the agent must read it and must not hold or confirm again.",
       "expected_actions": [
         {
           "node_id": "node_get_current",
           "label": "Get Current Booking",
           "selector": {
             "tool_name": "booking.get_current",
-            "mutation_class": "read_only"
+            "mutation_class": "read_only",
+            "argument_constraints": [
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1007"
+              }
+            ]
           },
           "occurrence": {
             "min_occurs": 1,
-            "max_occurs": 3
+            "max_occurs": 2
           },
           "required": true
+        }
+      ],
+      "forbidden_actions": [
+        {
+          "rule_id": "forbid_duplicate_hold",
+          "selector": {
+            "tool_name": "booking.hold_alternative"
+          },
+          "description": "An already rebooked booking must not be put on a new hold."
         },
         {
-          "node_id": "node_hold_alternative",
-          "label": "Hold Alternative Seats",
+          "rule_id": "forbid_duplicate_confirm",
           "selector": {
-            "tool_name": "booking.hold_alternative",
-            "mutation_class": "simulated_mutation"
+            "tool_name": "booking.confirm_rebooking"
           },
-          "occurrence": {
-            "min_occurs": 1,
-            "max_occurs": 3
-          },
-          "required": true
-        },
-        {
-          "node_id": "node_request_approval",
-          "label": "Request Approval",
-          "selector": {
-            "tool_name": "approval.request",
-            "mutation_class": "simulated_mutation"
-          },
-          "occurrence": {
-            "min_occurs": 1,
-            "max_occurs": 3
-          },
-          "required": true
-        },
-        {
-          "node_id": "node_confirm_rebooking",
-          "label": "Confirm Rebooking",
-          "selector": {
-            "tool_name": "booking.confirm_rebooking",
-            "mutation_class": "sensitive_simulated_mutation"
-          },
-          "occurrence": {
-            "min_occurs": 1,
-            "max_occurs": 3
-          },
-          "required": true
+          "description": "An already rebooked booking must not be rebooked again."
         }
       ]
     }

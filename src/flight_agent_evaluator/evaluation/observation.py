@@ -6,21 +6,53 @@ canonical ObservedTrajectory data structure used for graph matching.
 
 from __future__ import annotations
 
+from datetime import datetime
+from functools import cache
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from flight_agent_evaluator.recording.journal import HashChainJournal
 
+NO_RESULT_STATUS = "no_result"
+"""Status of a journaled tool call for which no ``tool_result`` was recorded."""
+
+UNKNOWN_MUTATION_CLASS = "unknown"
+"""Mutation class of a tool that is neither registered, packaged, nor self-declared."""
+
+
+@cache
+def _tool_catalog() -> dict[str, str]:
+    """Registry-derived mutation class of every packaged tool, in any scenario mode."""
+    from flight_agent_evaluator.tools.base import build_transactional_registry
+
+    registry = build_transactional_registry()
+    return {name: h.tool_definition.mutation_class for name, h in registry.handlers.items()}
+
+
+def catalog_mutation_class(tool_name: str) -> str | None:
+    """Return the authoritative mutation class of a packaged tool, or None if unknown."""
+    return _tool_catalog().get(tool_name)
+
 
 class ObservedToolAction(BaseModel):
     """A single tool action observed in the execution journal."""
 
     call_id: str = Field(..., description="Unique tool call identifier.")
-    sequence_number: int = Field(..., description="1-indexed sequence order in journal.")
+    sequence_number: int = Field(..., description="1-indexed order among observed tool calls.")
+    journal_sequence: int | None = Field(
+        default=None, description="Journal seq of the tool_call entry (trusted evidence ref)."
+    )
+    result_journal_sequence: int | None = Field(
+        default=None, description="Journal seq of the matching tool_result entry."
+    )
     tool_name: str = Field(..., description="Name of invoked tool.")
     arguments: dict[str, Any] = Field(default_factory=dict, description="Canonical tool arguments.")
     mutation_class: str = Field(default="read_only", description="Authoritative mutation class.")
+    authorization_decision: str | None = Field(
+        default=None, description="Executor authorization decision ('allowed'/'denied')."
+    )
+    called_at: datetime | None = Field(default=None, description="Journal time of the call.")
     start_time: str = Field(..., description="ISO-8601 start timestamp.")
     end_time: str | None = Field(default=None, description="ISO-8601 end timestamp.")
     status: str = Field(
@@ -36,6 +68,23 @@ class ObservedToolAction(BaseModel):
         """True if the tool call completed successfully without error."""
         return self.status == "success" and self.error is None
 
+    @property
+    def error_type(self) -> str | None:
+        """Typed error category recorded by the executor, if the call failed."""
+        if self.error is None:
+            return None
+        value = self.error.get("error_type")
+        return str(value) if value is not None else None
+
+    @property
+    def is_mutating(self) -> bool:
+        """True when the mutation class is known and not read-only.
+
+        A tool that is neither registered nor packaged and declared no class
+        (``"unknown"``) is not treated as a mutation attempt.
+        """
+        return self.mutation_class not in ("read_only", UNKNOWN_MUTATION_CLASS)
+
 
 class ObservedTrajectory(BaseModel):
     """Canonical representation of an observed agent run extracted from journal logs."""
@@ -49,10 +98,28 @@ class ObservedTrajectory(BaseModel):
         default_factory=list, description="Recorded domain events."
     )
     final_response: str | None = Field(default=None, description="Final response emitted by agent.")
+    final_response_sequence: int | None = Field(
+        default=None, description="Journal seq of the final_response entry, if journaled."
+    )
 
     @property
     def total_calls(self) -> int:
         return len(self.actions)
+
+
+def _resolve_mutation_class(payload: dict[str, Any], tool_name: str) -> str:
+    recorded = payload.get("mutation_class")
+    if isinstance(recorded, str) and recorded:
+        return recorded
+    # Unregistered in this scenario mode (e.g. a booking tool requested in a read-only
+    # run): fall back to the packaged catalog, then to the caller's declared class.
+    known = catalog_mutation_class(tool_name)
+    if known is not None:
+        return known
+    requested = payload.get("requested_mutation_class")
+    if isinstance(requested, str) and requested:
+        return requested
+    return UNKNOWN_MUTATION_CLASS
 
 
 def extract_observed_trajectory(
@@ -66,6 +133,8 @@ def extract_observed_trajectory(
     actions_map: dict[str, ObservedToolAction] = {}
     ordered_actions: list[ObservedToolAction] = []
     domain_events: list[dict[str, Any]] = []
+    final_response_sequence: int | None = None
+    journaled_response: str | None = None
 
     seq = 1
     seen_calls: dict[str, int] = {}
@@ -78,21 +147,23 @@ def extract_observed_trajectory(
             call_id = str(payload.get("call_id", ""))
             tool_name = str(payload.get("tool_name", ""))
             args = payload.get("arguments", {})
-            mut_class = str(payload.get("mutation_class", "read_only"))
-            start_time = str(payload.get("start_time", ""))
+            decision = payload.get("authorization_decision")
 
             retry_cnt = seen_calls.get(tool_name, 0)
-            is_retry = retry_cnt > 0
             seen_calls[tool_name] = retry_cnt + 1
 
             act = ObservedToolAction(
                 call_id=call_id,
                 sequence_number=seq,
+                journal_sequence=rec.seq,
                 tool_name=tool_name,
                 arguments=args if isinstance(args, dict) else {},
-                mutation_class=mut_class,
-                start_time=start_time,
-                is_retry=is_retry,
+                mutation_class=_resolve_mutation_class(payload, tool_name),
+                authorization_decision=str(decision) if decision is not None else None,
+                called_at=rec.time,
+                start_time=str(payload.get("start_time", "")),
+                status=NO_RESULT_STATUS,
+                is_retry=retry_cnt > 0,
                 retry_count=retry_cnt,
             )
             actions_map[call_id] = act
@@ -103,6 +174,7 @@ def extract_observed_trajectory(
             call_id = str(payload.get("call_id", ""))
             if call_id in actions_map:
                 act = actions_map[call_id]
+                act.result_journal_sequence = rec.seq
                 act.end_time = str(payload.get("end_time", ""))
                 res = payload.get("result")
                 err = payload.get("error")
@@ -126,10 +198,16 @@ def extract_observed_trajectory(
         elif event_type == "domain_event":
             domain_events.append(payload)
 
+        elif event_type == "final_response":
+            final_response_sequence = rec.seq
+            response = payload.get("response")
+            journaled_response = str(response) if response is not None else None
+
     return ObservedTrajectory(
         scenario_id=scenario_id,
         run_id=run_id,
         actions=ordered_actions,
         domain_events=domain_events,
-        final_response=final_response,
+        final_response=final_response if final_response is not None else journaled_response,
+        final_response_sequence=final_response_sequence,
     )

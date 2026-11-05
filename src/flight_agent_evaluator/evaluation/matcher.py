@@ -210,7 +210,18 @@ class PathAlignmentResult(BaseModel):
 
 
 class DeterministicBoundedMatcher:
-    """Non-greedy branch-and-bound matcher for constraint graphs."""
+    """Deterministic branch-and-bound matcher for constraint graphs.
+
+    Candidates for a node are filtered by tool name and mutation class, then ranked
+    so that locally qualifying calls (result status and non-reference argument
+    predicates hold) come first, in journal order; only then is the per-node
+    candidate cap applied, so a correct call is never displaced by near misses.
+
+    The depth-first search prunes any branch whose optimistic objective bound
+    cannot strictly beat the best complete alignment found so far. The bound is
+    admissible (never below the true best completion), so pruning never changes
+    the selected alignment; ``max_search_states`` remains a hard work budget.
+    """
 
     def __init__(self, max_search_states: int = 10000, max_candidates_per_node: int = 10) -> None:
         self.max_search_states = max_search_states
@@ -220,20 +231,54 @@ class DeterministicBoundedMatcher:
         """Find optimal injective alignment between ValidPath graph and ObservedTrajectory."""
         expected_nodes = path.expected_actions
         observed_actions = trajectory.actions
+        node_list = list(expected_nodes)
+        node_index = {node.node_id: i for i, node in enumerate(node_list)}
 
-        # Step 1: Candidate set generation per node
+        # Step 1: Candidate generation with optimistic node-local scores.
+        # local[(node_id, call_id)] = (qualifies, optimistic passed-argument count); reference
+        # predicates depend on the final mapping and are counted optimistically as passing.
         candidates_per_node: dict[str, list[ObservedToolAction]] = {}
-        for node in expected_nodes:
-            cands: list[ObservedToolAction] = []
+        local: dict[tuple[str, str], tuple[bool, int]] = {}
+        for node in node_list:
             sel = node.selector
+            cands: list[ObservedToolAction] = []
             for act in observed_actions:
                 if sel.tool_name and not fnmatch.fnmatch(act.tool_name, sel.tool_name):
                     continue
                 if sel.mutation_class and act.mutation_class != sel.mutation_class:
                     continue
+                passed = 0
+                args_ok = True
+                for arg_c in sel.argument_constraints:
+                    if arg_c.operator == "reference_equals" or evaluate_argument_constraint(
+                        arg_c, act.arguments
+                    ):
+                        passed += 1
+                    else:
+                        args_ok = False
+                qualifies = args_ok and _qualifies_result_status(node.expected_result_status, act)
+                local[(node.node_id, act.call_id)] = (qualifies, passed)
                 cands.append(act)
-
+            node_local = {act.call_id: local[(node.node_id, act.call_id)][0] for act in cands}
+            cands.sort(key=lambda a: (not node_local[a.call_id], a.sequence_number))
             candidates_per_node[node.node_id] = cands[: self.max_candidates_per_node]
+
+        # Optimistic contributions of a node that is not decided yet.
+        max_req = [0] * len(node_list)
+        max_opt = [0] * len(node_list)
+        max_args = [0] * len(node_list)
+        min_seq: list[int | None] = [None] * len(node_list)
+        for i, node in enumerate(node_list):
+            cands = candidates_per_node[node.node_id]
+            if not cands:
+                continue
+            any_ok = any(local[(node.node_id, c.call_id)][0] for c in cands)
+            if node.required:
+                max_req[i] = int(any_ok)
+            else:
+                max_opt[i] = int(any_ok)
+            max_args[i] = max(local[(node.node_id, c.call_id)][1] for c in cands)
+            min_seq[i] = min(c.sequence_number for c in cands)
 
         # Step 2: Branch-and-bound search for optimal injective alignment under trajectory-alignment-v1
         best_mapping: dict[str, ObservedToolAction] = {}
@@ -241,7 +286,66 @@ class DeterministicBoundedMatcher:
         states_explored = 0
         complexity_exceeded = False
 
-        node_list = list(expected_nodes)
+        def decided_unmapped(node_id: str, node_idx: int, current_map: dict[str, Any]) -> bool:
+            idx = node_index.get(node_id)
+            return idx is None or (idx < node_idx and node_id not in current_map)
+
+        def upper_bound(
+            node_idx: int, current_map: dict[str, ObservedToolAction]
+        ) -> tuple[int, ...]:
+            req = opt = args = seq_sum = 0
+            for i, node in enumerate(node_list):
+                if i >= node_idx:
+                    req += max_req[i]
+                    opt += max_opt[i]
+                    args += max_args[i]
+                    continue
+                act = current_map.get(node.node_id)
+                if act is None:
+                    continue
+                qualifies, passed = local[(node.node_id, act.call_id)]
+                args += passed
+                seq_sum += act.sequence_number
+                if qualifies:
+                    if node.required:
+                        req += 1
+                    else:
+                        opt += 1
+            deps = 0
+            for dep in path.dependency_constraints:
+                if decided_unmapped(
+                    dep.dependent_node_id, node_idx, current_map
+                ) or decided_unmapped(dep.required_node_id, node_idx, current_map):
+                    continue
+                req_act = current_map.get(dep.required_node_id)
+                req_node = node_list[node_index[dep.required_node_id]]
+                if req_act is not None and not _qualifies_result_status(
+                    req_node.expected_result_status, req_act
+                ):
+                    continue
+                deps += 1
+            precs = 0
+            for prec in path.precedence_constraints:
+                if decided_unmapped(prec.before_node_id, node_idx, current_map) or decided_unmapped(
+                    prec.after_node_id, node_idx, current_map
+                ):
+                    continue
+                before = current_map.get(prec.before_node_id)
+                after = current_map.get(prec.after_node_id)
+                if (
+                    before is not None
+                    and after is not None
+                    and before.sequence_number >= after.sequence_number
+                ):
+                    continue
+                precs += 1
+            # Completions that tie on every earlier component must map as many nodes as
+            # possible; each extra mapping adds at least its node's smallest sequence number.
+            pending = sorted(s for s in min_seq[node_idx:] if s is not None)
+            extra = min(len(pending), max(0, len(observed_actions) - len(current_map)))
+            unmatched = len(observed_actions) - len(current_map) - extra
+            seq_sum += sum(pending[:extra])
+            return (req, args, deps, precs, opt, -unmatched, -seq_sum)
 
         def compute_objective_tuple(current_map: dict[str, ObservedToolAction]) -> tuple[int, ...]:
             satisfied_req = 0
@@ -310,6 +414,8 @@ class DeterministicBoundedMatcher:
         ) -> None:
             nonlocal best_mapping, best_objective, states_explored, complexity_exceeded
 
+            if complexity_exceeded:
+                return
             states_explored += 1
             if states_explored > self.max_search_states:
                 complexity_exceeded = True
@@ -320,6 +426,9 @@ class DeterministicBoundedMatcher:
                 if obj > best_objective:
                     best_objective = obj
                     best_mapping = dict(current_map)
+                return
+
+            if upper_bound(node_idx, current_map) <= best_objective:
                 return
 
             node = node_list[node_idx]
