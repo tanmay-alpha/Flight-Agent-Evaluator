@@ -15,7 +15,7 @@ The judge scores only what deterministic evaluation cannot, and it works strictl
 Every `JudgeResult` records the `mode` that produced it:
 
 - `fake`: produced by `FakeJudgeClient`, a deterministic test double. Its scores are configured placeholders (default 2), every criterion has `confidence="low"` and a `FAKE judge` warning, and it cannot report `human_calibrated`. Fake results are not judgments and must never be cited as such.
-- `replay`: produced by `ReplayJudgeClient`, which returns a pre-recorded exchange looked up by the evidence package's semantic digest. Before returning, it checks the response digest, the package digest and every evidence id.
+- `replay`: produced by `ReplayJudgeClient`. An exchange is found only by its full request fingerprint, which binds the evidence package's semantic digest, the rubric version and the prompt policy. Replay checks the raw response digest, then parses the scores from that raw response. It rejects responses that are not in the judge output format or that cite evidence ids missing from the package. Recorded exchanges store only the raw response; there is no separately stored parsed result.
 - `record` and `live` are reserved. No client implements them yet.
 
 ## Human Calibration Protocol

@@ -409,7 +409,9 @@ class JudgeResult(ContractModel):
 class JudgeExchange(ContractModel):
     """A complete recorded judge request/response pair.
 
-    Used for deterministic replay without live inference.
+    Used for deterministic replay without live inference. The raw ``response_text`` is
+    the only recorded judgment; replay parses scores from it after verifying
+    ``response_digest``, so there is no separately stored parsed result to tamper with.
     """
 
     exchange_id: str = Field(
@@ -417,7 +419,12 @@ class JudgeExchange(ContractModel):
         description="Unique exchange identifier.",
     )
     request_fingerprint: str = Field(
-        default="", description="Request fingerprint binding evidence, rubric, and model config."
+        ...,
+        min_length=1,
+        description=(
+            "JudgeRequestFingerprintV1 binding evidence package, rubric version and prompt "
+            "policy. The only replay lookup key."
+        ),
     )
     package_digest: SHA256Digest = Field(..., description="SHA-256 digest of the evidence package.")
     rubric_version: str = Field(
@@ -432,10 +439,6 @@ class JudgeExchange(ContractModel):
     response_text: str = Field(..., description="Raw response from the judge model.")
     response_digest: SHA256Digest = Field(
         ..., description="SHA-256 digest of the raw response text for verification."
-    )
-    parsed_result: JudgeResult = Field(..., description="Parsed and validated result.")
-    parsed_result_digest: str = Field(
-        default="", description="Canonical SHA-256 digest of parsed_result."
     )
     model_id: str = Field(..., description="Judge model ID used.")
     recorded_at: datetime = Field(..., description="UTC timestamp of recording.")
@@ -470,10 +473,10 @@ class JudgeExchangeManifest(ContractModel):
             )
         return self
 
-    def get_exchange(self, key: str) -> JudgeExchange | None:
-        """Look up a recorded exchange by request fingerprint or package digest."""
+    def get_exchange(self, request_fingerprint: str) -> JudgeExchange | None:
+        """Look up a recorded exchange by its full request fingerprint."""
         for ex in self.exchanges:
-            if ex.request_fingerprint == key or ex.package_digest == key:
+            if ex.request_fingerprint == request_fingerprint:
                 return ex
         return None
 
@@ -484,10 +487,8 @@ class JudgeExchangeManifest(ContractModel):
             "schema_version": self.schema_version,
             "exchanges": [
                 {
-                    "request_fingerprint": e.request_fingerprint or e.package_digest,
+                    "request_fingerprint": e.request_fingerprint,
                     "response_digest": e.response_digest,
-                    "parsed_result_digest": e.parsed_result_digest
-                    or e.parsed_result.canonical_digest(),
                 }
                 for e in self.exchanges
             ],

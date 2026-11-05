@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - **Fake judge mislabelled as replay**: `FakeJudgeClient` results now carry `mode="fake"` (new `JudgeMode.FAKE`), `confidence="low"` and a placeholder warning. The client also refuses `HUMAN_CALIBRATED`.
 - **Calibration status ignored agreement**: `compute_calibration_report()` now sets `status` to `insufficient_data`, `below_threshold` or `meets_threshold` from the measured kappa and adjacent agreement, and lists the reasons. It rejects fake-mode judge results.
+- **Replayed judge results not bound to the verified response (S1)**: `ReplayJudgeClient` now parses scores from the digest-verified `response_text` and finds exchanges only by full request fingerprint. The package-digest fallback, which ignored the prompt policy, is gone. `JudgeExchange` no longer stores `parsed_result`/`parsed_result_digest`, and `request_fingerprint` is required. Integrity failures raise `JudgeReplayCorruptedError`.
 - **Annotation bundle overstated readiness**: the shipped `validation/annotation-bundle-v1` now has `annotation_status: "template"`, with a note that its tasks are placeholders and it has 0 annotations.
 
 ---
