@@ -2,13 +2,14 @@
 
 ## System purpose
 
-Flight Agent Evaluator runs tool-using agents against a simulated airline back end, records each run in a hash-chained journal, scores it with rules, and can re-execute it to check that it reproduces. It has five parts:
+Flight Agent Evaluator runs tool-using agents against a simulated airline back end, records each run in a hash-chained journal, scores it with rules, and can re-execute it to check that it reproduces. It has six parts:
 
-1. **Deterministic execution.** An in-memory simulated environment with state machines, idempotency keys and approval checks. Approval decisions come from a per-scenario table, not a human ([`transactional-environment.md`](transactional-environment.md)).
-2. **Trajectory evaluation.** Rule-based matching of tool calls against authored expectations, outcome assertions on state rebuilt from the journal, and glob- and selector-based safety rules ([`evaluation.md`](evaluation.md)).
+1. **Deterministic execution.** An in-memory simulated environment with state machines, idempotency keys and approval checks. Each scenario declares its approval decision, and an unconfigured decision fails closed to `DENIED` ([`transactional-environment.md`](transactional-environment.md)).
+2. **Trajectory evaluation.** Rule-based matching of tool calls against authored expectations, outcome assertions on state rebuilt from the journal, and journal safety checks on every run: approvals, denied attempts, duplicate side effects, unbacked success claims and untrusted instructions ([`evaluation.md`](evaluation.md)).
 3. **Failure diagnostics.** Failure codes, severities and origins assigned by rules from the scorecard, with root causes chosen by journal-order heuristics.
-4. **Replay.** Unkeyed SHA-256 hash-chained journals, bundle manifests, and re-execution compared on semantic events. Tool output values are not yet compared ([`replay.md`](replay.md)).
-5. **Packaged distribution.** Built-in scenarios, expectations and manifests ship as package data, and the platform runs offline.
+4. **Replay.** Unkeyed SHA-256 hash-chained journals, bundle manifests, and re-execution compared on semantic events, including tool result values ([`replay.md`](replay.md)).
+5. **External trace evaluation.** Tool-call traces from other agent frameworks are re-executed and scored by the same pipeline (`traces/`).
+6. **Packaged distribution.** Built-in scenarios, expectations and manifests ship as package data, and the platform runs offline.
 
 What these results do and do not show is listed in [`../methodology/limitations.md`](../methodology/limitations.md).
 
@@ -16,7 +17,8 @@ What these results do and do not show is listed in [`../methodology/limitations.
 flowchart TD
     subgraph Input
         M[Benchmark Manifest / Scenario]
-        A[Agent: scripted oracle / naive / no-op; LLM loop planned v0.3]
+        A[Agent: scripted oracle / naive / no-op / unsafe control / LLM model agent]
+        T[External tool-call trace]
     end
 
     subgraph Runtime Execution
@@ -25,11 +27,12 @@ flowchart TD
         J[Hash-Chained Journal - unkeyed SHA-256]
         E <--> TE
         A <--> TE
+        T --> TE
         TE --> J
     end
 
     subgraph Evaluation
-        TR[Rule-based Trajectory Evaluator]
+        TR[Rule-based Trajectory Evaluator + Journal Safety]
         FD[Failure Diagnostic Engine]
         J --> TR
         TR --> FD
@@ -43,21 +46,22 @@ flowchart TD
     end
 ```
 
-The qualitative judge (`judges/`) is **not** part of this flow. The evaluator and the benchmark never call it. It can only be run on its own with `flight-evaluator judge score`, and its default client is a fake that returns constant scores ([`../methodology/judge-validation.md`](../methodology/judge-validation.md)).
+The qualitative judge (`judges/`) is **not** part of this flow; the evaluator and the benchmark never call it. It can only be run on its own with `flight-evaluator judge score --mode fake|replay`. No live judge client exists ([`../methodology/judge-validation.md`](../methodology/judge-validation.md)).
 
 ## Core subsystems
 
 | Subsystem | Package | What it does |
 | --- | --- | --- |
-| **Contracts** | `flight_agent_evaluator.contracts` | Pydantic v2 models for aviation entities, scenarios, events and trajectory expectations. |
-| **Environment** | `flight_agent_evaluator.environment` | Simulated booking engine: holds, approval checks, idempotency registry. Approval outcomes are hardcoded per scenario ID and default to `APPROVED`; fail-closed approvals are **planned in v0.3 (in progress)**. |
-| **Tools** | `flight_agent_evaluator.tools` | 11 typed tools (`flight.get_status`, `flight.search_flights`, `booking.hold_alternative`, `approval.request`, `booking.confirm_rebooking`, …), each with a mutation class and a JSON-schema check on its input. |
-| **Engine** | `flight_agent_evaluator.engine` | Scenario loader, runner, tool executor, fault engine and benchmark runner. The tool allowlist given to an agent comes from the scenario's scripted trajectory (`engine/benchmark.py:193-198`). |
-| **Agent** | `flight_agent_evaluator.agent` | Scripted baselines (`baselines.py`) and an LLM tool-calling loop (`loop.py`, `model_client.py`). No LLM run has been recorded; a working LLM adapter is **planned in v0.3 (in progress)**. |
+| **Contracts** | `flight_agent_evaluator.contracts` | Pydantic v2 models for entities, scenarios (including the `environment` block), events, expectations and model exchanges. |
+| **Environment** | `flight_agent_evaluator.environment` | Simulated booking engine: holds, approval checks and an idempotency registry, configured only from the scenario's `environment` block. |
+| **Tools** | `flight_agent_evaluator.tools` | 11 typed tools, each with a mutation class and a JSON-schema check on its input. The allowlist comes from `default_allowed_tools` (`tools/base.py:191-209`) and is never derived from the golden trajectory. |
+| **Engine** | `flight_agent_evaluator.engine` | Scenario loader; runner, which defaults to the fixture provider and applies the scenario time limit (`engine/runner.py:46-47,157`); tool executor; fault engine; benchmark runner. |
+| **Agent** | `flight_agent_evaluator.agent` | Scripted baselines, including the `unsafe-baseline` negative control (`agent/baselines.py`). Also the LLM agent `ModelToolCallingAgent` (`agent/loop.py:33`), which runs through `OpenAIChatCompletionsClient` in live/record mode (`agent/model_client.py:158`) or through `ReplayModelClient` (`:370`). Tool names are mapped `.` ↔ `__` (`agent/tool_names.py`). No real model run is committed. |
+| **Traces** | `flight_agent_evaluator.traces` | Imports external tool-call traces (`traces/format.py`) and re-executes them through the real `ToolExecutor`. Agent-reported results are treated as untrusted and differences are recorded as divergences. Scores the run with the benchmark pipeline (`traces/evaluate.py:123-157`). |
 | **Providers** | `flight_agent_evaluator.providers` | Only `FixtureFlightProvider`. There are no live provider adapters. |
-| **Evaluation** | `flight_agent_evaluator.evaluation` | Exhaustive capped matcher, weighted composite score, rule-based diagnostics, template explanations. |
-| **Judges** | `flight_agent_evaluator.judges` | Evidence-package contracts, 0–4 rubric, fake and replay clients, agreement metrics. No live client, no recorded exchanges, 0 human annotations. |
-| **Recording & Replay** | `flight_agent_evaluator.recording`, `flight_agent_evaluator.replay` | `.jsonl` journal, `.meta.json`, `.bundle.json` manifest; re-execution and semantic comparison. |
-| **Benchmarks** | `flight_agent_evaluator.benchmarks` | Manifest loading with digest checks, corpus validation, multi-agent execution, aggregate metrics, release verification. The ablation pipeline was removed (`tests/unit/test_release_truth_regressions.py:50-63`). |
-| **Resources** | `flight_agent_evaluator.resources` | Packaged scenarios (24), expectations (24), manifests and fixtures. |
-| **CLI** | `flight_agent_evaluator.cli` | `run`, `replay`, `verify`, `evaluate`, `benchmark`, `agent run`, `agents`, `judge score` (`cli/main.py:1071-1290`). |
+| **Evaluation** | `flight_agent_evaluator.evaluation` | Branch-and-bound matcher; journal safety and claim checks; safety-capped scoring; rule-based diagnostics; evaluator validation harness (`evaluation/validation/`). |
+| **Judges** | `flight_agent_evaluator.judges` | Evidence-package contracts, a 0–4 rubric, fake and replay clients, agreement metrics and calibration statuses. There is no live client, no recorded exchanges and 0 human annotations. |
+| **Recording & Replay** | `flight_agent_evaluator.recording`, `flight_agent_evaluator.replay` | `.jsonl` journal, `.meta.json`, `.bundle.json` manifest; re-execution and `semantic-events-v2` comparison; verify exit codes 0/1/3. |
+| **Benchmarks** | `flight_agent_evaluator.benchmarks` | Manifest loading with digest checks, corpus validation, multi-agent execution, aggregate metrics, consistency recomputation, release verification. |
+| **Resources** | `flight_agent_evaluator.resources` | Packaged scenarios (24), expectations (24), benchmark manifests and fixtures. |
+| **CLI** | `flight_agent_evaluator.cli` | `scenario validate`, `agents list/describe`, `agent run`, `trajectory validate/score/explain/diagnose`, `demo`, `benchmark list/run/validate/report/verify-release`, `annotation validate`, `judge score`, `run`, `replay`, `verify`, `evaluate`, `trace evaluate`, `evaluator validate` (`cli/main.py:1119-1391`). |

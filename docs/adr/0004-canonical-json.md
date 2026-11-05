@@ -44,5 +44,5 @@ canonical JSON string.
 ## Errata (2026-11-05)
 
 - **`Decimal` is written as a bare JSON number literal**, without quotes (`format(value, "f")`, `src/flight_agent_evaluator/canonical.py:66-68`). It is not a JSON string.
-- **The recording journal does not use `canonical_json()`.** It hashes entries with its own `json.dumps(sort_keys=True, separators=(",", ":"))` (`src/flight_agent_evaluator/recording/journal.py:28-39`).
+- **The recording journal does not use `canonical_json()`.** It hashes entries with its own `json.dumps(sort_keys=True, separators=(",", ":"))` (`src/flight_agent_evaluator/recording/journal.py:27-39`, checked 2026-11-06 against v0.3.0).
 - **These hashes are unkeyed SHA-256.** They are tamper-evident only against edits that do not recompute the hashes. See `docs/methodology/limitations.md`.

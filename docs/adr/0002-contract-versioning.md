@@ -77,8 +77,13 @@ parseable for replay of historical data.
 
 ## Errata (2026-11-05)
 
-- **"`float` is forbidden" for money.** `Money.amount` is a `Decimal` (`src/flight_agent_evaluator/contracts/base.py:122`). However, the environment and tools carry prices as `float`: `price_amount: float` in `environment/engine.py:291,323`, and `float(arguments["price_amount"])` in `tools/booking_tools.py:99`.
+Revised 2026-11-06 against v0.3.0. Paths are relative to `src/flight_agent_evaluator/`.
+
+- **"`float` is forbidden" for money.** `Money.amount` is a `Decimal` (`contracts/base.py:122`). However, prices are carried as `float` in several places:
+  - the scenario `environment` block, `EnvironmentOfferSetup.price_amount: float` (`contracts/scenarios.py:62`);
+  - the environment, `price_amount: float` (`environment/engine.py:199,231`);
+  - the hold tool, `float(arguments["price_amount"])` (`tools/booking_tools.py:97`).
 - **"`Any` is not used for convenience".** Several public contracts use `Any`:
-  - `BenchmarkScenario.initial_state: dict[str, Any]` (`contracts/scenarios.py:64`);
+  - `BenchmarkScenario.initial_state: dict[str, Any]` (`contracts/scenarios.py:143`);
   - `DomainEvent.payload: Any` (`contracts/events.py:234`);
   - `AssertionOutcome.assertion: Any` (`contracts/evaluation.py:116`).

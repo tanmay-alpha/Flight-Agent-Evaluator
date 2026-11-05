@@ -80,5 +80,7 @@ the data required to compute freshness is represented explicitly.
 
 ## Errata (2026-11-05)
 
+Revised 2026-11-06 against v0.3.0.
+
 - **No live provider adapters have been added.** `src/flight_agent_evaluator/providers/` contains only `base.py`, `errors.py` and `fixture.py`.
-- **The CLI `run` command passes no provider.** `flight-evaluator run` calls `runner.run(loaded, output_dir=out_dir)` (`src/flight_agent_evaluator/cli/main.py:306`). Only the benchmark runner builds a `FixtureFlightProvider`.
+- **Resolved in v0.3.0: the CLI `run` command now gets a provider.** `flight-evaluator run` still calls `runner.run(loaded, output_dir=out_dir)` without one (`src/flight_agent_evaluator/cli/main.py:271`). However, `ScenarioRunner` now defaults to `FixtureFlightProvider()` when no provider is passed (`src/flight_agent_evaluator/engine/runner.py:46-47`).
