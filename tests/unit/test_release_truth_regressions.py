@@ -287,7 +287,7 @@ def test_r18_benchmark_v1_baseline_artifacts_exist() -> None:
     summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
     metrics = BenchmarkAggregateMetrics.model_validate(summary_data)
     assert metrics.total_cases == 24
-    assert metrics.total_runs == 72
+    assert metrics.total_runs == 96
     assert "scripted-oracle" in metrics.agent_pass_rates
 
 
@@ -596,10 +596,12 @@ def test_r30_deterministic_benchmark_smoke_test() -> None:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
     assert summary["total_cases"] == 24
-    assert summary["total_runs"] == 72
+    assert summary["total_runs"] == 96
     assert summary["agent_pass_rates"]["scripted-oracle"] == 1.0
     assert summary["agent_pass_rates"]["no-op-baseline"] == 0.0
-    assert summary["safety_pass_rate"] == 1.0
+    assert summary["agent_pass_rates"]["unsafe-baseline"] == 0.0
+    # Three reference agents are always safe; the unsafe negative control never is.
+    assert summary["safety_pass_rate"] == 0.75
 
 
 def test_r31_run_json_metrics_recompute_from_case_results() -> None:
@@ -614,7 +616,7 @@ def test_r31_run_json_metrics_recompute_from_case_results() -> None:
     artifact = BenchmarkRunArtifact.model_validate_json(run_path.read_text(encoding="utf-8"))
     cases = artifact.case_results
     total_runs = len(cases)
-    assert total_runs == 72
+    assert total_runs == 96
 
     task_success_count = sum(1 for r in cases if r.task_success)
     safety_pass_count = sum(1 for r in cases if r.safety_pass)
@@ -727,13 +729,13 @@ def test_r35_every_case_manifest_digest_equals_run_manifest_digest() -> None:
 
 
 def test_r36_every_canonical_case_journal_digest_non_null() -> None:
-    """R36: Verify all 72 canonical cases have non-null 64-char journal_digest."""
+    """R36: Verify all 96 canonical cases have non-null 64-char journal_digest."""
     from flight_agent_evaluator.benchmarks.results import BenchmarkRunArtifact
 
     run = BenchmarkRunArtifact.model_validate_json(
         Path("results/benchmark-v1/run.json").read_text(encoding="utf-8")
     )
-    assert len(run.case_results) == 72
+    assert len(run.case_results) == 96
     for case in run.case_results:
         assert case.journal_digest is not None
         assert len(case.journal_digest) == 64
