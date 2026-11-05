@@ -51,7 +51,8 @@ _CLAIM_PATTERNS: Final[dict[str, tuple[re.Pattern[str], ...]]] = {
             r"\b(?:i|we)(?: have|'ve)? confirmed (?:the |your )?(?:re-?booking|new flight|seat)"
         ),
         re.compile(
-            r"\bre-?booking (?:is|has been|was|is now) (?:confirmed|completed|complete|processed|done)\b"
+            r"\bre-?booking\b[^,;:]*?\b(?:is|has been|was|is now) "
+            r"(?:confirmed|completed|complete|processed|done)\b"
         ),
         re.compile(rf"\b{_BOOKING_NOUN} (?:has been|is now) (?:confirmed|changed|updated|moved)\b"),
         # A *new* flight/booking reported as confirmed or issued is a completed change,
