@@ -186,14 +186,14 @@ class SemanticReplayComparator:
                         observed=r_stat,
                     )
 
-                o_val = o_ev.payload.get("value")
-                r_val = r_ev.payload.get("value")
+                o_val = o_ev.payload.get("result")
+                r_val = r_ev.payload.get("result")
                 if o_val != r_val:
                     _add_div(
                         seq=seq,
                         kind=SemanticDivergenceType.TOOL_RESULT_VALUE_MISMATCH,
-                        detail=f"Tool result value payload mismatch: {o_val} != {r_val}",
-                        pointer="/payload/value",
+                        detail=f"Tool result payload mismatch: {o_val} != {r_val}",
+                        pointer="/payload/result",
                         expected=o_val,
                         observed=r_val,
                     )
@@ -255,18 +255,27 @@ class SemanticReplayComparator:
                         expected=o_resp,
                         observed=r_resp,
                     )
+                o_err = o_ev.payload.get("error")
+                r_err = r_ev.payload.get("error")
+                if o_err != r_err:
+                    _add_div(
+                        seq=seq,
+                        kind=SemanticDivergenceType.FINAL_RESPONSE_MISMATCH,
+                        detail=f"Driver error mismatch: {o_err!r} != {r_err!r}",
+                        pointer="/payload/error",
+                        expected=o_err,
+                        observed=r_err,
+                    )
 
             elif o_ev.event_type == SemanticEventType.RUN_COMPLETED:
-                o_stop = o_ev.payload.get("stop_reason")
-                r_stop = r_ev.payload.get("stop_reason")
-                if o_stop != r_stop:
+                if o_ev.payload != r_ev.payload:
                     _add_div(
                         seq=seq,
                         kind=SemanticDivergenceType.STOP_REASON_MISMATCH,
-                        detail=f"Stop reason mismatch: {o_stop!r} != {r_stop!r}",
-                        pointer="/payload/stop_reason",
-                        expected=o_stop,
-                        observed=r_stop,
+                        detail=f"Run completion mismatch: {o_ev.payload!r} != {r_ev.payload!r}",
+                        pointer="/payload",
+                        expected=o_ev.payload,
+                        observed=r_ev.payload,
                     )
 
             elif o_ev.payload != r_ev.payload:
