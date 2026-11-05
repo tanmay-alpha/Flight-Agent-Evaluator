@@ -188,6 +188,26 @@ def build_default_registry() -> ToolRegistry:
     return build_readonly_registry()
 
 
+def default_allowed_tools(scenario: Any) -> list[str]:
+    """Return the tools a scenario permits, never derived from its golden trajectory.
+
+    The scenario's explicit ``allowed_tools`` wins; otherwise every tool
+    registered for its ``scenario_mode`` is allowed.  Explicit names that are
+    not registered for the mode are rejected so misconfiguration fails closed.
+    """
+    registered = build_registry_for_scenario(scenario).tool_names()
+    explicit = getattr(scenario, "allowed_tools", None)
+    if explicit is None:
+        return list(registered)
+    unknown = [name for name in explicit if name not in registered]
+    if unknown:
+        raise ValueError(
+            f"allowed_tools names tools not registered for scenario_mode "
+            f"{getattr(scenario, 'scenario_mode', 'read_only')!r}: {unknown}"
+        )
+    return list(explicit)
+
+
 __all__ = [
     "DuplicateToolRegistrationError",
     "ToolDefinition",
@@ -197,5 +217,6 @@ __all__ = [
     "build_default_registry",
     "build_readonly_registry",
     "build_transactional_registry",
+    "default_allowed_tools",
     "build_registry_for_scenario",
 ]

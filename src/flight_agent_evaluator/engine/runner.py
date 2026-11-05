@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +14,8 @@ from flight_agent_evaluator.engine.fault_engine import FaultEngine
 from flight_agent_evaluator.engine.scenario_loader import LoadedScenario
 from flight_agent_evaluator.engine.tool_executor import ToolExecutor
 from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
+from flight_agent_evaluator.providers.fixture import FixtureFlightProvider
 from flight_agent_evaluator.recording.contracts import (
-    InvokeToolStep,
     RecordingBundleManifest,
     RunRecording,
 )
@@ -24,7 +25,7 @@ from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
 from flight_agent_evaluator.runtime.state import StateSnapshot
-from flight_agent_evaluator.tools.base import build_registry_for_scenario
+from flight_agent_evaluator.tools.base import build_registry_for_scenario, default_allowed_tools
 
 
 class ScenarioRunner:
@@ -37,7 +38,13 @@ class ScenarioRunner:
         output_dir: Path | None = None,
         driver: Any = None,
     ) -> RunRecording:
-        """Execute a scenario and return a RunRecording."""
+        """Execute a scenario and return a RunRecording.
+
+        Without an explicit ``provider`` the packaged deterministic
+        :class:`FixtureFlightProvider` serves flight data.
+        """
+        if provider is None:
+            provider = FixtureFlightProvider()
         if isinstance(target, LoadedScenario):
             scenario = target.scenario
             scenario_digest = target.digest
@@ -56,7 +63,12 @@ class ScenarioRunner:
             scenario_version=scenario.scenario_id.version,
             seed=scenario.seed,
         )
-        run_id = id_factory.next(record_type="run", sequence=0)
+        # Deterministic, but distinct for different scenario content or agents so that
+        # recordings of different runs never silently overwrite each other.
+        agent_id = getattr(driver, "agent_id", "scripted-oracle")
+        run_id = uuid.uuid5(
+            id_factory.next(record_type="run", sequence=0), f"{scenario_digest}|{agent_id}"
+        )
 
         # Build deterministic clock from reference time (default: 2026-01-01T00:00:00Z)
         ref_time = getattr(scenario, "reference_time", None)
@@ -133,9 +145,7 @@ class ScenarioRunner:
 
         environment = SimulatedAirlineEnvironment.from_scenario(scenario)
         registry = build_registry_for_scenario(scenario, env=environment)
-        allowed_tools = [
-            step.tool_name for step in trajectory.steps if isinstance(step, InvokeToolStep)
-        ]
+        allowed_tools = default_allowed_tools(scenario)
         executor = ToolExecutor(
             registry=registry,
             faults=fault_engine,
@@ -144,6 +154,7 @@ class ScenarioRunner:
             journal=journal,
             provider=provider,
             tool_call_limit=context.tool_call_limit,
+            logical_time_limit_ns=context.time_limit_seconds * 1_000_000_000,
             execution_policy=ExecutionToolPolicy.for_task(
                 scenario_id=scenario.scenario_id.id,
                 allowed_tool_names=allowed_tools,
