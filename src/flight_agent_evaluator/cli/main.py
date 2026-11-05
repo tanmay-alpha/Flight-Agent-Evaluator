@@ -1101,7 +1101,7 @@ def _get_version() -> str:
 
         return importlib.metadata.version("flight-agent-evaluator")
     except Exception:
-        return "0.2.0"
+        return "0.3.0"
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
