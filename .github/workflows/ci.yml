@@ -16,15 +16,29 @@ concurrency:
 permissions:
   contents: read
 
+defaults:
+  run:
+    # Git Bash on Windows runners, so every step uses identical syntax on all OSes.
+    shell: bash
+
 jobs:
   quality:
-    name: Quality Gates (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: Quality Gates (${{ matrix.os }}, ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 30 || 15 }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.11", "3.12", "3.13"]
+        include:
+          - os: windows-latest
+            python-version: "3.11"
+    env:
+      # Overrides the .python-version pin for every uv command (sync, run, build).
+      # Without this, `uv sync` silently selects 3.11 for every matrix entry.
+      UV_PYTHON: ${{ matrix.python-version }}
+      PYTHONIOENCODING: utf-8
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -40,11 +54,19 @@ jobs:
       - name: Show uv version
         run: uv --version
 
+      - name: No committed secrets or key files
+        run: uv run --no-project python scripts/check.py no-secrets
+
       - name: Lock consistency
         run: uv lock --check
 
       - name: Sync dependencies
         run: uv sync --frozen --all-groups
+
+      - name: Assert interpreter matches matrix
+        run: |
+          uv run python --version
+          uv run python -c "import sys; actual = '%d.%d' % sys.version_info[:2]; expected = '${{ matrix.python-version }}'; assert actual == expected, f'project venv runs Python {actual}, matrix expects {expected}'"
 
       - name: Ruff lint
         run: uv run ruff check src tests scripts --output-format=github
@@ -57,7 +79,7 @@ jobs:
 
       - name: Pytest (with branch coverage)
         run: |
-          uv run pytest \
+          uv run pytest -rs \
             --cov=flight_agent_evaluator \
             --cov-branch \
             --cov-report=term-missing:skip-covered \
@@ -90,6 +112,9 @@ jobs:
 
       - name: Validate README
         run: uv run python scripts/check.py readme
+
+      - name: Reference leakage scanner
+        run: uv run python scripts/check.py leakage
 
       - name: Deterministic fixture smoke test
         run: uv run python scripts/check.py smoke
