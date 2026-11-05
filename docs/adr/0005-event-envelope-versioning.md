@@ -1,6 +1,7 @@
 # ADR 0005 — Versioned event envelope with discriminated union
 
 - **Status:** Accepted
+- **Errata:** 2026-11-05 — see [Errata](#errata-2026-11-05).
 - **Date:** 2026-07-28
 - **Stage:** 1.
 
@@ -36,3 +37,14 @@ deserialisation.
   event types.
 - **Trade-off**: partial-model validation requires `info.data` access in the
   validator, which is slightly more complex than a flat union.
+
+## Errata (2026-11-05)
+
+The implementation differs from this decision in the following ways (`src/flight_agent_evaluator/contracts/events.py`):
+
+- **`event_type` is `str`, not a `Literal`.** `DomainEvent.event_type` is a `str` with `min_length=1` (`:228`).
+- **Unknown types are rejected only when a payload is present.** A `model_validator` rejects event types not in `PAYLOAD_MODELS` only if `payload` is not `None` (`:236-245`).
+- **Payload coercion uses a `model_validator`, not a `field_validator`** (`:247-260`). `payload` is typed `Any` (`:234`).
+- **`DomainEvent` repeats the envelope fields instead of embedding `EventEnvelope`** (`:197-234`).
+- **`PAYLOAD_MODELS` does have 17 entries** (`:171-189`), as stated.
+- **The run journal does not use these contracts.** It uses `JournalEntry` (`recording/contracts.py`) with free-form `dict` payloads.
