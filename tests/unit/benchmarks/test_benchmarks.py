@@ -174,6 +174,9 @@ def test_source_tree_digest_uses_committed_blob_bytes(tmp_path: Path) -> None:
         ["git", "init"],
         ["git", "config", "user.email", "test@example.invalid"],
         ["git", "config", "user.name", "Test User"],
+        # GitHub's Windows runners default to autocrlf=true; force it everywhere so the
+        # digest must not depend on checkout/export line-ending conversion.
+        ["git", "config", "core.autocrlf", "true"],
         ["git", "add", "src"],
         ["git", "commit", "-m", "initial source"],
     ):

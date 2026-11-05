@@ -6,10 +6,8 @@ import hashlib
 import os
 import re
 import subprocess
-import tarfile
 import tempfile
 import uuid
-from io import BytesIO
 from pathlib import Path
 from shutil import which
 from typing import Any
@@ -59,26 +57,36 @@ def _semantic_source_paths(root: Path) -> list[str]:
 
 
 def compute_source_tree_digest(root: Path | str = PACKAGE_REPO_ROOT) -> str | None:
-    """Hash Git blob bytes of the versioned tracked runtime-source closure."""
+    """Hash Git blob bytes of the versioned tracked runtime-source closure at HEAD.
+
+    Blobs are read with ``git cat-file --batch``, which never applies checkout
+    filters (``core.autocrlf``, ``eol`` attributes), so the digest is identical on
+    every operating system and git configuration.
+    """
     base = Path(root).resolve()
     try:
         source_paths = _semantic_source_paths(base)
-        archive = subprocess.run(  # noqa: S603
-            git_command(base, "archive", "--format=tar", "HEAD", "--", *source_paths),
+        request = "".join(f"HEAD:{path}\n" for path in source_paths).encode("utf-8")
+        batch = subprocess.run(  # noqa: S603
+            git_command(base, "cat-file", "--batch"),
+            input=request,
             check=True,
             capture_output=True,
             timeout=5.0,
         )
-        with tarfile.open(fileobj=BytesIO(archive.stdout), mode="r:") as source_tree:
-            entries = []
-            for path in source_paths:
-                file_obj = source_tree.extractfile(path)
-                if file_obj is None:
-                    raise FileNotFoundError(path)
-                entries.append(
-                    {"path": path, "sha256": hashlib.sha256(file_obj.read()).hexdigest()}
-                )
-    except (FileNotFoundError, subprocess.SubprocessError, tarfile.TarError):
+        entries = []
+        output = batch.stdout
+        offset = 0
+        for path in source_paths:
+            header_end = output.index(b"\n", offset)
+            header = output[offset:header_end].split()
+            if len(header) != 3 or header[1] != b"blob":
+                raise FileNotFoundError(path)
+            size = int(header[2])
+            content = output[header_end + 1 : header_end + 1 + size]
+            offset = header_end + 1 + size + 1  # trailing newline after each object
+            entries.append({"path": path, "sha256": hashlib.sha256(content).hexdigest()})
+    except (FileNotFoundError, ValueError, subprocess.SubprocessError):
         return None
     return canonical_hash({"version": SOURCE_TREE_DIGEST_VERSION, "files": entries})
 
