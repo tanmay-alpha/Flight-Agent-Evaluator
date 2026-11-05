@@ -161,7 +161,7 @@ def test_installed_cli_version_outside_repo(
 ) -> None:
     res = installed_wheel.run(["--version"], outside_cwd)
     assert res.returncode == 0, res.stderr
-    assert res.stdout.strip() == "flight-evaluator 0.2.0"
+    assert res.stdout.strip() == "flight-evaluator 0.3.0"
 
 
 def test_installed_cli_benchmark_list_outside_repo(

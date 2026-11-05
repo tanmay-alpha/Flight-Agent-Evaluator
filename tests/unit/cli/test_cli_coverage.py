@@ -43,7 +43,7 @@ def test_sanitise_error() -> None:
 
 
 def test_get_version() -> None:
-    assert _get_version() == "0.2.0"
+    assert _get_version() == "0.3.0"
 
 
 def test_cli_agents_list(capsys: pytest.CaptureFixture[str]) -> None:

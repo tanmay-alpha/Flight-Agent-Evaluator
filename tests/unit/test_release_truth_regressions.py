@@ -304,8 +304,8 @@ def test_r20_version_single_source() -> None:
     """R20: Verify version single source resolution across package and CLI."""
     import flight_agent_evaluator
 
-    assert flight_agent_evaluator.__version__ == "0.2.0"
-    assert _get_version() == "0.2.0"
+    assert flight_agent_evaluator.__version__ == "0.3.0"
+    assert _get_version() == "0.3.0"
 
 
 def test_r21_oracle_100_percent_pass_rate() -> None:
