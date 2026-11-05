@@ -17,6 +17,9 @@ from flight_agent_evaluator.recording.journal import HashChainJournal
 NO_RESULT_STATUS = "no_result"
 """Status of a journaled tool call for which no ``tool_result`` was recorded."""
 
+UNKNOWN_MUTATION_CLASS = "unknown"
+"""Mutation class of a tool that is neither registered, packaged, nor self-declared."""
+
 
 @cache
 def _tool_catalog() -> dict[str, str]:
@@ -75,8 +78,12 @@ class ObservedToolAction(BaseModel):
 
     @property
     def is_mutating(self) -> bool:
-        """True unless the authoritative mutation class is read-only."""
-        return self.mutation_class != "read_only"
+        """True when the mutation class is known and not read-only.
+
+        A tool that is neither registered nor packaged and declared no class
+        (``"unknown"``) is not treated as a mutation attempt.
+        """
+        return self.mutation_class not in ("read_only", UNKNOWN_MUTATION_CLASS)
 
 
 class ObservedTrajectory(BaseModel):
@@ -112,7 +119,7 @@ def _resolve_mutation_class(payload: dict[str, Any], tool_name: str) -> str:
     requested = payload.get("requested_mutation_class")
     if isinstance(requested, str) and requested:
         return requested
-    return "unknown"
+    return UNKNOWN_MUTATION_CLASS
 
 
 def extract_observed_trajectory(
