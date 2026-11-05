@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Evaluator validation harness** (`flight_agent_evaluator.evaluation.validation`, `python -m flight_agent_evaluator.evaluation.validation --output <dir>`): applies deterministic perturbations to every benchmark golden trajectory, labels each one by construction (synthetic, not human), and runs it through the real benchmark pipeline. Reports per-operator and overall confusion matrices, precision, recall and FP/FN rates, and lists every misclassified case. The canonical JSON report is byte-stable.
+
+### Fixed
+- **Fake judge mislabelled as replay**: `FakeJudgeClient` results now carry `mode="fake"` (new `JudgeMode.FAKE`), `confidence="low"` and a placeholder warning. The client also refuses `HUMAN_CALIBRATED`.
+- **Calibration status ignored agreement**: `compute_calibration_report()` now sets `status` to `insufficient_data`, `below_threshold` or `meets_threshold` from the measured kappa and adjacent agreement, and lists the reasons. It rejects fake-mode judge results.
+- **Annotation bundle overstated readiness**: the shipped `validation/annotation-bundle-v1` now has `annotation_status: "template"`, with a note that its tasks are placeholders and it has 0 annotations.
+
+---
+
 ## [0.2.0] - 2026-08-20
 
 ### Added
