@@ -211,7 +211,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-expires.json",
       "scenario_sha256": "6d2b2a73cf5f11d250ccde8d2db261d520e85f305536eb7c7dc9c482bc2f7624",
       "expectation_path": "resources/expectations/transactional/approval-expires.json",
-      "expectation_sha256": "d5a7c47b53d12fdd53067e1ce1ac82c762f2366ec48df5ded313395290f7aa9b",
+      "expectation_sha256": "5495a39391815ce4f24dd6ab4d0bdd49a5231680818102a863bc30d9d7e2158f",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -226,7 +226,7 @@
       "scenario_path": "resources/scenarios/transactional/mutation-without-approval.json",
       "scenario_sha256": "619a0a96de4a1b27bf588dcda99af25794b2f0e63b015c39788506071056713e",
       "expectation_path": "resources/expectations/transactional/mutation-without-approval.json",
-      "expectation_sha256": "0d71ec239a4e10953a628bb3af6afe2de1582b9d831cb8e1cc80cf4adb838fbc",
+      "expectation_sha256": "ff6bce518a5be2bd86600fcad9ae3ad8f4fc0a0cc3d421e103323584c765f518",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -241,7 +241,7 @@
       "scenario_path": "resources/scenarios/transactional/payload-changes-after-approval.json",
       "scenario_sha256": "5ecc5ca34db8cc2c9705088604826ed0a4334959be3effd1929225be98b7db1f",
       "expectation_path": "resources/expectations/transactional/payload-changes-after-approval.json",
-      "expectation_sha256": "089982b078d3a5d0e115f9b8a1982963f812d92f33eac780363df3c59e214694",
+      "expectation_sha256": "74e1ab0c2ca41d5939ce0d15384c6fcf7afb0975d177652ed5881ca0aead997b",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -271,7 +271,7 @@
       "scenario_path": "resources/scenarios/transactional/duplicate-rebooking-attempt.json",
       "scenario_sha256": "54eee90cb185f6c7f4d889751730c5af34b2d88f11cfb73d8f078cc5ece3936f",
       "expectation_path": "resources/expectations/transactional/duplicate-rebooking-attempt.json",
-      "expectation_sha256": "d520968fc42a2382a8d7726a6c2f019bc8ce5eac215a53b188c1e033f5392b45",
+      "expectation_sha256": "6ffb1f7a500f837a42eb26fc225d2c915b42763aac5960baa93cae5a258eb87a",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -286,7 +286,7 @@
       "scenario_path": "resources/scenarios/transactional/hold-expires.json",
       "scenario_sha256": "165c9b09e36433b38d4e6ad7930d3d9933aab8cb425486b853827feb37f54f05",
       "expectation_path": "resources/expectations/transactional/hold-expires.json",
-      "expectation_sha256": "49d924b817224fc568f891873d803958a5b45eaa103de23442259346015f047a",
+      "expectation_sha256": "3efc0e34841f4d68e2b3353509273404bcbc88cf573e10a261be060f54f39f30",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -316,7 +316,7 @@
       "scenario_path": "resources/scenarios/transactional/alternative-disappears-before-confirm.json",
       "scenario_sha256": "5338d43b3a1032dae49c07579f1a7b6e894458679c101b9c3f645c7de5ce3c18",
       "expectation_path": "resources/expectations/transactional/alternative-disappears-before-confirm.json",
-      "expectation_sha256": "092a63d5e9ce36257c59ba7839fc74dd777c95d87edc0ddb37fc7f1ffd13dc4e",
+      "expectation_sha256": "bec080b93e9d1945a6d0585421b8e127da633e6c9238c1d4502e3399cc75f938",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -331,7 +331,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-wrong-itinerary.json",
       "scenario_sha256": "c949b4732e6ba9fcc39ff88a6fa210e46bcfd350a067466fae7061022a0e9a16",
       "expectation_path": "resources/expectations/transactional/approval-wrong-itinerary.json",
-      "expectation_sha256": "d90a37665556bf08241db2d690b9a2365664977ffdab5dc5a21db16b5255ab33",
+      "expectation_sha256": "b0ddd5bfaa1ba159ef367e1d14fa85e456f19684a3b0d932c4138759806522ec",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -346,7 +346,7 @@
       "scenario_path": "resources/scenarios/transactional/constraint-changes-after-approval.json",
       "scenario_sha256": "314674df13fcc7c6629adbcc2b3496e7be71dbbfdc6de706c194255f2ada3ca6",
       "expectation_path": "resources/expectations/transactional/constraint-changes-after-approval.json",
-      "expectation_sha256": "61568e0ec36c94eb7d0c8b0c374ef340ef8c605a89241aefea98f912335a4589",
+      "expectation_sha256": "12146ed13d80e40bdd0d0933633dab7d5090fc90462ba0dfde16c96ac356d25d",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -386,5 +386,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "f41167c08f33f19eb37871bb14a5128a203987bb1447e7ea59b5c505541c2069"
+  "manifest_digest": "20d1f7628d8121bcb43e5ebf8f32ebe56f3b77f72e1cc79927b8472cfb729977"
 }

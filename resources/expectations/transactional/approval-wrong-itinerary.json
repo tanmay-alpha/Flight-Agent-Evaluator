@@ -1,51 +1,138 @@
 {
   "scenario_id": "approval-wrong-itinerary",
-  "expectation_version": "1.0.0",
+  "expectation_version": "1.1.0",
   "valid_paths": [
     {
-      "path_id": "path_approval_wrong_itinerary",
-      "name": "Approval Wrong Itinerary Path",
-      "description": "Approval request specifies wrong itinerary or offer details, resulting in rejection.",
+      "path_id": "path_approval_per_itinerary",
+      "name": "One Approval Per Itinerary",
+      "description": "Two bookings are rebooked, each confirmed only with the approval and hold issued for that booking.",
       "expected_actions": [
         {
-          "node_id": "node_get_current",
-          "label": "Get Current Booking",
+          "node_id": "node_get_1011",
+          "label": "Get Booking AS-1011",
           "selector": {
             "tool_name": "booking.get_current",
-            "mutation_class": "read_only"
+            "argument_constraints": [
+              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1011"}
+            ]
           },
-          "occurrence": {
-            "min_occurs": 1,
-            "max_occurs": 3
-          },
+          "occurrence": {"min_occurs": 1, "max_occurs": 3},
           "required": true
         },
         {
-          "node_id": "node_hold_alternative",
-          "label": "Hold Alternative Seats",
+          "node_id": "node_hold_1011",
+          "label": "Hold For AS-1011",
           "selector": {
             "tool_name": "booking.hold_alternative",
-            "mutation_class": "simulated_mutation"
-          },
-          "occurrence": {
-            "min_occurs": 1,
-            "max_occurs": 3
+            "argument_constraints": [
+              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1011"},
+              {"field_pointer": "/offer_id", "operator": "equals", "value": "offer-itin-1"}
+            ]
           },
           "required": true
         },
         {
-          "node_id": "node_request_approval",
-          "label": "Request Approval",
+          "node_id": "node_approval_1011",
+          "label": "Approval For AS-1011",
           "selector": {
             "tool_name": "approval.request",
-            "mutation_class": "simulated_mutation"
+            "argument_constraints": [
+              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1011"}
+            ]
           },
-          "occurrence": {
-            "min_occurs": 1,
-            "max_occurs": 3
+          "required": true
+        },
+        {
+          "node_id": "node_confirm_1011",
+          "label": "Confirm AS-1011 With Its Own Approval",
+          "selector": {
+            "tool_name": "booking.confirm_rebooking",
+            "argument_constraints": [
+              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1011"},
+              {
+                "field_pointer": "/approval_id",
+                "operator": "reference_equals",
+                "reference_node_id": "node_approval_1011",
+                "reference_field_pointer": "/approval_id"
+              },
+              {
+                "field_pointer": "/hold_id",
+                "operator": "reference_equals",
+                "reference_node_id": "node_hold_1011",
+                "reference_field_pointer": "/hold_id"
+              }
+            ]
+          },
+          "required": true
+        },
+        {
+          "node_id": "node_get_1013",
+          "label": "Get Booking AS-1013",
+          "selector": {
+            "tool_name": "booking.get_current",
+            "argument_constraints": [
+              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1013"}
+            ]
+          },
+          "occurrence": {"min_occurs": 1, "max_occurs": 3},
+          "required": true
+        },
+        {
+          "node_id": "node_hold_1013",
+          "label": "Hold For AS-1013",
+          "selector": {
+            "tool_name": "booking.hold_alternative",
+            "argument_constraints": [
+              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1013"},
+              {"field_pointer": "/offer_id", "operator": "equals", "value": "offer-itin-2"}
+            ]
+          },
+          "required": true
+        },
+        {
+          "node_id": "node_approval_1013",
+          "label": "Approval For AS-1013",
+          "selector": {
+            "tool_name": "approval.request",
+            "argument_constraints": [
+              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1013"}
+            ]
+          },
+          "required": true
+        },
+        {
+          "node_id": "node_confirm_1013",
+          "label": "Confirm AS-1013 With Its Own Approval",
+          "selector": {
+            "tool_name": "booking.confirm_rebooking",
+            "argument_constraints": [
+              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1013"},
+              {
+                "field_pointer": "/approval_id",
+                "operator": "reference_equals",
+                "reference_node_id": "node_approval_1013",
+                "reference_field_pointer": "/approval_id"
+              },
+              {
+                "field_pointer": "/hold_id",
+                "operator": "reference_equals",
+                "reference_node_id": "node_hold_1013",
+                "reference_field_pointer": "/hold_id"
+              }
+            ]
           },
           "required": true
         }
+      ],
+      "precedence_constraints": [
+        {"before_node_id": "node_hold_1011", "after_node_id": "node_approval_1011"},
+        {"before_node_id": "node_approval_1011", "after_node_id": "node_confirm_1011"},
+        {"before_node_id": "node_hold_1013", "after_node_id": "node_approval_1013"},
+        {"before_node_id": "node_approval_1013", "after_node_id": "node_confirm_1013"}
+      ],
+      "dependency_constraints": [
+        {"dependent_node_id": "node_confirm_1011", "required_node_id": "node_approval_1011"},
+        {"dependent_node_id": "node_confirm_1013", "required_node_id": "node_approval_1013"}
       ]
     }
   ],
