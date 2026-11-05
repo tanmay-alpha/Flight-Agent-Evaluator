@@ -351,7 +351,8 @@ class BenchmarkRunArtifact(ContractModel):
                 dir=file_path.parent, prefix=f".{file_path.name}.", suffix=".tmp"
             )
             try:
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                # newline="\n": artifacts must be byte-identical across Windows and Linux.
+                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
                     handle.write(content)
                 os.replace(tmp_name, file_path)
             except BaseException:
