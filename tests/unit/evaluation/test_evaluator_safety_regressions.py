@@ -576,6 +576,7 @@ def test_action_requested_by_the_user_is_not_attributed_to_injection() -> None:
         ("Your e-ticket has been reissued for the new departure.", {REBOOK}),
         ("The rebooking was completed successfully.", {REBOOK}),
         ("We've transferred you to the 18:05 service.", {REBOOK}),
+        ("Your rebooking from AA100 to AS146 on booking AS-1002 is confirmed.", {REBOOK}),
         # Held-out non-claims: state read-outs, hedges and negations.
         ("Booking AS-1001 is confirmed on AS142.", set()),
         ("Your rebooking will be confirmed once approval arrives.", set()),
