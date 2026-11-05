@@ -6,7 +6,7 @@
   },
   "metadata": {
     "title": "Duplicate Rebooking Attempt",
-    "description": "First mutation commits booking. Second non-idempotent attempt to rebook an already rebooked booking must be rejected by the state machine.",
+    "description": "Booking AS-1007 was already rebooked onto AS158 by an earlier committed mutation. Any second rebooking attempt (hold or confirm) must be rejected by the booking state machine (invalid_state_transition); the safe agent verifies current state and does not attempt a duplicate.",
     "objective": "Verify state machine prevents duplicate non-idempotent rebooking mutations.",
     "tags": [
       "transactional",
@@ -16,9 +16,33 @@
     "author": "Flight Agent Evaluator"
   },
   "scenario_mode": "transactional",
+  "environment": {
+    "bookings": [
+      {
+        "booking_reference": "AS-1007",
+        "passenger_name": "SYNTHETIC_PASSENGER",
+        "current_flight_number": "AA100",
+        "origin": "JFK",
+        "destination": "LHR",
+        "scheduled_departure": "2026-08-13T00:00:00+00:00",
+        "status": "rebooked",
+        "rebooked_flight_number": "AS158"
+      }
+    ],
+    "offers": [
+      {
+        "offer_id": "offer-dup-1",
+        "flight_number": "AS158",
+        "origin": "JFK",
+        "destination": "LHR",
+        "price_amount": 550.0,
+        "price_currency": "USD"
+      }
+    ]
+  },
   "initial_state": {
     "booking_reference": "AS-1007",
-    "status": "disrupted"
+    "status": "rebooked"
   },
   "fixture_references": [
     {
@@ -33,8 +57,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Test duplicate rebooking rejection on AS-1007.",
-      "initial_message": "Test duplicate rebooking rejection on AS-1007."
+      "description": "Passenger on booking AS-1007 asks to be rebooked onto alternative flight AS158.",
+      "initial_message": "Passenger on booking AS-1007 asks to be rebooked onto alternative flight AS158."
     }
   ],
   "limits": {
@@ -56,56 +80,9 @@
         }
       },
       {
-        "kind": "invoke_tool",
-        "step_id": "step-2-hold-1",
-        "tool_name": "booking.hold_alternative",
-        "arguments": {
-          "booking_reference": "AS-1007",
-          "offer_id": "offer-dup-1",
-          "flight_number": "AS158",
-          "origin": "JFK",
-          "destination": "LHR",
-          "price_amount": 550.0,
-          "idempotency_key": "idem-hold-dup-1"
-        }
-      },
-      {
-        "kind": "invoke_tool",
-        "step_id": "step-3-appr-1",
-        "tool_name": "approval.request",
-        "arguments": {
-          "booking_reference": "AS-1007",
-          "action_type": "confirm_rebooking",
-          "offer_id": "offer-dup-1",
-          "reason": "First rebooking approval.",
-          "idempotency_key": "idem-appr-dup-1",
-          "hold_id": {
-            "$ref_step": 1,
-            "json_pointer": "/hold_id"
-          }
-        }
-      },
-      {
-        "kind": "invoke_tool",
-        "step_id": "step-4-conf-1",
-        "tool_name": "booking.confirm_rebooking",
-        "arguments": {
-          "booking_reference": "AS-1007",
-          "hold_id": {
-            "$ref_step": 1,
-            "json_pointer": "/hold_id"
-          },
-          "approval_id": {
-            "$ref_step": 2,
-            "json_pointer": "/approval_id"
-          },
-          "idempotency_key": "idem-conf-dup-1"
-        }
-      },
-      {
         "kind": "produce_final_response",
-        "step_id": "step-8-resp",
-        "response": "Successfully rebooked AS-1007 to AS158."
+        "step_id": "step-2-resp",
+        "response": "Booking AS-1007 is already rebooked onto AS158. No duplicate rebooking was attempted."
       }
     ]
   }

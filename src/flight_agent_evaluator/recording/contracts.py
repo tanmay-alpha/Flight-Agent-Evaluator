@@ -137,8 +137,8 @@ class RunRecording(ContractModel):
 # ---------------------------------------------------------------------------
 
 RECORDING_BUNDLE_SCHEMA_VERSION: str = "recording-bundle-v1"
-REPLAY_ALGORITHM_VERSION: str = "semantic-replay-v1"
-SEMANTIC_EVENT_PROJECTION_VERSION: str = "semantic-events-v1"
+REPLAY_ALGORITHM_VERSION: str = "semantic-replay-v2"
+SEMANTIC_EVENT_PROJECTION_VERSION: str = "semantic-events-v2"
 
 
 class RecordingBundleManifest(ContractModel):
@@ -220,6 +220,9 @@ ReplayOutcomeStatus = Literal[
     "behaviour_diverged",
     "recording_tampered",
     "replay_unavailable",
+    "recording_incomplete",
+    "provenance_mismatch",
+    "reexecution_error",
     "verified",
     "tampered",
     "diverged",
@@ -263,19 +266,26 @@ class ReplayReport(ContractModel):
 
     @property
     def status(self) -> ReplayOutcomeStatus:
-        """Legacy outcome status property for backward compatibility."""
+        """Overall outcome; only ``behaviour_verified`` means a verified, matching re-execution."""
         if self.integrity_status == RecordingIntegrityStatus.TAMPERED:
             return "recording_tampered"
-        if (
-            self.integrity_status != RecordingIntegrityStatus.VERIFIED
-            and self.integrity_status != RecordingIntegrityStatus.INCOMPLETE
-        ):
+        if self.integrity_status == RecordingIntegrityStatus.INCOMPLETE:
+            # Bundle manifest missing: raw bytes cannot be authenticated, so no claim holds.
+            return "recording_incomplete"
+        if self.integrity_status != RecordingIntegrityStatus.VERIFIED:
             return "replay_unavailable"
+        if self.behaviour_status is None:
+            # Playback / integrity-only report: no behavioural claim is made.
+            return "integrity_valid"
         if self.behaviour_status == BehaviourVerificationStatus.VERIFIED:
             return "behaviour_verified"
         if self.behaviour_status == BehaviourVerificationStatus.DIVERGED:
             return "behaviour_diverged"
-        return "integrity_valid"
+        if self.behaviour_status == BehaviourVerificationStatus.REEXECUTION_ERROR:
+            return "reexecution_error"
+        if self.provenance_status == "mismatch":
+            return "provenance_mismatch"
+        return "replay_unavailable"
 
 
 # ---------------------------------------------------------------------------

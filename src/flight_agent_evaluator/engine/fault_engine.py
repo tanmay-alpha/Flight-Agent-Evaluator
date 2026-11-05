@@ -242,7 +242,7 @@ def _fault_to_error(fault: FaultSpec) -> tuple[ToolResultStatus, ToolError]:
         return (
             "failure",
             ToolError(
-                error_type="invalid_arguments",
+                error_type="provider_error",
                 message="Malformed response from provider (injected fault)",
                 retryable=False,
                 details={"description": fault.description},

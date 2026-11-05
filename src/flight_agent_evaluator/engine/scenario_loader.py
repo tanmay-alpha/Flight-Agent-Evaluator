@@ -10,8 +10,8 @@ Scenarios are machine-readable JSON files. The loader:
 - Rejects unsupported scenario schema major versions.
 - Validates the scenario against ``BenchmarkScenario``.
 - Computes a SHA-256 digest of the raw bytes for provenance.
-- Enforces path safety unconditionally.
-- Rejects symlinks.
+- Enforces path containment only when an explicit ``allowed_root`` is configured.
+- Rejects symlinks and files larger than the size limit before reading them.
 """
 
 from __future__ import annotations
@@ -109,10 +109,9 @@ class ScenarioLoader:
     """Load, validate, and digest benchmark scenarios from local JSON files.
 
     The constructor accepts an optional ``allowed_root`` for path-safety
-    enforcement. If provided, scenario files must exist below that
-    directory tree. If omitted, the loader enforces that the file is
-    inside the repository's own ``resources/scenarios`` directory (a
-    deterministic default safe tree).
+    enforcement. If provided, scenario files must resolve below that
+    directory tree. If omitted, no containment check is performed: callers
+    loading untrusted paths must pass ``allowed_root``.
     """
 
     def __init__(
@@ -255,6 +254,11 @@ class ScenarioLoader:
         # Resolve and verify path safety.
         self._check_path_safety(path)
 
+        size = path.stat().st_size
+        if size > self._max_bytes:
+            raise ScenarioLoaderError(
+                f"Scenario file too large ({size} > {self._max_bytes} bytes): {path}"
+            )
         raw = path.read_bytes()
         return self.load_from_bytes(raw, expected_sha256=expected_sha256)
 

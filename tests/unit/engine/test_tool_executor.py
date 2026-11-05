@@ -188,7 +188,7 @@ def test_executor_enforces_tool_call_limit():
     res2 = asyncio.run(executor.execute(call, context=context))
     assert res2.status == "failure"
     assert res2.error is not None
-    assert res2.error.error_type == "invalid_arguments"
+    assert res2.error.error_type == "tool_call_limit_exceeded"
 
 
 def test_identity_projector():

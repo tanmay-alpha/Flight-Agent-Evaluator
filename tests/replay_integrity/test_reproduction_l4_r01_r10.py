@@ -6,11 +6,15 @@ the baseline recording/replay and evidence infrastructure.
 
 from __future__ import annotations
 
+import asyncio
+import copy
 import hashlib
 import tempfile
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -36,140 +40,77 @@ from flight_agent_evaluator.recording.journal import (
 from flight_agent_evaluator.recording.store import (
     FileRecordingStore,
 )
+from flight_agent_evaluator.replay.comparator import SemanticReplayComparison
 from flight_agent_evaluator.replay.engine import ReplayEngine
 
 
-def _create_sample_journal(run_id: str, scenario_id: str = "jfk-lhr-delay") -> HashChainJournal:
-    """Helper to create a simple valid HashChainJournal."""
+def _runner_journal(
+    run_id: str,
+    scenario_id: str = "jfk-lhr-delay",
+    transform: Callable[[str, dict[str, Any]], dict[str, Any] | None] | None = None,
+) -> HashChainJournal:
+    """Journal produced by the real ScenarioRunner, re-keyed to ``run_id``.
+
+    ``transform`` may rewrite an entry payload or drop the entry (return None).
+    """
+    from flight_agent_evaluator.engine.runner import ScenarioRunner
+    from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
+
+    loaded = ScenarioLoader().load_from_path(Path(f"resources/scenarios/{scenario_id}.json"))
+    with tempfile.TemporaryDirectory() as tmp:
+        recording = asyncio.run(ScenarioRunner().run(loaded, output_dir=Path(tmp)))
+        source = FileRecordingStore(Path(tmp)).read_recording(str(recording.run_id))
     j = HashChainJournal()
-    j.append_event(
-        entry_type="run_started",
-        run_id=run_id,
-        correlation_id=f"corr-{run_id}-0",
-        time=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
-        payload={"scenario_id": scenario_id, "seed": 42},
-    )
-    j.append_event(
-        entry_type="tool_call",
-        run_id=run_id,
-        correlation_id=f"corr-{run_id}-1",
-        time=datetime(2026, 1, 1, 12, 0, 1, tzinfo=UTC),
-        payload={
-            "tool_name": "flight.get_status",
-            "arguments": {"flight_id": "AA100"},
-            "call_id": "call-1",
-        },
-    )
-    j.append_event(
-        entry_type="tool_result",
-        run_id=run_id,
-        correlation_id=f"corr-{run_id}-2",
-        time=datetime(2026, 1, 1, 12, 0, 2, tzinfo=UTC),
-        payload={
-            "status": "success",
-            "value": {"status": "DELAYED", "delay_minutes": 180},
-            "call_id": "call-1",
-        },
-    )
-    j.append_event(
-        entry_type="final_response",
-        run_id=run_id,
-        correlation_id=f"corr-{run_id}-3",
-        time=datetime(2026, 1, 1, 12, 0, 3, tzinfo=UTC),
-        payload={"response": "Flight AA100 is delayed by 180 minutes."},
-    )
-    j.append_event(
-        entry_type="run_completed",
-        run_id=run_id,
-        correlation_id=f"corr-{run_id}-4",
-        time=datetime(2026, 1, 1, 12, 0, 4, tzinfo=UTC),
-        payload={"stop_reason": "completed"},
-    )
+    for entry in source.entries:
+        payload: dict[str, Any] | None = copy.deepcopy(dict(entry.payload))
+        if transform is not None and payload is not None:
+            payload = transform(entry.type, payload)
+        if payload is None:
+            continue
+        j.append_event(entry.type, run_id, entry.correlation_id, entry.time, payload)
     return j
 
 
-def test_l4_r01_tool_result_semantic_payload_divergence() -> None:
-    """L4-R01: Divergence in tool result payload/value must cause behaviour verification to fail."""
+def _create_sample_journal(run_id: str) -> HashChainJournal:
+    return _runner_journal(run_id)
+
+
+def _compare(original: HashChainJournal, replay: HashChainJournal) -> SemanticReplayComparison:
     from flight_agent_evaluator.replay.comparator import SemanticReplayComparator
     from flight_agent_evaluator.replay.projection import project_semantic_event
 
+    return SemanticReplayComparator().compare(
+        tuple(project_semantic_event(e) for e in original.entries),
+        tuple(project_semantic_event(e) for e in replay.entries),
+    )
+
+
+def test_l4_r01_tool_result_semantic_payload_divergence() -> None:
+    """L4-R01: Divergence in a tool result payload must cause behaviour verification to fail."""
     run_id = str(uuid.uuid4())
-    j_orig = _create_sample_journal(run_id)
 
-    # Replay journal has status="success" but different value payload ("ON_TIME")
-    j_replay = HashChainJournal()
-    for e in j_orig.entries:
-        if e.type == "tool_result":
-            j_replay.append_event(
-                entry_type="tool_result",
-                run_id=run_id,
-                correlation_id=e.correlation_id,
-                time=e.time,
-                payload={
-                    "status": "success",
-                    "value": {"status": "ON_TIME", "delay_minutes": 0},
-                    "call_id": "call-1",
-                },
-            )
-        else:
-            j_replay.append_event(
-                entry_type=e.type,
-                run_id=run_id,
-                correlation_id=e.correlation_id,
-                time=e.time,
-                payload=e.payload,
-            )
+    def _shift_delay(entry_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        result = payload.get("result")
+        if entry_type == "tool_result" and isinstance(result, dict) and "status" in result:
+            result["status"]["delay_minutes"] = (result["status"].get("delay_minutes") or 0) + 30
+        return payload
 
-    events_orig = tuple(project_semantic_event(e) for e in j_orig.entries)
-    events_replay = tuple(project_semantic_event(e) for e in j_replay.entries)
-
-    comparator = SemanticReplayComparator()
-    comparison = comparator.compare(events_orig, events_replay)
+    comparison = _compare(_runner_journal(run_id), _runner_journal(run_id, transform=_shift_delay))
 
     assert not comparison.verified
-    assert any(
-        "result" in d.kind.value.lower() or "value" in d.kind.value.lower()
-        for d in comparison.divergences
-    )
+    assert any(d.kind == "tool_result_value_mismatch" for d in comparison.divergences)
 
 
 def test_l4_r02_tool_argument_divergence() -> None:
     """L4-R02: Divergence in tool arguments must cause behaviour verification to fail."""
-    from flight_agent_evaluator.replay.comparator import SemanticReplayComparator
-    from flight_agent_evaluator.replay.projection import project_semantic_event
-
     run_id = str(uuid.uuid4())
-    j_orig = _create_sample_journal(run_id)
 
-    # Replay journal called tool with different flight_id
-    j_replay = HashChainJournal()
-    for e in j_orig.entries:
-        if e.type == "tool_call":
-            j_replay.append_event(
-                entry_type="tool_call",
-                run_id=run_id,
-                correlation_id=e.correlation_id,
-                time=e.time,
-                payload={
-                    "tool_name": "flight.get_status",
-                    "arguments": {"flight_id": "AA999"},
-                    "call_id": "call-1",
-                },
-            )
-        else:
-            j_replay.append_event(
-                entry_type=e.type,
-                run_id=run_id,
-                correlation_id=e.correlation_id,
-                time=e.time,
-                payload=e.payload,
-            )
+    def _other_flight(entry_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if entry_type == "tool_call" and "flight_id" in payload["arguments"]:
+            payload["arguments"]["flight_id"] = "AA999"
+        return payload
 
-    events_orig = tuple(project_semantic_event(e) for e in j_orig.entries)
-    events_replay = tuple(project_semantic_event(e) for e in j_replay.entries)
-
-    comparator = SemanticReplayComparator()
-    comparison = comparator.compare(events_orig, events_replay)
+    comparison = _compare(_runner_journal(run_id), _runner_journal(run_id, transform=_other_flight))
 
     assert not comparison.verified
     assert any("argument" in d.kind.value.lower() for d in comparison.divergences)
@@ -177,36 +118,16 @@ def test_l4_r02_tool_argument_divergence() -> None:
 
 def test_l4_r03_final_response_divergence() -> None:
     """L4-R03: Divergence in final response must cause behaviour verification to fail."""
-    from flight_agent_evaluator.replay.comparator import SemanticReplayComparator
-    from flight_agent_evaluator.replay.projection import project_semantic_event
-
     run_id = str(uuid.uuid4())
-    j_orig = _create_sample_journal(run_id)
 
-    j_replay = HashChainJournal()
-    for e in j_orig.entries:
-        if e.type == "final_response":
-            j_replay.append_event(
-                entry_type="final_response",
-                run_id=run_id,
-                correlation_id=e.correlation_id,
-                time=e.time,
-                payload={"response": "Flight AA100 is completely on time."},
-            )
-        else:
-            j_replay.append_event(
-                entry_type=e.type,
-                run_id=run_id,
-                correlation_id=e.correlation_id,
-                time=e.time,
-                payload=e.payload,
-            )
+    def _rewrite_response(entry_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if entry_type == "driver_completed":
+            payload["final_response"] = "Flight is completely on time."
+        return payload
 
-    events_orig = tuple(project_semantic_event(e) for e in j_orig.entries)
-    events_replay = tuple(project_semantic_event(e) for e in j_replay.entries)
-
-    comparator = SemanticReplayComparator()
-    comparison = comparator.compare(events_orig, events_replay)
+    comparison = _compare(
+        _runner_journal(run_id), _runner_journal(run_id, transform=_rewrite_response)
+    )
 
     assert not comparison.verified
     assert any("final_response" in d.kind.value.lower() for d in comparison.divergences)
@@ -234,7 +155,7 @@ def test_l4_r04_state_divergence() -> None:
         run_id,
         "c2",
         datetime(2026, 1, 1, 12, 0, 2, tzinfo=UTC),
-        {"stop_reason": "done"},
+        {"run_status": "completed", "tool_calls_made": 0},
     )
 
     j_replay = HashChainJournal()
@@ -253,7 +174,7 @@ def test_l4_r04_state_divergence() -> None:
         run_id,
         "c2",
         datetime(2026, 1, 1, 12, 0, 2, tzinfo=UTC),
-        {"stop_reason": "done"},
+        {"run_status": "completed", "tool_calls_made": 0},
     )
 
     events_orig = tuple(project_semantic_event(e) for e in j_orig.entries)
@@ -268,55 +189,26 @@ def test_l4_r04_state_divergence() -> None:
 
 def test_l4_r05_fault_divergence() -> None:
     """L4-R05: Divergence in fault injection must cause behaviour verification to fail."""
-    from flight_agent_evaluator.replay.comparator import SemanticReplayComparator
-    from flight_agent_evaluator.replay.projection import project_semantic_event
-
     run_id = str(uuid.uuid4())
-    j_orig = HashChainJournal()
-    j_orig.append_event(
-        "run_started", run_id, "c0", datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC), {"seed": 1}
-    )
-    j_orig.append_event(
-        "fault_injected",
-        run_id,
-        "c1",
-        datetime(2026, 1, 1, 12, 0, 1, tzinfo=UTC),
-        {"fault_type": "timeout", "target": "flight.get_status"},
-    )
-    j_orig.append_event(
-        "run_completed",
-        run_id,
-        "c2",
-        datetime(2026, 1, 1, 12, 0, 2, tzinfo=UTC),
-        {"stop_reason": "done"},
-    )
+    scenario = "jfk-lhr-timeout-recovery"
+    original = _runner_journal(run_id, scenario)
+    assert any(e.type == "fault_injected" for e in original.entries)
 
-    j_replay = HashChainJournal()
-    j_replay.append_event(
-        "run_started", run_id, "c0", datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC), {"seed": 1}
-    )
-    # No fault injected in replay
-    j_replay.append_event(
-        "run_completed",
-        run_id,
-        "c2",
-        datetime(2026, 1, 1, 12, 0, 2, tzinfo=UTC),
-        {"stop_reason": "done"},
-    )
+    def _change_fault(entry_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if entry_type == "fault_injected":
+            payload["fault_id"] = "0" * 32
+        return payload
 
-    events_orig = tuple(project_semantic_event(e) for e in j_orig.entries)
-    events_replay = tuple(project_semantic_event(e) for e in j_replay.entries)
+    def _drop_fault(entry_type: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        return None if entry_type == "fault_injected" else payload
 
-    comparator = SemanticReplayComparator()
-    comparison = comparator.compare(events_orig, events_replay)
+    changed = _compare(original, _runner_journal(run_id, scenario, _change_fault))
+    assert not changed.verified
+    assert any(d.kind == "fault_mismatch" for d in changed.divergences)
 
-    assert not comparison.verified
-    assert any(
-        "fault" in d.kind.value.lower()
-        or "missing" in d.kind.value.lower()
-        or "mismatch" in d.kind.value.lower()
-        for d in comparison.divergences
-    )
+    dropped = _compare(original, _runner_journal(run_id, scenario, _drop_fault))
+    assert not dropped.verified
+    assert dropped.divergences
 
 
 @pytest.mark.anyio
@@ -491,13 +383,12 @@ def test_l4_r10_recording_metadata_journal_digest_mismatch() -> None:
         store.write_recording(run_id, journal, summary)
 
         engine = ReplayEngine(root=root)
-        report = engine.verify(run_id)
+        # Default (strict) verification refuses a bundle without a manifest.
+        strict_report = engine.verify(run_id)
+        assert strict_report.integrity_status != RecordingIntegrityStatus.VERIFIED
+        assert strict_report.status not in ("behaviour_verified", "verified", "integrity_valid")
 
-        # Must report integrity tampered/failed, and behaviour verification must NOT pass
-        assert report.integrity_status in (
-            RecordingIntegrityStatus.TAMPERED,
-            "recording_tampered",
-            "tampered",
-        )
-        assert report.status != "behaviour_verified"
-        assert report.status != "verified"
+        # Lenient reading still detects the metadata/journal digest mismatch as tampering.
+        report = engine.verify(run_id, strict_bundle=False)
+        assert report.integrity_status == RecordingIntegrityStatus.TAMPERED
+        assert report.status == "recording_tampered"

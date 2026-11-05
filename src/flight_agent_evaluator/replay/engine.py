@@ -88,7 +88,7 @@ class ReplayEngine:
         provider: Any = None,
         driver: Any = None,
         model_exchange_manifest: Any = None,
-        strict_bundle: bool = False,
+        strict_bundle: bool = True,
     ) -> ReplayReport:
         """Verify recording integrity and deterministic behavioural equivalence."""
         stem = self._store._sanitise_run_id(run_id)

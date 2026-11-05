@@ -93,8 +93,9 @@ class ScriptedAgentDriver:
             if isinstance(step, InvokeToolStep):
                 if tool_calls_remaining <= 0:
                     continue
+                # One identifier per attempt: failed calls must not share ids with retries.
                 tool_call_id = context.id_factory.next(
-                    record_type="tool_call", sequence=tool_calls_made
+                    record_type="tool_call", sequence=len(prior_steps)
                 )
                 resolved_args = resolver.resolve_arguments(step.arguments, prior_steps)
                 tool_call = ToolCall(
