@@ -45,7 +45,7 @@
       {
         "kind": "produce_final_response",
         "step_id": "step-2-response",
-        "response": "Flight AS505 is on time."
+        "response": "Flight AS505 on 2026-07-28 is delayed by 60 minutes: scheduled departure 21:00 UTC, estimated departure 22:00 UTC, gate B20, terminal 4. No booking changes were made."
       }
     ]
   }

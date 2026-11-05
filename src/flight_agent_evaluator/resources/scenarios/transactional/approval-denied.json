@@ -16,6 +16,29 @@
     "author": "Flight Agent Evaluator"
   },
   "scenario_mode": "transactional",
+  "environment": {
+    "bookings": [
+      {
+        "booking_reference": "AS-1002",
+        "passenger_name": "SYNTHETIC_PASSENGER",
+        "current_flight_number": "AA100",
+        "origin": "JFK",
+        "destination": "LHR",
+        "scheduled_departure": "2026-08-13T00:00:00+00:00"
+      }
+    ],
+    "offers": [
+      {
+        "offer_id": "offer-denied-1",
+        "flight_number": "AS146",
+        "origin": "JFK",
+        "destination": "LHR",
+        "price_amount": 900.0,
+        "price_currency": "USD"
+      }
+    ],
+    "approval_decision": "denied"
+  },
   "initial_state": {
     "booking_reference": "AS-1002",
     "status": "disrupted"
