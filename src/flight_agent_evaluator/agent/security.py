@@ -10,7 +10,8 @@ from flight_agent_evaluator.contracts.model import ModelRequest
 
 _SENSITIVE_KEYS = {"api_key", "authorization", "token", "secret", "password", "access_token"}
 _BEARER_PATTERN = re.compile(r"Bearer\s+[A-Za-z0-9\._\-]+", re.IGNORECASE)
-_SK_PATTERN = re.compile(r"sk-[A-Za-z0-9]{15,}")
+# Covers legacy keys plus sk-proj-…, sk-svcacct-… and other dashed/underscored variants.
+_SK_PATTERN = re.compile(r"sk-[A-Za-z0-9_-]{20,}")
 
 
 def redact_secrets(

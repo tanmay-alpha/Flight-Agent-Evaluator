@@ -108,7 +108,6 @@ def test_property_p_r3_model_request_fingerprint_bijection(msg1: str, msg2: str)
         return
 
     req1 = ModelRequest(
-        provider="replay",
         model_id="gpt-4o-mini",
         prompt_policy_id="default",
         prompt_policy_version="1.0.0",
@@ -118,7 +117,6 @@ def test_property_p_r3_model_request_fingerprint_bijection(msg1: str, msg2: str)
         model_configuration=ModelConfiguration(),
     )
     req2 = ModelRequest(
-        provider="replay",
         model_id="gpt-4o-mini",
         prompt_policy_id="default",
         prompt_policy_version="1.0.0",

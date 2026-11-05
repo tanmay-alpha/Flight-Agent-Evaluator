@@ -140,17 +140,18 @@ flight-evaluator [COMMAND] [OPTIONS]
 | Command | Arguments / Options | Description |
 |---|---|---|
 | `demo` | `[--json]` | Execute zero-network interactive portfolio demonstration |
-| `benchmark run` | `[--manifest <id\|path>] [--agents <list>] [--repetitions <n>] [--output <dir>]` | Execute canonical benchmark suite across registered agents |
+| `benchmark run` | `[--manifest <id\|path>] [--agents <list>] [--repetitions <n>] [--output <dir>] [--model-mode replay\|record\|live] [--model-replay-dir <dir>] [--model <id>] [--allow-live-model] [--base-url <url>] [--api-key-env <VAR>]` | Execute canonical benchmark suite across registered agents |
 | `benchmark list` | `[--json]` | List all built-in benchmark suites |
 | `benchmark validate` | `[<manifest>] [--json]` | Verify corpus integrity, scenario DAGs, and SHA-256 manifests |
 | `benchmark report` | `[<summary.json\|run.json>] [--results <dir>]` | Render formatted markdown report from stored benchmark results |
 | `benchmark verify-release`| `[--json]` | Full release readiness verification across all quality gates |
 | `scenario validate` | `<path> [--json]` | Validate a scenario JSON specification against schema |
-| `agent run` | `<scenario> [--agent <id>] [--output <dir>]` | Run a specific agent policy against a scenario |
-| `agents list` | `[--json]` | List all registered agent policies |
+| `agent run` | `<scenario> [--agent <id>] [--output <dir>] [--model-mode ...] [--model-replay-manifest <path>]` | Run a specific agent policy against a scenario |
+| `agents list` / `agents describe` | `[<id>] [--json]` | List or describe registered agent policies |
+| `verify` | `<run_id> [--output <dir>]` | Exit 0 only when integrity and behaviour are verified; 1 tampered/diverged; 3 not verifiable |
 | `evaluate` | `<run_id> [--output <dir>]` | Evaluate assertions for a recorded run artifact |
 | `trajectory score` | `<expectation_path> [--json]` | Score a trajectory against an expectation DAG |
-| `judge score` | `<package> [--mode fake\|replay] [--manifest <path>]` | Score a trajectory package with the qualitative rubric judge |
+| `judge score` | `<package> --mode fake\|replay [--manifest <path>]` | Score a judge evidence package; `fake` prints placeholder scores with a warning banner |
 | `annotation validate` | `<bundle> [--json]` | Validate an annotation bundle and verify cryptographic digest |
 
 ### CLI Usage Examples
@@ -173,6 +174,16 @@ flight-evaluator judge score path/to/evidence_package.json --mode fake
 
 # 6. Verify full release readiness
 flight-evaluator benchmark verify-release
+
+# 7. Model agent: record once against an OpenAI-compatible endpoint, then replay offline
+export OPENAI_API_KEY=...   # or --api-key-env MY_VAR; never logged
+flight-evaluator benchmark run --agents model --model-mode record --allow-live-model \
+    --model gpt-4o-mini --output runs/model-rec        # writes runs/model-rec/model-exchanges/
+flight-evaluator benchmark run --agents model --model-replay-dir runs/model-rec/model-exchanges
+# Ollama / vLLM / OpenRouter: add --base-url http://127.0.0.1:11434/v1
+
+# 8. Unsafe negative control (must FAIL the safety metric; proves it discriminates)
+flight-evaluator benchmark run --agents unsafe-baseline
 ```
 
 ---

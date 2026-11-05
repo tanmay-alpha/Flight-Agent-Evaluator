@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from flight_agent_evaluator.contracts.model import ModelError
+
 
 class ModelReplayError(RuntimeError):
     """Base exception for model replay failures."""
@@ -25,3 +27,15 @@ class ModelReplayMissingExchangeError(ModelReplayError):
 
 class ModelReplayManifestInvalidError(ModelReplayIntegrityError):
     """Raised when a model exchange manifest has duplicate fingerprints or invalid digests."""
+
+
+class ModelClientConfigurationError(ValueError):
+    """Raised when a model client is requested with unsafe or incomplete configuration."""
+
+
+class ModelProviderError(RuntimeError):
+    """Raised when the model provider call fails; carries only a safe, typed error."""
+
+    def __init__(self, error: ModelError) -> None:
+        super().__init__(error.message)
+        self.error = error

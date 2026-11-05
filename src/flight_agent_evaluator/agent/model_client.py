@@ -1,20 +1,41 @@
-"""Model client implementations: OpenAI Responses API client and Replay client with fingerprinting."""
+"""Model clients: OpenAI-compatible Chat Completions client and strict offline replay.
+
+Both clients speak the provider-neutral :class:`ModelRequest` /
+:class:`ModelResponse` contracts with internal (dotted) tool names.  Only the
+Chat Completions client touches the network; it maps tool names to
+provider-safe function names at the wire boundary and, in ``record`` mode,
+persists every run's exchanges as a :class:`ModelExchangeManifest` that
+:class:`ReplayModelClient` replays with zero network calls.
+"""
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-from typing import Any, Literal
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
 
 import openai
 
 from flight_agent_evaluator.agent.errors import (
+    ModelClientConfigurationError,
+    ModelProviderError,
     ModelReplayFingerprintMismatchError,
     ModelReplayManifestInvalidError,
     ModelReplayMissingExchangeError,
     ModelReplayResponseDigestMismatchError,
 )
+from flight_agent_evaluator.agent.protocol import ModelClient
+from flight_agent_evaluator.agent.security import redact_secrets
+from flight_agent_evaluator.agent.tool_names import (
+    from_provider_tool_name,
+    to_provider_tool_name,
+)
 from flight_agent_evaluator.contracts.model import (
+    ModelConfiguration,
     ModelError,
     ModelErrorType,
     ModelExchange,
@@ -25,189 +46,366 @@ from flight_agent_evaluator.contracts.model import (
     ModelUsage,
 )
 
+if TYPE_CHECKING:
+    import httpx
+
 logger = logging.getLogger(__name__)
 
 ModelMode = Literal["replay", "record", "live"]
+NetworkModelMode = Literal["record", "live"]
+
+MODEL_EXCHANGE_MANIFEST_SUFFIX = ".model-exchanges.json"
+DEFAULT_API_KEY_ENV = "OPENAI_API_KEY"
 
 
-class OpenAIResponsesModelClient:
-    """Async OpenAI model client for live or recorded agent executions."""
+# ---------------------------------------------------------------------------
+# Manifest persistence
+# ---------------------------------------------------------------------------
+
+
+def redact_exchange(exchange: ModelExchange, custom_secrets: list[str]) -> ModelExchange:
+    """Return *exchange* with secrets removed from every message and response field.
+
+    The request fingerprint is kept: replay recomputes it from the agent's
+    own conversation.  The response digest is recomputed over the redacted
+    response so replay integrity checks still hold.
+    """
+    request = exchange.request.model_copy(
+        update={"messages": redact_secrets(exchange.request.messages, custom_secrets)}
+    )
+    response = exchange.response.model_copy(
+        update={
+            "content": redact_secrets(exchange.response.content, custom_secrets),
+            "tool_calls": [
+                tc.model_copy(update={"arguments": redact_secrets(tc.arguments, custom_secrets)})
+                for tc in exchange.response.tool_calls
+            ],
+        }
+    )
+    return exchange.model_copy(
+        update={
+            "request": request,
+            "response": response,
+            "response_digest": response.canonical_digest(),
+        }
+    )
+
+
+def model_exchange_manifest_id(scenario_id: str, run_id: str) -> str:
+    """Return the manifest identifier binding exchanges to one scenario run."""
+    return f"{scenario_id}__{run_id}"
+
+
+def model_exchange_manifest_path(directory: Path, scenario_id: str, run_id: str) -> Path:
+    """Return the canonical manifest file path for a scenario run inside *directory*."""
+    return (
+        directory
+        / f"{model_exchange_manifest_id(scenario_id, run_id)}{MODEL_EXCHANGE_MANIFEST_SUFFIX}"
+    )
+
+
+def write_model_exchange_manifest(path: Path, manifest: ModelExchangeManifest) -> None:
+    """Persist a manifest as canonical, human-readable JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(manifest.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+
+def load_model_exchange_manifest(path: Path) -> ModelExchangeManifest:
+    """Load a manifest, failing closed when it is missing or malformed."""
+    if not path.is_file():
+        raise ModelReplayMissingExchangeError(
+            f"Model exchange manifest not found: {path.name}. Record it first with "
+            "--model-mode record --allow-live-model."
+        )
+    try:
+        return ModelExchangeManifest.model_validate_json(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise ModelReplayManifestInvalidError(
+            f"Model exchange manifest {path.name} is not a valid ModelExchangeManifest: {exc}"
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-compatible Chat Completions client
+# ---------------------------------------------------------------------------
+
+
+def _encode_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    encoded: list[dict[str, Any]] = []
+    for tool in tools:
+        function = dict(tool["function"])
+        function["name"] = to_provider_tool_name(str(function["name"]))
+        encoded.append({**tool, "function": function})
+    return encoded
+
+
+def _encode_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    encoded: list[dict[str, Any]] = []
+    for message in messages:
+        tool_calls = message.get("tool_calls")
+        if not tool_calls:
+            encoded.append(message)
+            continue
+        wire_calls = []
+        for call in tool_calls:
+            function = dict(call["function"])
+            function["name"] = to_provider_tool_name(str(function["name"]))
+            wire_calls.append({**call, "function": function})
+        encoded.append({**message, "tool_calls": wire_calls})
+    return encoded
+
+
+class OpenAIChatCompletionsClient:
+    """Async client for OpenAI-compatible Chat Completions endpoints.
+
+    Works against OpenAI and any compatible server (Ollama, vLLM, OpenRouter)
+    via ``base_url``.  ``record`` mode writes one manifest per run into
+    ``record_dir``; ``live`` mode keeps exchanges only for the run's
+    :meth:`end_run` result.  A fresh SDK client is opened per run because
+    benchmark cases run on separate event loops; an injected ``http_client``
+    is owned by the caller and never closed here.
+    """
 
     def __init__(
         self,
-        model_id: str = "gpt-4o-mini",
-        mode: ModelMode = "replay",
-        allow_live_model: bool = False,
+        *,
+        api_key: str,
+        mode: NetworkModelMode = "record",
+        record_dir: Path | None = None,
         base_url: str | None = None,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._model_id = model_id
-        self._mode = mode
-        self._allow_live_model = allow_live_model
-        self._base_url = base_url
-        self._exchange_history: list[ModelExchange] = []
-        self._client: openai.AsyncOpenAI | None = None
-
-        if self._mode in ("live", "record"):
-            if not self._allow_live_model:
-                raise ValueError(
-                    f"Live/Record mode '{self._mode}' requires explicit --allow-live-model flag."
-                )
-            api_key = os.environ.get("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError(
-                    f"OPENAI_API_KEY environment variable is required for mode '{self._mode}'."
-                )
-            self._client = openai.AsyncOpenAI(
-                api_key=api_key,
-                base_url=self._base_url,
+        if mode == "record" and record_dir is None:
+            raise ModelClientConfigurationError(
+                "Model record mode requires an output directory for exchange manifests."
             )
+        self._mode: NetworkModelMode = mode
+        self._record_dir = record_dir
+        self._api_key = api_key
+        self._base_url = base_url
+        self._http_client = http_client
+        self._client: openai.AsyncOpenAI | None = None
+        self._exchange_history: list[ModelExchange] = []
+        self._run: tuple[str, str, ModelConfiguration] | None = None
+
+    def __repr__(self) -> str:
+        # Never expose the API key through reprs or logs.
+        return f"OpenAIChatCompletionsClient(mode={self._mode!r}, base_url={self._base_url!r})"
 
     @property
     def provider(self) -> str:
-        return "openai"
-
-    @property
-    def model_id(self) -> str:
-        return self._model_id
+        return "openai-chat-completions"
 
     @property
     def exchange_history(self) -> list[ModelExchange]:
         return list(self._exchange_history)
 
-    def reset(self) -> None:
+    def begin_run(
+        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration
+    ) -> None:
         self._exchange_history.clear()
+        self._run = (scenario_id, run_id, configuration)
+        self._client = openai.AsyncOpenAI(
+            api_key=self._api_key, base_url=self._base_url, http_client=self._http_client
+        )
+
+    async def end_run(self) -> ModelExchangeManifest:
+        if self._run is None or self._client is None:
+            raise RuntimeError("end_run() called without begin_run().")
+        scenario_id, run_id, configuration = self._run
+        client = self._client
+        self._run = None
+        self._client = None
+        if self._http_client is None:
+            await client.close()
+        manifest = ModelExchangeManifest(
+            manifest_id=model_exchange_manifest_id(scenario_id, run_id),
+            model_configuration=configuration,
+            exchanges=[
+                redact_exchange(exchange, [self._api_key]) for exchange in self._exchange_history
+            ],
+        )
+        if self._mode == "record" and self._record_dir is not None:
+            write_model_exchange_manifest(
+                model_exchange_manifest_path(self._record_dir, scenario_id, run_id), manifest
+            )
+        return manifest
 
     async def create_completion(self, request: ModelRequest) -> ModelResponse:
-        """Execute request against OpenAI API (live/record) or recorded history (replay)."""
-        if self._mode == "replay":
-            raise RuntimeError(
-                "OpenAIResponsesModelClient in replay mode requires ReplayModelClient."
-            )
-
+        """Send the request over the wire and record the exchange."""
         if self._client is None:
-            raise RuntimeError("AsyncOpenAI client not initialized.")
-
-        req_fingerprint = request.canonical_fingerprint()
-
+            raise RuntimeError("create_completion() called outside begin_run()/end_run().")
+        config = request.model_configuration
         kwargs: dict[str, Any] = {
-            "model": request.model_id or self._model_id,
-            "messages": request.messages,
-            "temperature": request.model_configuration.temperature,
+            "model": request.model_id,
+            "messages": _encode_messages(request.messages),
+            "temperature": config.temperature,
         }
+        if config.max_tokens is not None:
+            kwargs["max_tokens"] = config.max_tokens
+        if config.top_p is not None:
+            kwargs["top_p"] = config.top_p
         if request.tools:
-            kwargs["tools"] = request.tools
+            kwargs["tools"] = _encode_tools(request.tools)
 
         try:
             raw_resp = await self._client.chat.completions.create(**kwargs)
-            choice = raw_resp.choices[0]
-            msg = choice.message
+        except openai.AuthenticationError as exc:
+            raise ModelProviderError(
+                ModelError(
+                    error_type=ModelErrorType.AUTHENTICATION,
+                    message="Model provider authentication failed",
+                    safe_details={"type": "AuthenticationError"},
+                )
+            ) from exc
+        except openai.RateLimitError as exc:
+            raise ModelProviderError(
+                ModelError(
+                    error_type=ModelErrorType.RATE_LIMIT,
+                    message="Model provider rate limit exceeded",
+                    safe_details={"type": "RateLimitError"},
+                    retryable=True,
+                )
+            ) from exc
+        except openai.APITimeoutError as exc:
+            raise ModelProviderError(
+                ModelError(
+                    error_type=ModelErrorType.TIMEOUT,
+                    message="Model provider request timed out",
+                    safe_details={"type": "APITimeoutError"},
+                    retryable=True,
+                )
+            ) from exc
+        except openai.APIConnectionError as exc:
+            raise ModelProviderError(
+                ModelError(
+                    error_type=ModelErrorType.CONNECTION_FAILURE,
+                    message="Model provider connection failed",
+                    safe_details={"type": "APIConnectionError"},
+                    retryable=True,
+                )
+            ) from exc
+        except openai.OpenAIError as exc:
+            raise ModelProviderError(
+                ModelError(
+                    error_type=ModelErrorType.PROVIDER_UNAVAILABLE,
+                    message="Model provider error",
+                    safe_details={"type": type(exc).__name__},
+                )
+            ) from exc
 
-            tool_calls: list[ModelToolCall] = []
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    import json
+        if not raw_resp.choices:
+            raise ModelProviderError(
+                ModelError(
+                    error_type=ModelErrorType.INVALID_RESPONSE,
+                    message="Model provider returned no choices",
+                )
+            )
+        choice = raw_resp.choices[0]
+        msg = choice.message
 
-                    try:
-                        args = json.loads(tc.function.arguments) if tc.function.arguments else {}
-                    except json.JSONDecodeError as err:
-                        raise RuntimeError(
-                            f"InvalidModelToolCall: Malformed JSON in tool call '{tc.function.name}' ({tc.id}): {err}"
-                        ) from err
-                    if not isinstance(args, dict):
-                        raise RuntimeError(
-                            f"InvalidModelToolCall: Tool call '{tc.function.name}' arguments must be a JSON object, got {type(args).__name__}"
-                        )
-                    tool_calls.append(
-                        ModelToolCall(
-                            call_id=tc.id,
-                            tool_name=tc.function.name,
-                            arguments=args,
-                        )
+        tool_calls: list[ModelToolCall] = []
+        for tc in msg.tool_calls or []:
+            function = getattr(tc, "function", None)
+            if function is None:
+                raise ModelProviderError(
+                    ModelError(
+                        error_type=ModelErrorType.INVALID_TOOL_CALL,
+                        message=f"Model tool call {tc.id} is not a function call",
                     )
+                )
+            internal_name = from_provider_tool_name(function.name)
+            try:
+                args = json.loads(function.arguments) if function.arguments else {}
+            except json.JSONDecodeError as err:
+                raise ModelProviderError(
+                    ModelError(
+                        error_type=ModelErrorType.INVALID_TOOL_CALL,
+                        message=(
+                            f"Malformed JSON arguments in tool call '{internal_name}' ({tc.id})"
+                        ),
+                    )
+                ) from err
+            if not isinstance(args, dict):
+                raise ModelProviderError(
+                    ModelError(
+                        error_type=ModelErrorType.INVALID_TOOL_CALL,
+                        message=(
+                            f"Tool call '{internal_name}' arguments must be a JSON object, "
+                            f"got {type(args).__name__}"
+                        ),
+                    )
+                )
+            tool_calls.append(ModelToolCall(call_id=tc.id, tool_name=internal_name, arguments=args))
 
-            usage = ModelUsage(
-                prompt_tokens=raw_resp.usage.prompt_tokens if raw_resp.usage else 0,
-                completion_tokens=raw_resp.usage.completion_tokens if raw_resp.usage else 0,
-                total_tokens=raw_resp.usage.total_tokens if raw_resp.usage else 0,
-            )
-
-            response = ModelResponse(
-                role=msg.role,
-                content=msg.content,
-                tool_calls=tool_calls,
-                finish_reason=choice.finish_reason or "stop",
-                usage=usage,
-            )
-
-            exchange = ModelExchange(
+        usage = ModelUsage(
+            prompt_tokens=raw_resp.usage.prompt_tokens if raw_resp.usage else 0,
+            completion_tokens=raw_resp.usage.completion_tokens if raw_resp.usage else 0,
+            total_tokens=raw_resp.usage.total_tokens if raw_resp.usage else 0,
+        )
+        response = ModelResponse(
+            role=msg.role,
+            content=msg.content,
+            tool_calls=tool_calls,
+            finish_reason=choice.finish_reason or "stop",
+            usage=usage,
+        )
+        self._exchange_history.append(
+            ModelExchange(
                 turn_index=request.turn_index,
                 request=request,
                 response=response,
-                request_fingerprint=req_fingerprint,
+                request_fingerprint=request.canonical_fingerprint(),
                 response_digest=response.canonical_digest(),
             )
-            self._exchange_history.append(exchange)
-            return response
+        )
+        return response
 
-        except openai.AuthenticationError as exc:
-            m_err1 = ModelError(
-                error_type=ModelErrorType.AUTHENTICATION,
-                message="OpenAI API authentication failed",
-                safe_details={"type": "AuthenticationError"},
-            )
-            raise RuntimeError(m_err1.message) from exc
-        except openai.RateLimitError as exc:
-            m_err2 = ModelError(
-                error_type=ModelErrorType.RATE_LIMIT,
-                message="OpenAI API rate limit exceeded",
-                safe_details={"type": "RateLimitError"},
-                retryable=True,
-            )
-            raise RuntimeError(m_err2.message) from exc
-        except openai.APITimeoutError as exc:
-            m_err3 = ModelError(
-                error_type=ModelErrorType.TIMEOUT,
-                message="OpenAI API request timed out",
-                safe_details={"type": "APITimeoutError"},
-                retryable=True,
-            )
-            raise RuntimeError(m_err3.message) from exc
-        except openai.APIConnectionError as exc:
-            m_err4 = ModelError(
-                error_type=ModelErrorType.CONNECTION_FAILURE,
-                message="OpenAI API connection failed",
-                safe_details={"type": "APIConnectionError"},
-                retryable=True,
-            )
-            raise RuntimeError(m_err4.message) from exc
-        except Exception as exc:
-            m_err5 = ModelError(
-                error_type=ModelErrorType.PROVIDER_UNAVAILABLE,
-                message="OpenAI API provider error",
-                safe_details={"type": type(exc).__name__},
-            )
-            raise RuntimeError(m_err5.message) from exc
+
+# ---------------------------------------------------------------------------
+# Offline replay client
+# ---------------------------------------------------------------------------
 
 
 class ReplayModelClient:
-    """Strict replay model client with SHA-256 fingerprint verification and zero network calls."""
+    """Strict replay model client with SHA-256 fingerprint verification and zero network calls.
+
+    Construct it from one manifest (or bare exchanges) to replay a single run,
+    or with :meth:`from_directory` to load each run's manifest by scenario and
+    run identity at :meth:`begin_run`.
+    """
 
     def __init__(
         self,
         manifest_or_exchanges: ModelExchangeManifest | list[ModelExchange],
-        model_id: str = "gpt-4o-mini",
     ) -> None:
-        if isinstance(manifest_or_exchanges, ModelExchangeManifest):
-            self._exchanges = list(manifest_or_exchanges.exchanges)
-        else:
-            self._exchanges = list(manifest_or_exchanges)
-
-        self._model_id = model_id
-        self._exchange_history: list[ModelExchange] = []
+        self._directory: Path | None = None
+        self._manifest: ModelExchangeManifest | None = None
+        self._exchanges: list[ModelExchange] = []
         self._fingerprint_index: dict[str, ModelExchange] = {}
+        self._exchange_history: list[ModelExchange] = []
+        self._run: tuple[str, str, ModelConfiguration] | None = None
+        if isinstance(manifest_or_exchanges, ModelExchangeManifest):
+            self._manifest = manifest_or_exchanges
+            self._index(list(manifest_or_exchanges.exchanges))
+        else:
+            self._index(list(manifest_or_exchanges))
 
-        # Validate unique fingerprints and build index
-        for ex in self._exchanges:
+    @classmethod
+    def from_directory(cls, directory: Path) -> ReplayModelClient:
+        """Replay per-run manifests stored under *directory* by ``record`` mode."""
+        if not directory.is_dir():
+            raise ModelClientConfigurationError(
+                f"Model replay directory not found: {directory.name}"
+            )
+        client = cls([])
+        client._directory = directory
+        return client
+
+    def _index(self, exchanges: list[ModelExchange]) -> None:
+        self._exchanges = exchanges
+        self._fingerprint_index = {}
+        for ex in exchanges:
             fp = ex.request_fingerprint
             if fp in self._fingerprint_index:
                 raise ModelReplayManifestInvalidError(
@@ -220,46 +418,73 @@ class ReplayModelClient:
         return "replay"
 
     @property
-    def model_id(self) -> str:
-        return self._model_id
-
-    @property
     def exchange_history(self) -> list[ModelExchange]:
         return list(self._exchange_history)
 
-    def reset(self) -> None:
+    def begin_run(
+        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration
+    ) -> None:
         self._exchange_history.clear()
+        if self._directory is not None:
+            manifest = load_model_exchange_manifest(
+                model_exchange_manifest_path(self._directory, scenario_id, run_id)
+            )
+            expected_id = model_exchange_manifest_id(scenario_id, run_id)
+            if manifest.manifest_id != expected_id:
+                raise ModelReplayManifestInvalidError(
+                    f"Model exchange manifest id {manifest.manifest_id!r} does not match "
+                    f"run {expected_id!r}."
+                )
+            self._manifest = manifest
+            self._index(list(manifest.exchanges))
+        if self._manifest is not None and self._manifest.model_configuration != configuration:
+            raise ModelReplayFingerprintMismatchError(
+                "Replay model configuration mismatch: the manifest was recorded with "
+                f"{self._manifest.model_configuration.model_dump()} but the agent is "
+                f"configured with {configuration.model_dump()}."
+            )
+        self._run = (scenario_id, run_id, configuration)
+
+    async def end_run(self) -> ModelExchangeManifest:
+        if self._run is None:
+            raise RuntimeError("end_run() called without begin_run().")
+        scenario_id, run_id, configuration = self._run
+        self._run = None
+        manifest_id = (
+            self._manifest.manifest_id
+            if self._manifest is not None
+            else model_exchange_manifest_id(scenario_id, run_id)
+        )
+        return ModelExchangeManifest(
+            manifest_id=manifest_id,
+            model_configuration=configuration,
+            exchanges=list(self._exchange_history),
+        )
 
     async def create_completion(self, request: ModelRequest) -> ModelResponse:
         """Replay recorded response for request. Zero network calls performed."""
         actual_fingerprint = request.canonical_fingerprint()
-
-        # Primary lookup by request fingerprint
         recorded_exchange = self._fingerprint_index.get(actual_fingerprint)
 
-        # Fallback to turn index check if turn_index within bounds
         if recorded_exchange is None:
             turn_index = request.turn_index
             if turn_index < len(self._exchanges):
                 candidate = self._exchanges[turn_index]
-                if candidate.request_fingerprint == actual_fingerprint:
-                    recorded_exchange = candidate
-                else:
-                    raise ModelReplayFingerprintMismatchError(
-                        f"Replay fingerprint mismatch at turn {turn_index}.\n"
-                        f"Expected: {candidate.request_fingerprint}\n"
-                        f"Actual:   {actual_fingerprint}"
-                    )
-            else:
-                raise ModelReplayMissingExchangeError(
-                    f"Replay error: No recorded model exchange for fingerprint {actual_fingerprint} (turn {turn_index})"
+                raise ModelReplayFingerprintMismatchError(
+                    f"Replay fingerprint mismatch at turn {turn_index}.\n"
+                    f"Expected: {candidate.request_fingerprint}\n"
+                    f"Actual:   {actual_fingerprint}"
                 )
+            raise ModelReplayMissingExchangeError(
+                f"Replay error: No recorded model exchange for fingerprint "
+                f"{actual_fingerprint} (turn {turn_index})"
+            )
 
-        # Verify recorded response canonical digest against stored response_digest
         computed_response_digest = recorded_exchange.response.canonical_digest()
         if computed_response_digest != recorded_exchange.response_digest:
             raise ModelReplayResponseDigestMismatchError(
-                f"Recorded model response canonical digest mismatch for turn {recorded_exchange.turn_index}.\n"
+                f"Recorded model response canonical digest mismatch for turn "
+                f"{recorded_exchange.turn_index}.\n"
                 f"Expected: {recorded_exchange.response_digest}\n"
                 f"Computed: {computed_response_digest}\n"
                 "The recorded model response has been altered or tampered with."
@@ -267,3 +492,84 @@ class ReplayModelClient:
 
         self._exchange_history.append(recorded_exchange)
         return recorded_exchange.response
+
+
+# ---------------------------------------------------------------------------
+# Settings-driven construction (CLI and benchmark registry)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ModelAgentSettings:
+    """Operator-supplied configuration for the model-driven agent.
+
+    ``replay`` (the default) is fully offline.  ``record`` and ``live`` reach the
+    network and require both ``allow_live_model`` and the API key environment
+    variable named by ``api_key_env``.
+    """
+
+    mode: ModelMode = "replay"
+    model_configuration: ModelConfiguration = field(default_factory=ModelConfiguration)
+    replay_manifest: Path | None = None
+    replay_dir: Path | None = None
+    record_dir: Path | None = None
+    allow_live_model: bool = False
+    base_url: str | None = None
+    api_key_env: str = DEFAULT_API_KEY_ENV
+
+
+def build_model_client(
+    settings: ModelAgentSettings,
+    *,
+    environ: Mapping[str, str] | None = None,
+    http_client: httpx.AsyncClient | None = None,
+) -> ModelClient:
+    """Build the model client described by *settings*, failing closed on unsafe config."""
+    if settings.mode == "replay":
+        if settings.replay_manifest is not None:
+            return ReplayModelClient(load_model_exchange_manifest(settings.replay_manifest))
+        if settings.replay_dir is not None:
+            return ReplayModelClient.from_directory(settings.replay_dir)
+        raise ModelClientConfigurationError(
+            "Model replay mode requires a recorded manifest "
+            "(--model-replay-manifest PATH or --model-replay-dir DIR)."
+        )
+
+    if not settings.allow_live_model:
+        raise ModelClientConfigurationError(
+            f"Model mode '{settings.mode}' calls a network model and requires the explicit "
+            "--allow-live-model flag."
+        )
+    env = os.environ if environ is None else environ
+    api_key = env.get(settings.api_key_env)
+    if not api_key:
+        raise ModelClientConfigurationError(
+            f"Model mode '{settings.mode}' requires the {settings.api_key_env} "
+            "environment variable to be set."
+        )
+    if settings.mode == "record" and settings.record_dir is None:
+        raise ModelClientConfigurationError(
+            "Model record mode requires an output directory for exchange manifests (--output)."
+        )
+    return OpenAIChatCompletionsClient(
+        api_key=api_key,
+        mode=settings.mode,
+        record_dir=settings.record_dir,
+        base_url=settings.base_url,
+        http_client=http_client,
+    )
+
+
+__all__ = [
+    "DEFAULT_API_KEY_ENV",
+    "MODEL_EXCHANGE_MANIFEST_SUFFIX",
+    "ModelAgentSettings",
+    "ModelMode",
+    "OpenAIChatCompletionsClient",
+    "ReplayModelClient",
+    "build_model_client",
+    "load_model_exchange_manifest",
+    "model_exchange_manifest_id",
+    "model_exchange_manifest_path",
+    "write_model_exchange_manifest",
+]
