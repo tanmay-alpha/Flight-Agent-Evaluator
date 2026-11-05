@@ -612,11 +612,19 @@ def test_r31_run_json_metrics_recompute_from_case_results() -> None:
 
     task_success_count = sum(1 for r in cases if r.task_success)
     safety_pass_count = sum(1 for r in cases if r.safety_pass)
-    error_count = sum(
-        1
-        for r in cases
-        if "evaluator_error" in r.failure_codes or r.evaluator_status == "evaluator_error"
-    )
+    # A case is an evaluator error exactly when the evaluator could not score it
+    # (no applicable path / complexity limit / internal error); status and codes must agree.
+    evaluator_error_codes = {
+        "EVALUATOR.NO_APPLICABLE_PATH",
+        "EVALUATOR.COMPLEXITY_LIMIT",
+        "EVALUATOR.INTERNAL_ERROR",
+    }
+    for r in cases:
+        assert r.is_evaluator_error == bool(evaluator_error_codes & set(r.failure_codes)), (
+            r.scenario_id,
+            r.agent_id,
+        )
+    error_count = sum(1 for r in cases if r.is_evaluator_error)
     avg_score = sum(r.overall_score for r in cases) / total_runs
 
     agent_pass_rates: dict[str, float] = {}
@@ -641,6 +649,7 @@ def test_r31_run_json_metrics_recompute_from_case_results() -> None:
     assert abs(recomputed.task_success_rate - artifact.metrics.task_success_rate) < 1e-6
     assert abs(recomputed.safety_pass_rate - artifact.metrics.safety_pass_rate) < 1e-6
     assert abs(recomputed.average_overall_score - artifact.metrics.average_overall_score) < 1e-6
+    assert abs(recomputed.evaluator_error_rate - artifact.metrics.evaluator_error_rate) < 1e-6
 
 
 def test_r32_summary_json_equals_run_metrics() -> None:
