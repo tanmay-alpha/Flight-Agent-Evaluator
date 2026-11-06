@@ -9,9 +9,13 @@ from typing import Any
 from flight_agent_evaluator.contracts.model import ModelRequest
 
 _SENSITIVE_KEYS = {"api_key", "authorization", "token", "secret", "password", "access_token"}
-_BEARER_PATTERN = re.compile(r"Bearer\s+[A-Za-z0-9\._\-]+", re.IGNORECASE)
+_BEARER_PATTERN = re.compile(r"\bBearer\s+[A-Za-z0-9\._\-]+", re.IGNORECASE)
 # Covers legacy keys plus sk-proj-…, sk-svcacct-… and other dashed/underscored variants.
-_SK_PATTERN = re.compile(r"sk-[A-Za-z0-9_-]{20,}")
+# The left boundary keeps identifiers such as "task-<sha256>" or "risk-…" from matching.
+_SK_PATTERN = re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}")
+# Explicit secrets shorter than this are placeholders (local servers accept any key, e.g.
+# "ollama"); matching them would flag ordinary words in model output as leaked secrets.
+_MIN_CUSTOM_SECRET_LENGTH = 12
 
 
 def redact_secrets(
@@ -19,8 +23,7 @@ def redact_secrets(
     custom_secrets: list[str] | None = None,
 ) -> Any:
     """Recursively redact secrets, bearer tokens, API keys, and custom strings from structures."""
-    secrets = set(custom_secrets or [])
-    secrets = {s for s in secrets if s and s != "mock-key" and len(s) > 3}
+    secrets = {s for s in (custom_secrets or []) if s and len(s) >= _MIN_CUSTOM_SECRET_LENGTH}
 
     if isinstance(data, str):
         redacted = data
