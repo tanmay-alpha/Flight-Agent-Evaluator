@@ -412,8 +412,8 @@ def validate_trajectory_expectation(expectation: TrajectoryExpectation) -> list[
                     f"Path '{path.path_id}' precedence after_node_id '{prec.after_node_id}' not in expected nodes."
                 )
 
-        for node in path.expected_actions:
-            for constraint in node.selector.argument_constraints:
+        for expected_node in path.expected_actions:
+            for constraint in expected_node.selector.argument_constraints:
                 if constraint.operator != "reference_equals":
                     continue
                 if constraint.reference_node_id not in unique_node_ids:
@@ -421,13 +421,13 @@ def validate_trajectory_expectation(expectation: TrajectoryExpectation) -> list[
                         f"Path '{path.path_id}' reference_node_id "
                         f"'{constraint.reference_node_id}' not in expected nodes."
                     )
-                if constraint.reference_node_id == node.node_id:
+                if constraint.reference_node_id == expected_node.node_id:
                     errors.append(
-                        f"Path '{path.path_id}' contains self-reference for node '{node.node_id}'."
+                        f"Path '{path.path_id}' contains self-reference for node '{expected_node.node_id}'."
                     )
                 if constraint.reference_field_pointer is None:
                     errors.append(
-                        f"Path '{path.path_id}' reference on node '{node.node_id}' needs "
+                        f"Path '{path.path_id}' reference on node '{expected_node.node_id}' needs "
                         "reference_field_pointer."
                     )
 

@@ -181,7 +181,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-granted.json",
       "scenario_sha256": "eaa68439b0646d367f098f8a11f45544b0e3f52b679cd3012bc3ae88488a2927",
       "expectation_path": "resources/expectations/transactional/approval-granted.json",
-      "expectation_sha256": "6d0284c9f0792b3be37d8bd3dcba248a0864e9ed154204c89a38e80a15e0dba3",
+      "expectation_sha256": "6ab33e62dffeec184687a52c9f4ba585be59099219312ea4431867d8be74a89f",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -196,7 +196,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-denied.json",
       "scenario_sha256": "4caa509e8453ac1b4f7500a83f773b476ce7779223822527f3fc07bff8be99f7",
       "expectation_path": "resources/expectations/transactional/approval-denied.json",
-      "expectation_sha256": "c940f95d437ce410ced334582ca0d8fb6cea03be0bc415df44188e1a6156bbd1",
+      "expectation_sha256": "99aba9fca78f59e2500f9973d1d7bb599fa19150132c1b9920126338e074a068",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -211,7 +211,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-expires.json",
       "scenario_sha256": "9d072a88095102cbd449dafc07da5b7a886978c88e0102d86744e507ff2067c4",
       "expectation_path": "resources/expectations/transactional/approval-expires.json",
-      "expectation_sha256": "deda18f95830be8982e061b970fa7ad8c169d45886768411bcd5173792a4f93e",
+      "expectation_sha256": "be6bffa3734abddb46a2193f5e019cffa07a3d292dca3757e946937f7d992c35",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -226,7 +226,7 @@
       "scenario_path": "resources/scenarios/transactional/mutation-without-approval.json",
       "scenario_sha256": "b3c9118b5b9c552df96e84b3078a020c7dd1b71a5db9ff15e82dda9d0a71f944",
       "expectation_path": "resources/expectations/transactional/mutation-without-approval.json",
-      "expectation_sha256": "edc4730b5d97a047c92a2b9338f86fb3f080fe1c90d1b8c62a22a742e888abdd",
+      "expectation_sha256": "e5b3e9e7d56a9dade3e26fc10441687988c9edacd56fdac5f888b6a4348aeefc",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -241,7 +241,7 @@
       "scenario_path": "resources/scenarios/transactional/payload-changes-after-approval.json",
       "scenario_sha256": "1d1bc5a157bbd4ba4a76339a90914b64cb4278800af66ab3b958ccda7e713a1d",
       "expectation_path": "resources/expectations/transactional/payload-changes-after-approval.json",
-      "expectation_sha256": "a2561df7375829ac703350dbd3e31504625a11a2483f17e7e20142d4146861cc",
+      "expectation_sha256": "a709b5fb0b297883dc5e7dc82a8d68e37fbbd41fee981d58e87d57f437f7387e",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -256,7 +256,7 @@
       "scenario_path": "resources/scenarios/transactional/idempotent-retry-after-timeout.json",
       "scenario_sha256": "56587f4a969198f9ef0f71f330997bd0ccc4f7ddccd9853d1a95158d801e94a1",
       "expectation_path": "resources/expectations/transactional/idempotent-retry-after-timeout.json",
-      "expectation_sha256": "5f5f6f569214a5fbfdc0c7c8ed2f8c9b3c41798f6a3c7a6c38a153a16712d83a",
+      "expectation_sha256": "9316dcf8a3cbb6a8494f2b7979d0372dfb490cf0c7dd02c07bd0d22ade0780e8",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -286,7 +286,7 @@
       "scenario_path": "resources/scenarios/transactional/hold-expires.json",
       "scenario_sha256": "460d1845d1dff0fb564779faa16fc72074f52dce682df76cddce563d50643f13",
       "expectation_path": "resources/expectations/transactional/hold-expires.json",
-      "expectation_sha256": "b4ed0d2f6c66014f6e25839bcaf72e814e4cdf9899e5c89c6c9f0c610239bc3e",
+      "expectation_sha256": "e95c03cd8ec01e98ed58a73e9ddcb3e3da206898cec26495262880d9c2e37704",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -301,7 +301,7 @@
       "scenario_path": "resources/scenarios/transactional/mutation-success-response-lost.json",
       "scenario_sha256": "ccd95291eb96ee6713042c3b1d3d61226f189d6800f534ee01b4079fec68aa8b",
       "expectation_path": "resources/expectations/transactional/mutation-success-response-lost.json",
-      "expectation_sha256": "aa8aec968d074b185be1d06e0f9728af6f1664350a17e64b5e21f70434650418",
+      "expectation_sha256": "00337c329a9d4525bac37d83ada21435d70dc3fc8a271df407d3f40faf0897b0",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -316,7 +316,7 @@
       "scenario_path": "resources/scenarios/transactional/alternative-disappears-before-confirm.json",
       "scenario_sha256": "1d1d07e6289191b801d8bf431a780a127b49b0d62a1db0ab59fdf824756caac5",
       "expectation_path": "resources/expectations/transactional/alternative-disappears-before-confirm.json",
-      "expectation_sha256": "29f775e342c04373f631e7e49a4ba3216249d387d6d8a6a0c26071713ae8aa19",
+      "expectation_sha256": "414482ef360550bb22402ef9d701a6f6b16c64a4f2d50857927a05bdd2e58e3d",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -331,7 +331,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-wrong-itinerary.json",
       "scenario_sha256": "d646847b7f3687257991bbd7fde9b47489733f2afed3edc85de37a94a624af7c",
       "expectation_path": "resources/expectations/transactional/approval-wrong-itinerary.json",
-      "expectation_sha256": "28be630a4996dd8e021684ab90078276ef5e112274ced1591678efb9b0a89a35",
+      "expectation_sha256": "f05b5ec2a495ba3e40d77775cc20c3c6d09cba0fc19b3564ba80d0ef9323d3ee",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -346,7 +346,7 @@
       "scenario_path": "resources/scenarios/transactional/constraint-changes-after-approval.json",
       "scenario_sha256": "3bd023d58ca086b14e1f7da12114be06ff78fe82d25727fc4dc7703d30598be7",
       "expectation_path": "resources/expectations/transactional/constraint-changes-after-approval.json",
-      "expectation_sha256": "76a29a75f52f2056afc203d32947f498898716e95ed8731fa7d99329f59b15b8",
+      "expectation_sha256": "9fc2de0581c0e23706d1e4aecb53ee601d353d6eae7dbfc33e3f216da0914627",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -398,5 +398,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "b61fbaf82fe8ba04fa1116c08ed186b5152758f1355b0e1bc067666a7fecb3a1"
+  "manifest_digest": "50368c53afe720519d3f2a6e4e1f7db050420080e2db599a6135a3dc2670ceea"
 }
