@@ -141,7 +141,10 @@ def evaluate_argument_constraint(
             and dependent_action is not None
         ):
             target_action = aligned_mapping[ref_node_id]
-            if _is_prior_success(target_action, dependent_action) and target_action.result is not None:
+            if (
+                _is_prior_success(target_action, dependent_action)
+                and target_action.result is not None
+            ):
                 ref_val = resolve_json_pointer(target_action.result, ref_pointer)
                 return ref_val is not MISSING and ref_val == actual
         return False
@@ -181,9 +184,7 @@ def _node_qualifies(
     node: ExpectedAction, action: ObservedToolAction, mapping: dict[str, ObservedToolAction]
 ) -> bool:
     return _qualifies_result_status(node.expected_result_status, action) and all(
-        evaluate_argument_constraint(
-            constraint, action.arguments, mapping, dependent_action=action
-        )
+        evaluate_argument_constraint(constraint, action.arguments, mapping, dependent_action=action)
         for constraint in node.selector.argument_constraints
     )
 
@@ -219,7 +220,8 @@ class PathAlignmentResult(BaseModel):
         default_factory=dict, description="Map of node_id -> primary matched ObservedToolAction."
     )
     node_actions: dict[str, list[ObservedToolAction]] = Field(
-        default_factory=dict, description="Exclusively assigned occurrences, including allowed retry attempts."
+        default_factory=dict,
+        description="Exclusively assigned occurrences, including allowed retry attempts.",
     )
     unmatched_node_ids: list[str] = Field(
         default_factory=list, description="Expected required node IDs not satisfied."
@@ -510,10 +512,17 @@ class DeterministicBoundedMatcher:
             if act.call_id in primary_ids:
                 continue
             eligible = [
-                node for node in expected_nodes
+                node
+                for node in expected_nodes
                 if node.node_id in best_mapping
-                and (not node.selector.tool_name or fnmatch.fnmatch(act.tool_name, node.selector.tool_name))
-                and (not node.selector.mutation_class or act.mutation_class == node.selector.mutation_class)
+                and (
+                    not node.selector.tool_name
+                    or fnmatch.fnmatch(act.tool_name, node.selector.tool_name)
+                )
+                and (
+                    not node.selector.mutation_class
+                    or act.mutation_class == node.selector.mutation_class
+                )
                 and (
                     _node_qualifies(node, act, best_mapping)
                     or (
@@ -541,9 +550,7 @@ class DeterministicBoundedMatcher:
                 ),
             )
             node_actions[chosen.node_id].append(act)
-        matched_call_ids = {
-            act.call_id for actions in node_actions.values() for act in actions
-        }
+        matched_call_ids = {act.call_id for actions in node_actions.values() for act in actions}
         unmatched_call_ids = [
             act.call_id for act in observed_actions if act.call_id not in matched_call_ids
         ]
