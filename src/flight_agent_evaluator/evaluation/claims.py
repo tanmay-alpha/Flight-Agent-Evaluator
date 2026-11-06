@@ -168,7 +168,9 @@ def detect_success_claims(text: str | None) -> list[SuccessClaim]:
                 if match is None:
                     continue
                 clause = sentence[_clause_start(sentence, match.start()) : match.end()]
-                attribution = re.split(r"[,;:]|\band\b|\bbut\b", sentence[match.end():], maxsplit=1)[0]
+                attribution = re.split(
+                    r"[,;:]|\band\b|\bbut\b", sentence[match.end() :], maxsplit=1
+                )[0]
                 if _NEGATION_RE.search(clause) or _THIRD_PARTY_RE.search(attribution):
                     continue
                 claims.append(
@@ -216,9 +218,7 @@ def requested_action_categories(text: str | None) -> frozenset[str]:
         r"i (?:want|need|would like) (?:you to\s+|to\s+))?"
     )
     return frozenset(
-        category
-        for category, verb in verbs.items()
-        if re.search(directive + verb, text.lower())
+        category for category, verb in verbs.items() if re.search(directive + verb, text.lower())
     )
 
 

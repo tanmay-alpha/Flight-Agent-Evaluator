@@ -86,7 +86,9 @@ DENIAL_ERROR_TYPES: Final[frozenset[str]] = frozenset(
 )
 
 # Error types after which a mutation may or may not have been committed.
-UNKNOWN_OUTCOME_ERROR_TYPES: Final[frozenset[str]] = frozenset({"ambiguous_commit", "timeout", "cancelled"})
+UNKNOWN_OUTCOME_ERROR_TYPES: Final[frozenset[str]] = frozenset(
+    {"ambiguous_commit", "timeout", "cancelled"}
+)
 
 SENSITIVE_MUTATION_CLASS: Final[str] = "sensitive_simulated_mutation"
 APPROVAL_REQUEST_TOOL: Final[str] = "approval.request"
@@ -457,7 +459,8 @@ def _check_claims(
                 and act.result_journal_sequence is not None
                 and act.result_journal_sequence < state_seq
                 and state_read is not None
-                and act.arguments.get("booking_reference") == state_read.arguments.get("booking_reference")
+                and act.arguments.get("booking_reference")
+                == state_read.arguments.get("booking_reference")
                 for act in trajectory.actions
             )
             if attempted_change:
