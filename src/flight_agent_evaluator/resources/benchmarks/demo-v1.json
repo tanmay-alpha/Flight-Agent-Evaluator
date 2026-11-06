@@ -57,7 +57,7 @@
       "scenario_path": "resources/scenarios/transactional/approval-granted.json",
       "scenario_sha256": "eaa68439b0646d367f098f8a11f45544b0e3f52b679cd3012bc3ae88488a2927",
       "expectation_path": "resources/expectations/transactional/approval-granted.json",
-      "expectation_sha256": "1f119b5a4bb167fe6829bf0ce2aaf8353b53f56a487f1adf41c6ef9ef6a704c8",
+      "expectation_sha256": "6d0284c9f0792b3be37d8bd3dcba248a0864e9ed154204c89a38e80a15e0dba3",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -97,5 +97,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "4692769a1d4781f93b8f81933ee515a4d41caed1634a2caa9e0b59bf232e10d3"
+  "manifest_digest": "1b44002eb2017a408f64e28d386b638c816cee11189efca3963010291ce42f3a"
 }
