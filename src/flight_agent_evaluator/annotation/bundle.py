@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,7 +10,9 @@ from flight_agent_evaluator.annotation.contracts import (
     AnnotationBundle,
     AnnotationTask,
 )
+from flight_agent_evaluator.annotation.tasks import deterministic_task_id
 from flight_agent_evaluator.judges.contracts import JudgeEvidencePackage
+from flight_agent_evaluator.strict_json import load_strict_path
 
 
 def create_bundle_from_packages(
@@ -20,8 +21,8 @@ def create_bundle_from_packages(
 ) -> AnnotationBundle:
     """Create an AnnotationBundle from a list of evidence packages.
 
-    Evidence packages are pseudonymised: run_id is replaced with a
-    UUID that cannot be traced back to any model identity.
+    Task and pseudonymous run identifiers are content-addressed. Re-exporting
+    the same evidence never changes the annotation join key.
 
     Args:
         packages: Evidence packages to include in the bundle.
@@ -32,7 +33,6 @@ def create_bundle_from_packages(
     """
     tasks = []
     for package in packages:
-        pseudo_run_id = str(uuid.uuid4())
         trusted_obs_list = [
             {
                 "evidence_id": obs.evidence_id,
@@ -42,9 +42,13 @@ def create_bundle_from_packages(
             }
             for obs in package.trusted_observations
         ]
+        task_id = deterministic_task_id(
+            package.public_task, trusted_obs_list, package.final_response
+        )
         tasks.append(
             AnnotationTask(
-                pseudonymous_run_id=pseudo_run_id,
+                task_id=task_id,
+                pseudonymous_run_id=task_id,
                 scenario_id=package.scenario_id,
                 public_task=package.public_task,
                 tool_call_summary=package.tool_call_summary,
@@ -63,7 +67,7 @@ def create_bundle_from_packages(
     # Compute and embed digest
     digest = bundle.compute_digest()
     return AnnotationBundle(
-        bundle_id=bundle.bundle_id,
+        bundle_id=f"bundle-{digest}",
         schema_version=bundle.schema_version,
         tasks=bundle.tasks,
         rubric_version=bundle.rubric_version,
@@ -95,7 +99,6 @@ def freeze_bundle(bundle: AnnotationBundle) -> AnnotationBundle:
 def verify_bundle_digest(bundle: AnnotationBundle | Path | str) -> bool:
     """Return True if the bundle digest is consistent with current tasks."""
     if isinstance(bundle, (str, Path)):
-        raw = Path(bundle).read_text(encoding="utf-8")
-        bundle = AnnotationBundle.model_validate_json(raw)
+        bundle = AnnotationBundle.model_validate(load_strict_path(Path(bundle)))
     expected = bundle.compute_digest()
     return bundle.bundle_digest == expected
