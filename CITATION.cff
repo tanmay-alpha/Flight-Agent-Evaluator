@@ -4,6 +4,7 @@ authors:
   - family-names: "Mangal"
     given-names: "Tanmay"
 title: "Flight Agent Evaluator: Autonomous Multi-Model Benchmark & Failure Diagnostics Platform"
-version: 0.3.0
+version: 0.4.0
+# LEAD: set date-released when v0.4.0 is tagged; it still holds the v0.3.0 date.
 date-released: 2026-11-05
 url: "https://github.com/tanmay-alpha/Flight-Agent-Evaluator"
