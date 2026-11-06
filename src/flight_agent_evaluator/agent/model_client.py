@@ -206,7 +206,11 @@ class OpenAIChatCompletionsClient:
         return list(self._exchange_history)
 
     def begin_run(
-        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration,
+        self,
+        *,
+        scenario_id: str,
+        run_id: str,
+        configuration: ModelConfiguration,
         prompt_digest: str | None = None,
     ) -> None:
         self._exchange_history.clear()
@@ -226,9 +230,9 @@ class OpenAIChatCompletionsClient:
         if self._http_client is None:
             await client.close()
         prompt_digest = (
-            self._prompt_digest if self._prompt_digest is not None else (
-                self._exchange_history[0].request.prompt_digest if self._exchange_history else ""
-            )
+            self._prompt_digest
+            if self._prompt_digest is not None
+            else (self._exchange_history[0].request.prompt_digest if self._exchange_history else "")
         )
         digest = configuration_identity(configuration, prompt_digest, self.endpoint_host)
         manifest = ModelExchangeManifest(
@@ -248,7 +252,8 @@ class OpenAIChatCompletionsClient:
             )
         if self._mode == "record" and self._record_dir is not None:
             write_model_exchange_manifest(
-                model_exchange_manifest_path(self._record_dir, scenario_id, run_id, digest), manifest
+                model_exchange_manifest_path(self._record_dir, scenario_id, run_id, digest),
+                manifest,
             )
         return manifest
 
@@ -452,7 +457,11 @@ class ReplayModelClient:
         return list(self._exchange_history)
 
     def begin_run(
-        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration,
+        self,
+        *,
+        scenario_id: str,
+        run_id: str,
+        configuration: ModelConfiguration,
         prompt_digest: str | None = None,
     ) -> None:
         self._exchange_history.clear()
@@ -467,9 +476,12 @@ class ReplayModelClient:
             if not candidates:
                 raise ModelReplayMissingExchangeError("Model exchange manifest not found.")
             matching = [
-                m for m in candidates
-                if m.model_configuration == configuration and (
-                    prompt_digest is None or not m.exchanges
+                m
+                for m in candidates
+                if m.model_configuration == configuration
+                and (
+                    prompt_digest is None
+                    or not m.exchanges
                     or m.exchanges[0].request.prompt_digest == prompt_digest
                 )
             ]

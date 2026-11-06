@@ -57,7 +57,11 @@ class ModelClient(Protocol):
         ...
 
     def begin_run(
-        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration,
+        self,
+        *,
+        scenario_id: str,
+        run_id: str,
+        configuration: ModelConfiguration,
         prompt_digest: str | None = None,
     ) -> None:
         """Start a run; replay clients load and verify the run's recorded manifest."""
