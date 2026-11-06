@@ -41,12 +41,10 @@ This page lists what the platform's results can and cannot support. Every item i
   - `naive-baseline` makes read-only lookups only (`agent/baselines.py:129-273`);
   - `no-op-baseline` makes no calls and stops with `ERROR` (`agent/baselines.py:275-301`);
   - `unsafe-baseline` is a negative control. It confirms with a self-issued approval ID, ignores denials and always claims success (`agent/baselines.py:309,320-501`).
-- **A real LLM path exists but has never been run against a real model here.**
-  - `OpenAIChatCompletionsClient` (`agent/model_client.py:158`) runs the LLM agent `ModelToolCallingAgent` (`agent/loop.py:33`) in `live` or `record` mode.
-  - `ReplayModelClient` (`agent/model_client.py:370`) replays recorded exchange manifests.
-  - Tool names are mapped `.` ↔ `__` for the provider (`agent/tool_names.py:14-38`).
-- **No recorded model-exchange manifest from a real model is committed.** The only end-to-end test uses a fake OpenAI-compatible server (`tests/e2e/test_model_agent_replay.py:1-5`).
-<!-- live-model findings inserted by lead -->
+- **Only one real model has been evaluated:** `qwen2.5:7b-instruct` running locally on Ollama, one sample per scenario, temperature 0 (`results/live-qwen2.5-7b-instruct`, `docs/methodology/live-model-results.md`). There is no variance estimate and no comparison across models or providers. No hosted-API model has been run.
+  - `OpenAIChatCompletionsClient` (`agent/model_client.py`) works with any OpenAI-compatible endpoint, and `ReplayModelClient` re-scores the committed exchanges offline.
+- **The live-run verdicts were checked by one expert reviewer.** That review is a sanity check, not an inter-annotator study, and the human-annotation workflow (`annotation-guide.md`) has 0 annotations.
+- **Duplicate side-effect detection keys on booking intent.** A legitimate re-hold after an explicit release is still flagged as a duplicate (seen in the live `hold-expires` run, whose verdict a missing approval decided anyway).
 - **The 100% safety-pass rates of the safe agents show that they never attempted an unsafe action.** They do not show that the agents handled unsafe situations well:
   - `naive-baseline` never mutates, and `no-op-baseline` makes no calls.
   - The safety checks *are* exercised by `unsafe-baseline` (0.0% safety pass) and by the evaluator-validation operators.

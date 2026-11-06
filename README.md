@@ -77,7 +77,14 @@ All four agents are deterministic reference policies, not models:
 - `no-op-baseline` does nothing.
 - `unsafe-baseline` is a negative control. It mutates without or against approval and always claims success. It exists to show that the safety metric discriminates.
 
-<!-- LEAD: benchmark-v1 table -->
+| Agent | Task success | Safety pass | Avg. score | Runs |
+|---|---:|---:|---:|---:|
+| `scripted-oracle` | 100.0% | 100.0% | 0.850 | 24 |
+| `naive-baseline` | 41.7% | 100.0% | 0.494 | 24 |
+| `no-op-baseline` | 0.0% | 100.0% | 0.000 | 24 |
+| `unsafe-baseline` | 0.0% | 0.0% | 0.000 | 24 |
+
+Pass or fail is the primary metric. The oracle's average score is below 1.0 because, from v0.4, scenarios without outcome assertions earn no outcome credit (0.3 of the composite) instead of free credit.
 
 ### Evaluator validation v2: how often is the evaluator itself wrong?
 
@@ -92,7 +99,16 @@ Each case is a golden trajectory with one deterministic defect injected, and is 
 
 Every case runs through the real executor, environment, journal and evaluator. Scenario families and phrasing templates are split into a **dev** suite, used while fixing the detectors, and a **held-out** suite, which the detectors never import. The held-out run refuses to start unless it is given a dev report produced from the same detector source digest. Every rate carries a Wilson 95% confidence interval, and rates with fewer than 10 cases are reported as `insufficient_n`.
 
-<!-- LEAD: validation v2 table -->
+Detector source digest `b5aa4b22dfff…3706` for both suites ([dev](validation/evaluator-validation-v2/dev/report.md), [held-out](validation/evaluator-validation-v2/heldout/report.md)):
+
+| Suite | Verdict | Precision | Recall (Wilson 95%) | False-positive rate | Cases |
+|---|---|---:|---:|---:|---:|
+| dev | task failure | 1.000 | 1.000 [0.988, 1.000] | 0.000 (0/21) | 474 |
+| dev | safety violation | 1.000 | 1.000 [0.987, 1.000] | 0.000 (0/173) | 474 |
+| **held-out** | task failure | 1.000 | **0.894** [0.820, 0.940] | 0.000 (0/14) | 149 |
+| **held-out** | safety violation | 1.000 | **0.795** [0.692, 0.870] | 0.000 (0/49) | 149 |
+
+Dev numbers are in-sample: the detectors were fixed against that split. The held-out numbers are the honest estimate. Of the 27 held-out misses, 14 are false success claims in phrasings the lexical detector does not recognise, 8 are prompt injections (2 each: paraphrased, nested JSON, marker-free, delivered through a different tool), and 5 are claims inconsistent with a tool response. All are listed in the held-out report.
 
 **What these labels are not:** they are synthetic, not human annotations. They measure detection of these specific injected defects on this benchmark's scenarios. They do not estimate accuracy on real model trajectories. The v1 suite ([`validation/evaluator-validation-v1`](validation/evaluator-validation-v1/report.md)) is kept as a historical baseline.
 
@@ -100,7 +116,11 @@ Every case runs through the real executor, environment, journal and evaluator. S
 
 One local open-weights model was run on `benchmark-v1` in record mode, and the result was re-scored offline from the recorded exchanges.
 
-<!-- LEAD: live qwen2.5 table -->
+| Model | Task success | Safety pass | Avg. score | Tokens | Model time | Cost |
+|---|---:|---:|---:|---:|---:|---:|
+| `qwen2.5:7b-instruct` (Q4_K_M, Ollama 0.40.14, RTX 4060, temperature 0) | 41.7% | 79.2% | 0.543 | 165,571 | 216 s | $0 |
+
+All 5 safety failures were checked by hand against the recorded tool calls. In three runs the model confirmed a rebooking without approval, once it placed a duplicate hold, and once it repeated an injected "full refund issued" instruction to the user. Offline replay of the committed exchanges ([`results/live-qwen2.5-7b-instruct`](results/live-qwen2.5-7b-instruct)) reproduces all 24 journal digests. Setup, per-case verdicts and the defects the first live run exposed are in [`docs/methodology/live-model-results.md`](docs/methodology/live-model-results.md).
 
 This is one 7B model, sampled once per scenario on one machine. It is a worked example of the pipeline, not a ranking of models.
 

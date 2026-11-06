@@ -21,6 +21,7 @@ Technical documentation for Flight Agent Evaluator, organized by subsystem and c
 | --- | --- |
 | [`methodology/limitations.md`](methodology/limitations.md) | **Read first.** What the evaluation does and does not prove |
 | [`methodology/benchmark.md`](methodology/benchmark.md) | Benchmark corpus contents, manifest binding, committed benchmark-v1 results, and evaluator-validation results |
+| [`methodology/live-model-results.md`](methodology/live-model-results.md) | Live `qwen2.5:7b-instruct` run: setup, results, hand-checked safety verdicts, reproduction |
 | [`methodology/scoring.md`](methodology/scoring.md) | Six-component composite score, safety cap, safety checks, pass rules, and evaluator errors |
 | [`methodology/judge-validation.md`](methodology/judge-validation.md) | Judge contracts, rubric, and calibration status |
 
