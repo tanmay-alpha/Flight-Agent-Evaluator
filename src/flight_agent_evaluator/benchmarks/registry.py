@@ -12,9 +12,14 @@ from flight_agent_evaluator.agent.baselines import (
     UnsafeBaselineAgent,
 )
 from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
-from flight_agent_evaluator.agent.model_client import ModelAgentSettings, build_model_client
+from flight_agent_evaluator.agent.model_client import (
+    ModelAgentSettings,
+    build_model_client,
+    model_agent_configuration_digest,
+)
 from flight_agent_evaluator.agent.protocol import AgentPolicy
 from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
+from flight_agent_evaluator.benchmarks.results import ExecutionMode
 
 
 class UnknownBenchmarkAgentError(BenchmarkIntegrityError):
@@ -92,6 +97,7 @@ class BenchmarkAgentRegistry:
                 "default, record/live only with --allow-live-model."
             ),
             agent_type="llm",
+            configuration_digest=model_agent_configuration_digest(self._model_settings),
         )
 
         # Explicit aliases pointing to canonical identities
@@ -106,6 +112,32 @@ class BenchmarkAgentRegistry:
         self.register_alias("baseline-no-op", "no-op-baseline")
         self.register_alias("unsafe", "unsafe-baseline")
 
+    def execution_mode(self, agent_ids: list[str]) -> ExecutionMode:
+        """Declare the effective network/model mode, independently of manifest policy."""
+        if any(self._aliases.get(aid, aid) == "model" for aid in agent_ids):
+            if self._model_settings.mode == "replay":
+                return "model-replay"
+            if self._model_settings.mode == "record":
+                return "model-record"
+            return "model-live"
+        return "offline-reference"
+
+    def reproduction_model_options(self) -> dict[str, str | bool]:
+        """Return CLI-expressible model inputs, never the API key itself."""
+        settings = self._model_settings
+        options: dict[str, str | bool] = {
+            "model": settings.model_configuration.model_id,
+            "model-mode": settings.mode,
+        }
+        if settings.replay_dir is not None:
+            options["model-replay-dir"] = str(settings.replay_dir)
+        if settings.allow_live_model:
+            options["allow-live-model"] = True
+        if settings.base_url is not None:
+            options["base-url"] = settings.base_url
+        options["api-key-env"] = settings.api_key_env
+        return options
+
     def register(
         self,
         agent_id: str,
@@ -114,6 +146,7 @@ class BenchmarkAgentRegistry:
         implementation: str = "",
         description: str = "",
         agent_type: str = "custom",
+        configuration_digest: str | None = None,
     ) -> None:
         """Register an exact canonical agent policy factory."""
         aid = agent_id.strip()
@@ -127,6 +160,7 @@ class BenchmarkAgentRegistry:
             "description": description,
             "agent_type": agent_type,
             "is_alias": False,
+            "configuration_digest": configuration_digest,
         }
 
     def register_alias(self, alias_id: str, canonical_id: str) -> None:
@@ -142,11 +176,15 @@ class BenchmarkAgentRegistry:
     def resolve(self, agent_id: str) -> AgentPolicy:
         """Resolve an exact agent policy instance. Fails closed on any unknown identifier."""
         aid = agent_id.strip()
-        if aid in self._factories:
-            return self._factories[aid]()
-        if aid in self._aliases:
-            canonical_id = self._aliases[aid]
-            return self._factories[canonical_id]()
+        canonical_id = self._aliases.get(aid, aid)
+        if canonical_id in self._factories:
+            agent = self._factories[canonical_id]()
+            self._metadata[canonical_id]["configuration_digest"] = getattr(
+                agent,
+                "configuration_digest",
+                self._metadata[canonical_id].get("configuration_digest"),
+            )
+            return agent
         known = sorted(list(self._factories.keys()) + list(self._aliases.keys()))
         raise UnknownBenchmarkAgentError(
             f"Unknown or unregistered benchmark agent ID '{agent_id}'. Registered agents: {known}."
