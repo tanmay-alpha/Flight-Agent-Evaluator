@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 from enum import Enum
@@ -75,6 +76,7 @@ class ModelConfiguration(BaseModel):
     temperature: float = 0.0
     max_tokens: int | None = None
     top_p: float | None = None
+    request_timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
 
     def canonical_digest(self) -> str:
         """SHA-256 digest of model configuration."""
@@ -84,6 +86,7 @@ class ModelConfiguration(BaseModel):
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "top_p": self.top_p,
+            "request_timeout_seconds": self.request_timeout_seconds,
         }
         raw = json.dumps(data, sort_keys=True)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -97,6 +100,8 @@ class ModelToolCall(BaseModel):
     call_id: str
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
+    raw_arguments: str | None = None
+    arguments_error: str | None = None
 
 
 class ModelUsage(BaseModel):
@@ -192,6 +197,8 @@ class ModelExchangeManifest(BaseModel):
     manifest_id: str
     model_configuration: ModelConfiguration
     exchanges: list[ModelExchange] = Field(default_factory=list)
+    endpoint_host: str | None = None
+    configuration_digest: str | None = None
 
     def manifest_digest(self) -> str:
         """SHA-256 digest of exchange manifest."""
@@ -203,6 +210,8 @@ class ModelExchangeManifest(BaseModel):
             "manifest_id": self.manifest_id,
             "model_id": self.model_configuration.model_id,
             "provider": self.model_configuration.provider,
+            "configuration_digest": self.configuration_digest,
+            "endpoint_host": self.endpoint_host,
             "exchanges": [
                 {
                     "turn_index": e.turn_index,
@@ -228,6 +237,29 @@ class AgentTask(BaseModel):
     scenario_mode: str = "read_only"
     max_turns: int = 10
     tool_call_limit: int = 15
+    current_date: datetime.date | None = None
+    """In-world current date (from the scenario's reference time), never wall-clock."""
+
+
+class ModelProvenance(BaseModel):
+    """What produced a model-backed trajectory, without secrets.
+
+    Two runs with different ``model_id``, sampling configuration, prompt or tool
+    schemas must never share a run identity; this record is what distinguishes
+    them in benchmark artifacts. ``endpoint_host`` is the host name only (no
+    scheme, path, query or credentials).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider_label: str
+    model_id: str
+    endpoint_host: str | None = None
+    model_configuration_digest: str
+    prompt_policy_id: str
+    prompt_digest: str
+    tool_schema_digest: str
+    model_exchange_manifest_digest: str | None = None
 
 
 class AgentRunResult(BaseModel):
@@ -238,7 +270,6 @@ class AgentRunResult(BaseModel):
     run_id: str
     agent_id: str
     agent_version: str
-    model_config_digest: str | None = None
     stop_reason: AgentStopReason
     final_response: str | None = None
     model_call_count: int = 0
@@ -249,4 +280,8 @@ class AgentRunResult(BaseModel):
     usage: ModelUsage = Field(default_factory=ModelUsage)
     journal_digest: str | None = None
     model_exchange_digest: str | None = None
+    model_provenance: ModelProvenance | None = None
+    """Set by model-backed agents; identifies exactly what produced the trajectory."""
+    model_latency_ms: float | None = None
+    """Wall-clock time spent in model calls. Non-deterministic: never part of any digest."""
     warnings: list[str] = Field(default_factory=list)

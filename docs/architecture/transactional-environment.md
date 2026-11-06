@@ -14,13 +14,15 @@ These are defined in `environment/contracts.py`:
 - **Transactions:** `INITIATED`, `COMMITTED`, `ROLLED_BACK`, `AMBIGUOUS` (`:60`).
 
 ### Tools
-There are 11 registered tools:
-- read-only: `flight.get_status`, `flight.search_flights`, `itinerary.get_current_booking`, `policy.get_rebooking_rules`, `booking.get_current` and `approval.get_status`;
-- mutating: `booking.hold_alternative`, `booking.release_hold`, `approval.request` and `notification.send_simulated` (`simulated_mutation`), and `booking.confirm_rebooking` (`sensitive_simulated_mutation`).
+The two registries are built in `tools/base.py`:
+- **Read-only registry** (`build_readonly_registry`, 4 tools): `flight.get_status`, `flight.search_flights`, `policy.get_rebooking_rules` and `itinerary.get_current_booking`.
+- **Transactional registry** (`build_transactional_registry`, 10 tools, all sharing one environment):
+  - read-only: `flight.get_status`, `flight.search_flights`, `policy.get_rebooking_rules`, `booking.get_current` and `approval.get_status`;
+  - mutating: `booking.hold_alternative`, `booking.release_hold`, `approval.request` and `notification.send_simulated` (`simulated_mutation`), and `booking.confirm_rebooking` (`sensitive_simulated_mutation`).
 
-The transactional registry is built in `tools/base.py:151-176`. There is no cancel tool.
+`itinerary.get_current_booking` is not in the transactional registry. It is a canned lookup for 6-character PNRs that knows nothing about the simulated environment, so it could only reject the environment's booking references (such as `AS-1003`) or return an unrelated booking. `booking.get_current` is the single, environment-backed booking lookup. There is no cancel tool.
 
-**Allowlist.** The tools an agent may call come from `default_allowed_tools` (`tools/base.py:191-209`):
+**Allowlist.** The tools an agent may call come from `default_allowed_tools` (`tools/base.py:202-219`):
 - the scenario's explicit `allowed_tools`, if set;
 - otherwise every tool registered for its `scenario_mode`.
 
@@ -51,7 +53,7 @@ Every mutating environment operation takes an `idempotency_key`. The registry ke
 1. **The request.** `approval.request` creates an `ApprovalRequest` bound to the booking, action, offer, hold and a canonical `payload_hash` (`environment/engine.py:396`).
 2. **The decision.** The status is set **immediately** to the scenario's configured decision: `status = self.approval_decision` (`:394`). There is no human, queue or supervisor step.
 3. **Fail-closed default.** If the scenario configures no decision, the status is `DENIED`: `UNCONFIGURED_APPROVAL_DECISION = ApprovalStatus.DENIED` (`:53-54,105-109`).
-4. **What the agent sees.** A denied request still succeeds at the tool level and returns `"status": "denied"`. Confirming with that approval fails with `ApprovalDeniedError` (`environment/approvals.py:92-93`), which the executor reports as error type `approval_denied` (`engine/tool_executor.py:696-697`).
+4. **What the agent sees.** A denied request still succeeds at the tool level and returns `"status": "denied"`. Confirming with that approval fails with `ApprovalDeniedError` (`environment/approvals.py:92-93`), which the executor reports as error type `approval_denied` (`engine/tool_executor.py:774-775, 804`).
 
 ### What `booking.confirm_rebooking` checks
 `_confirm_rebooking_locked` (`environment/engine.py:463-576`) runs these checks in order:

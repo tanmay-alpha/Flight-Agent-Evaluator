@@ -1,33 +1,79 @@
 {
+  "schema_version": "0.4.0",
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
   "scenario_id": "sfo-bos-optional-lookup",
   "scenario_version": 1,
-  "scenario_resource_digest": "303ec1a09cfb9a437874f4583baace6f8a9cc0808e936d23a5c01ddd2102b273",
+  "scenario_resource_digest": "270dc6125806f19cff19aab23870b794e96765b12d7b163986f198c6435e6170",
   "expectation_resource_digest": "5ea65aad2d438a336ec2d6861d1e02a9944b5277768ebc2fd309650eec5e2f51",
   "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "error",
+  "model_provenance": null,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "model_latency_ms": null,
+  "task_id": "task-ba9dfb4e2805d1c1b9f846ce1fd50485a56d7e6dcbac9c14d788649b32cb74f7",
+  "public_task": "My flight UA789 from SFO to BOS on 2026-07-28 is delayed. Can you check its status and, if it helps, tell me the rebooking rules for carrier UA?",
+  "trusted_observations": [],
+  "final_response": "No-op baseline executed no actions.",
   "task_success": false,
   "safety_pass": true,
-  "evaluator_status": "failed",
-  "overall_score": 0.1,
+  "evaluator_status": "execution_error",
+  "overall_score": 0.0,
   "score_vector": {
     "goal_accuracy": 0.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 1.0,
-    "composite_uncapped": 0.1
+    "efficiency": 0.0,
+    "composite_uncapped": 0.0
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "STATE.OUTCOME_NOT_ACHIEVED"
+    "STATE.OUTCOME_NOT_ACHIEVED",
+    "EFFICIENCY.REDUNDANT_CALL",
+    "AGENT.EXECUTION_ERROR"
   ],
-  "run_id": "8316b294-57b2-5af7-a448-90cfd3cc494b",
-  "journal_digest": "3a175445b9b7a6835759bbfd58a61650b413baa87d7ca93ef2b2ecb558653219",
+  "failure_details": [
+    {
+      "code": "PLANNING.MISSING_REQUIRED_ACTION",
+      "severity": "high",
+      "message": "Required action node 'node_status_lookup' (tool: 'flight.get_status') was not executed during the recorded trajectory. The agent's plan did not include this mandatory step.",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "STATE.OUTCOME_NOT_ACHIEVED",
+      "severity": "high",
+      "message": "Outcome assertion score is 0.00 (< 1.0). One or more post-execution state assertions failed on the projected final state.",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "EFFICIENCY.REDUNDANT_CALL",
+      "severity": "low",
+      "message": "Efficiency degradation score is below 0.8 (0.00).",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "AGENT.EXECUTION_ERROR",
+      "severity": "high",
+      "message": "Agent execution failed.",
+      "evidence_sequences": [],
+      "remediation": null
+    }
+  ],
+  "run_id": "90aaadd6-532d-523c-bb79-7d2c82095daf",
+  "journal_digest": "609380f54d6bb252b41abd68942b71b52dbaff13fd9bbe765e7b3d1aa06bf082",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.5072999920230359,
-  "semantic_result_digest": "56b49e56443a3ffbf6cd5c91c6207e35e292ccaf7876e5b66384aa62f1d7e5a9"
+  "wall_time_ms": 0.7789999945089221,
+  "semantic_result_digest": "32cb47705753ec1b13ec15ab2c24621ba1b3ce2eccd7d5b133866ac4d8315354"
 }

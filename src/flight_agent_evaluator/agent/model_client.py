@@ -10,6 +10,7 @@ persists every run's exchanges as a :class:`ModelExchangeManifest` that
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+from urllib.parse import urlsplit
 
 import openai
 
@@ -28,6 +30,7 @@ from flight_agent_evaluator.agent.errors import (
     ModelReplayMissingExchangeError,
     ModelReplayResponseDigestMismatchError,
 )
+from flight_agent_evaluator.agent.prompt import get_default_prompt_policy
 from flight_agent_evaluator.agent.protocol import ModelClient
 from flight_agent_evaluator.agent.security import redact_secrets
 from flight_agent_evaluator.agent.tool_names import (
@@ -45,6 +48,7 @@ from flight_agent_evaluator.contracts.model import (
     ModelToolCall,
     ModelUsage,
 )
+from flight_agent_evaluator.strict_json import StrictJSONError, loads_strict
 
 if TYPE_CHECKING:
     import httpx
@@ -63,32 +67,19 @@ DEFAULT_API_KEY_ENV = "OPENAI_API_KEY"
 # ---------------------------------------------------------------------------
 
 
-def redact_exchange(exchange: ModelExchange, custom_secrets: list[str]) -> ModelExchange:
-    """Return *exchange* with secrets removed from every message and response field.
-
-    The request fingerprint is kept: replay recomputes it from the agent's
-    own conversation.  The response digest is recomputed over the redacted
-    response so replay integrity checks still hold.
-    """
-    request = exchange.request.model_copy(
-        update={"messages": redact_secrets(exchange.request.messages, custom_secrets)}
-    )
-    response = exchange.response.model_copy(
-        update={
-            "content": redact_secrets(exchange.response.content, custom_secrets),
-            "tool_calls": [
-                tc.model_copy(update={"arguments": redact_secrets(tc.arguments, custom_secrets)})
-                for tc in exchange.response.tool_calls
-            ],
-        }
-    )
-    return exchange.model_copy(
-        update={
-            "request": request,
-            "response": response,
-            "response_digest": response.canonical_digest(),
-        }
-    )
+def configuration_identity(
+    configuration: ModelConfiguration, prompt_digest: str, endpoint_host: str | None
+) -> str:
+    """Hash only stable model, prompt and endpoint identity fields."""
+    payload = {
+        "model_configuration_digest": configuration.canonical_digest(),
+        "prompt_digest": prompt_digest,
+        "endpoint_host": endpoint_host,
+        "provider_label": configuration.provider,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def model_exchange_manifest_id(scenario_id: str, run_id: str) -> str:
@@ -96,18 +87,20 @@ def model_exchange_manifest_id(scenario_id: str, run_id: str) -> str:
     return f"{scenario_id}__{run_id}"
 
 
-def model_exchange_manifest_path(directory: Path, scenario_id: str, run_id: str) -> Path:
-    """Return the canonical manifest file path for a scenario run inside *directory*."""
-    return (
-        directory
-        / f"{model_exchange_manifest_id(scenario_id, run_id)}{MODEL_EXCHANGE_MANIFEST_SUFFIX}"
+def model_exchange_manifest_path(
+    directory: Path, scenario_id: str, run_id: str, configuration_digest: str
+) -> Path:
+    """Bind a manifest name to both the run and its model configuration."""
+    return directory / (
+        f"{model_exchange_manifest_id(scenario_id, run_id)}__"
+        f"{configuration_digest[:12]}{MODEL_EXCHANGE_MANIFEST_SUFFIX}"
     )
 
 
 def write_model_exchange_manifest(path: Path, manifest: ModelExchangeManifest) -> None:
-    """Persist a manifest as canonical, human-readable JSON."""
+    """Persist a manifest as canonical, human-readable JSON with LF line endings on every OS."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(manifest.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    path.write_bytes((manifest.model_dump_json(indent=2) + "\n").encode("utf-8"))
 
 
 def load_model_exchange_manifest(path: Path) -> ModelExchangeManifest:
@@ -137,6 +130,12 @@ def _encode_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
         function["name"] = to_provider_tool_name(str(function["name"]))
         encoded.append({**tool, "function": function})
     return encoded
+
+
+def tool_schema_digest(tools: list[dict[str, Any]]) -> str:
+    """Hash the canonical provider-facing tool list sent over the wire."""
+    raw = json.dumps(_encode_tools(tools), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _encode_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -187,24 +186,36 @@ class OpenAIChatCompletionsClient:
         self._client: openai.AsyncOpenAI | None = None
         self._exchange_history: list[ModelExchange] = []
         self._run: tuple[str, str, ModelConfiguration] | None = None
+        self._prompt_digest: str | None = None
 
     def __repr__(self) -> str:
         # Never expose the API key through reprs or logs.
-        return f"OpenAIChatCompletionsClient(mode={self._mode!r}, base_url={self._base_url!r})"
+        return f"OpenAIChatCompletionsClient(mode={self._mode!r}, host={self.endpoint_host!r})"
 
     @property
     def provider(self) -> str:
         return "openai-chat-completions"
 
     @property
+    def endpoint_host(self) -> str | None:
+        """Expose the endpoint hostname, never credentials, path or query."""
+        return urlsplit(self._base_url or "https://api.openai.com/v1").hostname
+
+    @property
     def exchange_history(self) -> list[ModelExchange]:
         return list(self._exchange_history)
 
     def begin_run(
-        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration
+        self,
+        *,
+        scenario_id: str,
+        run_id: str,
+        configuration: ModelConfiguration,
+        prompt_digest: str | None = None,
     ) -> None:
         self._exchange_history.clear()
         self._run = (scenario_id, run_id, configuration)
+        self._prompt_digest = prompt_digest
         self._client = openai.AsyncOpenAI(
             api_key=self._api_key, base_url=self._base_url, http_client=self._http_client
         )
@@ -218,16 +229,31 @@ class OpenAIChatCompletionsClient:
         self._client = None
         if self._http_client is None:
             await client.close()
+        prompt_digest = (
+            self._prompt_digest
+            if self._prompt_digest is not None
+            else (self._exchange_history[0].request.prompt_digest if self._exchange_history else "")
+        )
+        digest = configuration_identity(configuration, prompt_digest, self.endpoint_host)
         manifest = ModelExchangeManifest(
             manifest_id=model_exchange_manifest_id(scenario_id, run_id),
             model_configuration=configuration,
-            exchanges=[
-                redact_exchange(exchange, [self._api_key]) for exchange in self._exchange_history
-            ],
+            exchanges=list(self._exchange_history),
+            endpoint_host=self.endpoint_host,
+            configuration_digest=digest,
         )
+        payload = manifest.model_dump(mode="json")
+        if redact_secrets(payload, [self._api_key]) != payload:
+            raise ModelProviderError(
+                ModelError(
+                    error_type=ModelErrorType.INVALID_RESPONSE,
+                    message="Refusing to persist model exchanges containing a secret.",
+                )
+            )
         if self._mode == "record" and self._record_dir is not None:
             write_model_exchange_manifest(
-                model_exchange_manifest_path(self._record_dir, scenario_id, run_id), manifest
+                model_exchange_manifest_path(self._record_dir, scenario_id, run_id, digest),
+                manifest,
             )
         return manifest
 
@@ -315,28 +341,29 @@ class OpenAIChatCompletionsClient:
                     )
                 )
             internal_name = from_provider_tool_name(function.name)
+            arguments_error: str | None = None
             try:
-                args = json.loads(function.arguments) if function.arguments else {}
-            except json.JSONDecodeError as err:
-                raise ModelProviderError(
-                    ModelError(
-                        error_type=ModelErrorType.INVALID_TOOL_CALL,
-                        message=(
-                            f"Malformed JSON arguments in tool call '{internal_name}' ({tc.id})"
-                        ),
-                    )
-                ) from err
-            if not isinstance(args, dict):
-                raise ModelProviderError(
-                    ModelError(
-                        error_type=ModelErrorType.INVALID_TOOL_CALL,
-                        message=(
-                            f"Tool call '{internal_name}' arguments must be a JSON object, "
-                            f"got {type(args).__name__}"
-                        ),
-                    )
+                args = loads_strict(
+                    function.arguments,
+                    max_bytes=1_000_000,
+                    max_depth=64,
+                    source="model tool arguments",
                 )
-            tool_calls.append(ModelToolCall(call_id=tc.id, tool_name=internal_name, arguments=args))
+                if not isinstance(args, dict):
+                    arguments_error = "Tool arguments must be a JSON object"
+                    args = {}
+            except StrictJSONError:
+                arguments_error = "Tool arguments must be strict JSON"
+                args = {}
+            tool_calls.append(
+                ModelToolCall(
+                    call_id=tc.id,
+                    tool_name=internal_name,
+                    arguments=args,
+                    raw_arguments=function.arguments,
+                    arguments_error=arguments_error,
+                )
+            )
 
         usage = ModelUsage(
             prompt_tokens=raw_resp.usage.prompt_tokens if raw_resp.usage else 0,
@@ -418,17 +445,51 @@ class ReplayModelClient:
         return "replay"
 
     @property
+    def endpoint_host(self) -> str | None:
+        if self._manifest is not None:
+            return self._manifest.endpoint_host
+        if self._directory is not None:
+            return _replay_directory_host(self._directory)
+        return None
+
+    @property
     def exchange_history(self) -> list[ModelExchange]:
         return list(self._exchange_history)
 
     def begin_run(
-        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration
+        self,
+        *,
+        scenario_id: str,
+        run_id: str,
+        configuration: ModelConfiguration,
+        prompt_digest: str | None = None,
     ) -> None:
         self._exchange_history.clear()
         if self._directory is not None:
-            manifest = load_model_exchange_manifest(
-                model_exchange_manifest_path(self._directory, scenario_id, run_id)
-            )
+            candidates = [
+                load_model_exchange_manifest(path)
+                for path in self._directory.glob(
+                    f"{model_exchange_manifest_id(scenario_id, run_id)}__*"
+                    f"{MODEL_EXCHANGE_MANIFEST_SUFFIX}"
+                )
+            ]
+            if not candidates:
+                raise ModelReplayMissingExchangeError("Model exchange manifest not found.")
+            matching = [
+                m
+                for m in candidates
+                if m.model_configuration == configuration
+                and (
+                    prompt_digest is None
+                    or not m.exchanges
+                    or m.exchanges[0].request.prompt_digest == prompt_digest
+                )
+            ]
+            if len(matching) > 1:
+                raise ModelReplayManifestInvalidError(
+                    "Multiple model manifests match this run; select an explicit manifest."
+                )
+            manifest = matching[0] if matching else candidates[0]
             expected_id = model_exchange_manifest_id(scenario_id, run_id)
             if manifest.manifest_id != expected_id:
                 raise ModelReplayManifestInvalidError(
@@ -459,6 +520,10 @@ class ReplayModelClient:
             manifest_id=manifest_id,
             model_configuration=configuration,
             exchanges=list(self._exchange_history),
+            endpoint_host=self.endpoint_host,
+            configuration_digest=(
+                self._manifest.configuration_digest if self._manifest is not None else None
+            ),
         )
 
     async def create_completion(self, request: ModelRequest) -> ModelResponse:
@@ -518,6 +583,32 @@ class ModelAgentSettings:
     api_key_env: str = DEFAULT_API_KEY_ENV
 
 
+def _replay_directory_host(directory: Path) -> str | None:
+    hosts = {
+        load_model_exchange_manifest(path).endpoint_host
+        for path in directory.glob(f"*{MODEL_EXCHANGE_MANIFEST_SUFFIX}")
+    }
+    if len(hosts) > 1:
+        raise ModelClientConfigurationError(
+            "Replay directory contains multiple endpoint hosts; select an explicit manifest."
+        )
+    return hosts.pop() if hosts else None
+
+
+def model_agent_configuration_digest(settings: ModelAgentSettings) -> str:
+    """Compute registry identity without constructing a network or replay client."""
+    host: str | None = None
+    if settings.mode != "replay":
+        host = urlsplit(settings.base_url or "https://api.openai.com/v1").hostname
+    elif settings.replay_manifest is not None:
+        host = load_model_exchange_manifest(settings.replay_manifest).endpoint_host
+    elif settings.replay_dir is not None:
+        host = _replay_directory_host(settings.replay_dir)
+    return configuration_identity(
+        settings.model_configuration, get_default_prompt_policy().canonical_digest(), host
+    )
+
+
 def build_model_client(
     settings: ModelAgentSettings,
     *,
@@ -568,6 +659,8 @@ __all__ = [
     "OpenAIChatCompletionsClient",
     "ReplayModelClient",
     "build_model_client",
+    "configuration_identity",
+    "model_agent_configuration_digest",
     "load_model_exchange_manifest",
     "model_exchange_manifest_id",
     "model_exchange_manifest_path",

@@ -21,7 +21,11 @@ Responsibilities
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
 import logging
+import math
 import uuid
 from collections.abc import Callable
 from typing import Any, Protocol, runtime_checkable
@@ -56,6 +60,7 @@ from flight_agent_evaluator.environment.errors import (
     UnknownOfferError,
 )
 from flight_agent_evaluator.providers.base import FlightProvider
+from flight_agent_evaluator.providers.errors import ProviderDataNotFoundError, ProviderError
 from flight_agent_evaluator.recording.contracts import JournalEntry
 from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.runtime.clock import VirtualClock
@@ -140,6 +145,10 @@ class ToolExecutor:
     def call_count(self) -> int:
         """Number of tool calls attempted (including failed/limit-exceeded)."""
         return self._call_count
+
+    def restrict_tool_call_limit(self, limit: int) -> None:
+        """Apply a task budget without broadening the runner's existing limit."""
+        self._tool_call_limit = min(self._tool_call_limit, limit)
 
     @property
     def execution_policy(self) -> ExecutionToolPolicy | None:
@@ -226,7 +235,7 @@ class ToolExecutor:
             ):
                 denial = "Scenario mutation limit has been reached"
 
-        self._journal_tool_call(
+        arguments_valid = self._journal_tool_call(
             tool_call,
             context,
             now_dt,
@@ -236,6 +245,16 @@ class ToolExecutor:
         if denial is not None:
             self._call_count += 1
             return self._authorization_denied(tool_call, now_dt, context, denial)
+
+        # Validate before faults: rejected inputs can never have committed.
+        input_schema = handler.tool_definition.input_schema
+        if (
+            not arguments_valid
+            or tool_call.arguments_error is not None
+            or not _validate_arguments(tool_call.arguments, input_schema)
+        ):
+            self._call_count += 1
+            return self._invalid_arguments(tool_call, input_schema, now_dt, context)
 
         # 3. Fault injection.
         fault = self._fault_engine.apply(tool_call, sequence=self._call_count)
@@ -271,13 +290,9 @@ class ToolExecutor:
                 )
             else:
                 self._call_count += 1
+                if authoritative_class != "read_only" and fault.status in ("timeout", "cancelled"):
+                    self._mutation_count += 1
                 return self._fault_result(tool_call, fault, now_dt, context)
-
-        # 5. Validate arguments against the handler's input schema.
-        input_schema = handler.tool_definition.input_schema
-        if not _validate_arguments(tool_call.arguments, input_schema):
-            self._call_count += 1
-            return self._invalid_arguments(tool_call, input_schema, now_dt, context)
 
         # 6. Invoke handler.
         self._call_count += 1
@@ -296,7 +311,25 @@ class ToolExecutor:
                 provider=effective_provider,
                 context=context,
             )
+        except asyncio.CancelledError:
+            self._handler_error(
+                tool_call,
+                error_type="cancelled",
+                message="Tool execution was cancelled; the outcome may be unknown",
+                now_dt=now_dt,
+                context=context,
+                unknown_outcome=True,
+            )
+            raise
         except UnsupportedFaultConfigurationError:
+            self._handler_error(
+                tool_call,
+                error_type="internal_error",
+                message="Unsupported fault configuration interrupted the handler",
+                now_dt=now_dt,
+                context=context,
+                unknown_outcome=True,
+            )
             raise
         except EnvironmentError as exc:
             logger.debug("Handler raised expected environment error", exc_info=exc)
@@ -308,15 +341,35 @@ class ToolExecutor:
                 now_dt=now_dt,
                 context=context,
                 retryable=retryable,
+                unknown_outcome=error_type in ("ambiguous_commit", "internal_error"),
+            )
+        except ProviderError as exc:
+            logger.debug("Handler raised provider error", exc_info=exc)
+            if isinstance(exc, ProviderDataNotFoundError):
+                return self._handler_error(
+                    tool_call,
+                    error_type="not_found",
+                    message="No matching record was found for the requested query",
+                    now_dt=now_dt,
+                    context=context,
+                )
+            return self._handler_error(
+                tool_call,
+                error_type="provider_error",
+                message="The data provider could not complete the request",
+                now_dt=now_dt,
+                context=context,
+                retryable=exc.retryable,
             )
         except (ValueError, TypeError, LookupError) as exc:
             logger.debug("Handler raised expected error", exc_info=exc)
             return self._handler_error(
                 tool_call,
-                error_type="invalid_arguments",
-                message="Handler raised a validation error",
+                error_type="internal_error",
+                message="Handler failed after argument validation; outcome may be unknown",
                 now_dt=now_dt,
                 context=context,
+                unknown_outcome=True,
             )
         except Exception as exc:  # noqa: BLE001 - catch-all narrowed below
             logger.debug("Handler raised unexpected error", exc_info=exc)
@@ -326,6 +379,7 @@ class ToolExecutor:
                 message="Handler raised an unexpected error",
                 now_dt=now_dt,
                 context=context,
+                unknown_outcome=True,
             )
 
         # 8. Normalise the result.
@@ -480,16 +534,26 @@ class ToolExecutor:
         now_dt: Any,
         context: RunContext,
         retryable: bool = False,
+        unknown_outcome: bool = False,
     ) -> ToolResult:
+        definition = self._registry.definition_for(call.tool_name)
+        mutation_unknown = (
+            unknown_outcome and definition is not None and definition.mutation_class != "read_only"
+        )
+        if mutation_unknown:
+            self._mutation_count += 1
         tool_error = ToolError(
             error_type=error_type,
             message=message,
             retryable=retryable,
-            details={"correlation_id": call.call_id.hex},
+            details={
+                "correlation_id": call.call_id.hex,
+                **({"outcome": "unknown"} if mutation_unknown else {}),
+            },
         )
         result = ToolResult(
             call_id=call.call_id,
-            status="failure",
+            status="cancelled" if error_type == "cancelled" else "failure",
             error=tool_error,
             end_time=now_dt,
         )
@@ -596,8 +660,28 @@ class ToolExecutor:
         *,
         mutation_class: str | None,
         authorization_decision: str,
-    ) -> None:
-        """Journal request data separately from registry-derived truth."""
+    ) -> bool:
+        """Journal bounded request evidence and return whether it is valid JSON."""
+        finite = _finite_json(call.arguments)
+        arguments = call.model_dump(mode="json")["arguments"] if finite else call.arguments
+        raw = json.dumps(arguments, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        canonical_bytes = raw.encode("utf-8", errors="backslashreplace")
+        raw_arguments = call.raw_arguments
+        evidence_bytes = (
+            raw_arguments.encode("utf-8", errors="backslashreplace")
+            if raw_arguments is not None
+            else canonical_bytes
+        )
+        bounded = len(canonical_bytes) <= 65536 and len(evidence_bytes) <= 65536
+        if finite and bounded:
+            evidence: dict[str, Any] = {"arguments": arguments}
+            if raw_arguments is not None:
+                evidence["raw_arguments"] = raw_arguments
+        else:
+            evidence = {
+                "arguments_digest": hashlib.sha256(evidence_bytes).hexdigest(),
+                "arguments_bytes": len(evidence_bytes),
+            }
         self._journal_event(
             entry_type="tool_call",
             run_id=context.run_id,
@@ -610,16 +694,29 @@ class ToolExecutor:
                 "requested_mutation_class": call.mutation_class,
                 "authorization_decision": authorization_decision,
                 "scenario_id": context.scenario_id,
-                "arguments": call.arguments,
+                **evidence,
+                **({"arguments_error": call.arguments_error} if call.arguments_error else {}),
                 "timeout_seconds": call.timeout_seconds,
                 "idempotency_key": call.idempotency_key,
                 "approval_request_id": call.approval_request_id,
             },
         )
+        return finite and bounded
 
     def _project_state(self, _summary: dict[str, Any]) -> None:
         """Placeholder for runtime state projection."""
         return
+
+
+def _finite_json(value: Any) -> bool:
+    """Reject non-finite numbers at every nesting level, including extra properties."""
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, dict):
+        return all(_finite_json(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return all(_finite_json(item) for item in value)
+    return True
 
 
 def _validate_arguments(arguments: dict[str, Any], schema: dict[str, Any]) -> bool:

@@ -24,7 +24,9 @@ from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.state import StateSnapshot
 from flight_agent_evaluator.traces.format import AgentTrace, TraceToolCall
 
-DivergenceKind = Literal["result_mismatch", "status_mismatch", "not_replayed"]
+DivergenceKind = Literal[
+    "result_mismatch", "status_mismatch", "not_replayed", "user_request_mismatch"
+]
 
 
 class TraceDivergence(BaseModel):
@@ -33,6 +35,8 @@ class TraceDivergence(BaseModel):
     ``result_mismatch``: both succeeded but payloads differ.
     ``status_mismatch``: one side succeeded and the other failed.
     ``not_replayed``: replay stopped before this call (unresolvable ``$ref``).
+    ``user_request_mismatch``: transcript user text differs from the scenario's
+    public request (``call_index=-1``, ``tool_name="<user>"``).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -101,8 +105,9 @@ class TraceReplayPolicy:
     journals them. Agent-observed results are only compared against the
     environment's results to populate :attr:`divergences`. Every call is
     replayed even after environment failures, because the agent's decisions
-    are fixed by the trace. Replay stops early only when a ``$ref`` argument
-    cannot be resolved (stop reason ``error``).
+    are fixed by the trace. Replay stops when a native ``$ref`` cannot resolve
+    or the executor refuses a call because its tool budget is exhausted.
+    Provider transcripts always use literal arguments, never reference expansion.
     """
 
     def __init__(self, trace: AgentTrace) -> None:
@@ -124,20 +129,41 @@ class TraceReplayPolicy:
 
     async def execute(
         self,
-        task: AgentTask,  # noqa: ARG002
+        task: AgentTask,
         executor: ToolExecutor,
         state: StateSnapshot,  # noqa: ARG002
         context: RunContext,
     ) -> AgentRunResult:
+        if hasattr(executor, "restrict_tool_call_limit"):
+            executor.restrict_tool_call_limit(task.tool_call_limit)
         divergences: list[TraceDivergence] = []
+        if (
+            self._trace.source is not None
+            and self._trace.source.user_messages
+            and "\n".join(self._trace.source.user_messages) != task.public_request
+        ):
+            divergences.append(
+                TraceDivergence(
+                    call_index=-1,
+                    tool_name="<user>",
+                    kind="user_request_mismatch",
+                    environment_status=None,
+                    detail="transcript user text differs from scenario public_request",
+                )
+            )
         prior_steps: list[PriorStepRecord] = []
         resolver = TrajectoryReferenceResolver()
         stop_reason = AgentStopReason.COMPLETED
         replayed = 0
+        invalid = 0
 
         for index, call in enumerate(self._trace.calls):
             try:
-                arguments = resolver.resolve_arguments(call.arguments, prior_steps)
+                arguments = (
+                    call.arguments
+                    if self._trace.source is not None and self._trace.source.format == "openai_chat"
+                    else resolver.resolve_arguments(call.arguments, prior_steps)
+                )
             except (ValueError, TypeError) as exc:
                 # The agent's final response is kept so its claims are still evaluated.
                 stop_reason = AgentStopReason.ERROR
@@ -164,6 +190,9 @@ class TraceReplayPolicy:
             )
             result = await executor.execute(tool_call=tool_call, context=context)
             replayed += 1
+            error_type = result.error.error_type if result.error is not None else None
+            if error_type in {"authorization_error", "invalid_arguments"}:
+                invalid += 1
 
             payload = (
                 result.result if isinstance(result.result, dict) else {"result": result.result}
@@ -179,6 +208,19 @@ class TraceReplayPolicy:
             divergence = _compare(index, call, result)
             if divergence is not None:
                 divergences.append(divergence)
+            if error_type == "tool_call_limit_exceeded":
+                stop_reason = AgentStopReason.TOOL_LIMIT_EXCEEDED
+                divergences.extend(
+                    TraceDivergence(
+                        call_index=skipped,
+                        tool_name=self._trace.calls[skipped].tool_name,
+                        kind="not_replayed",
+                        environment_status=None,
+                        detail="replay stopped at the executor tool-call limit",
+                    )
+                    for skipped in range(index + 1, len(self._trace.calls))
+                )
+                break
 
         self._divergences = divergences
         usage = self._trace.usage
@@ -190,6 +232,7 @@ class TraceReplayPolicy:
             final_response=self._trace.final_response,
             model_call_count=usage.model_calls if usage else 0,
             tool_call_count=replayed,
+            invalid_tool_call_count=invalid,
             usage=ModelUsage(
                 prompt_tokens=usage.prompt_tokens,
                 completion_tokens=usage.completion_tokens,

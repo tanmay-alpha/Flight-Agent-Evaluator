@@ -51,3 +51,23 @@ def test_redact_custom_secrets():
     redacted = redact_secrets(raw_str, custom_secrets=["https://custom-internal-host.com"])
     assert "custom-internal-host.com" not in redacted
     assert "[REDACTED_SECRET]" in redacted
+
+
+def test_identifiers_ending_in_sk_are_not_api_keys() -> None:
+    # Found in the first live run: content-addressed ids "task-<sha256>" matched "sk-…".
+    for text in (
+        "task-71a77aaf471fe1c831710583f57bb0033cc8a7dbe54d5e5349685b27263c2a60",
+        "desk-0123456789abcdefghijklmnop",
+        "risk-assessment-0123456789abcdef",
+    ):
+        assert redact_secrets(text) == text
+    assert redact_secrets("(sk-abc12345678901234567890)") == "([REDACTED_SECRET])"
+
+
+def test_short_placeholder_api_keys_are_not_treated_as_secrets() -> None:
+    # Local servers (Ollama, vLLM) accept any dummy key; a reply that merely mentions
+    # the word must not be flagged as leaking it.
+    text = "This answer was produced by a local ollama model."
+    assert redact_secrets(text, custom_secrets=["ollama"]) == text
+    long_key = "0123456789abcdef0123"
+    assert long_key not in redact_secrets(f"key {long_key}", custom_secrets=[long_key])

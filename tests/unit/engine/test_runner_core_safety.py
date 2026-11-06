@@ -191,3 +191,14 @@ def test_state_projector_resolves_results_to_pending_calls() -> None:
     calls = state.data["tool_calls"]
     assert [c["status"] for c in calls] == ["timeout", "success"]
     assert calls[1]["result"] == {"ok": 1}
+
+
+def test_driver_exception_does_not_persist_secret_text(tmp_path: Path) -> None:
+    class SecretFailure:
+        async def execute(self, **_: Any) -> Any:
+            raise RuntimeError("password=private-value")
+
+    entries = _run(_load("lax-sfo-ontime.json"), tmp_path, driver=SecretFailure())
+    assert entries[-1].type == "run_completed"
+    assert entries[-1].payload["run_status"] == "error"
+    assert "private-value" not in "".join(entry.model_dump_json() for entry in entries)

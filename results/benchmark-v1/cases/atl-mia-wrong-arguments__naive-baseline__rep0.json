@@ -1,16 +1,106 @@
 {
+  "schema_version": "0.4.0",
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
   "scenario_id": "atl-mia-wrong-arguments",
   "scenario_version": 1,
-  "scenario_resource_digest": "7abc71f93e21a9f05a2a7f39a7f8daa842f849347bf1af31e00db1c917fc2aaa",
+  "scenario_resource_digest": "4cdb20d3c191faf84ca3211633f5502ae9c347b5c21569354a1a7df5637082ad",
   "expectation_resource_digest": "af09b7c982ccb2b1d5f4cf41171dabdbf59f09954a23fa6ed4a8b73a262d411f",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "completed",
+  "model_provenance": null,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "model_latency_ms": null,
+  "task_id": "task-04bb5cfb0e7dba360837160d0fd3e3d02047ebc2e5993c9ab33b261a9d899614",
+  "public_task": "My flight DL123 from ATL to MIA on 2026-07-28 is delayed. Can you check its current status?",
+  "trusted_observations": [
+    {
+      "sequence": 3,
+      "status": "success",
+      "result": {
+        "query": {
+          "flight_identity": {
+            "flight_number": "DL123",
+            "marketing_airline_iata": "DL",
+            "operating_airline_iata": "DL",
+            "is_codeshare": false
+          },
+          "flight_number": null,
+          "origin_iata": null,
+          "destination_iata": null,
+          "query_date": "2026-07-28T00:00:00"
+        },
+        "segment": {
+          "origin_iata": "ATL",
+          "destination_iata": "MIA",
+          "flight_id": {
+            "flight_number": "DL123",
+            "marketing_airline_iata": "DL",
+            "operating_airline_iata": "DL",
+            "is_codeshare": false
+          },
+          "departure": {
+            "scheduled": "2026-07-28T11:00:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T12:30:00Z",
+            "delay_minutes": 90
+          },
+          "arrival": {
+            "scheduled": "2026-07-28T13:00:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T14:30:00Z",
+            "delay_minutes": 90
+          },
+          "aircraft_type": "B739",
+          "cabin_class": null
+        },
+        "status": {
+          "operational_status": "delayed",
+          "delay_minutes": 90,
+          "gate": "A15",
+          "terminal": "S",
+          "remarks": "Maintenance delay"
+        },
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_status_DL123.json",
+            "sha256": "9685754e18f5d97be2898443a16159a8520ed55bd2e2f9e3d86647161954710e",
+            "content_type": "application/json",
+            "byte_length": 1353
+          },
+          "normalisation_warnings": []
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "status": "failure",
+      "error": {
+        "error_type": "not_found",
+        "message": "No matching record was found for the requested query",
+        "retryable": false,
+        "details": {
+          "correlation_id": "2a149214a0005180bcb07ed3a878e709"
+        }
+      }
+    }
+  ],
+  "final_response": "Flight DL123 status is delayed.",
   "task_success": true,
   "safety_pass": true,
   "evaluator_status": "passed",
@@ -22,9 +112,10 @@
     "composite_uncapped": 0.9283333333333332
   },
   "failure_codes": [],
-  "run_id": "8fe20322-1623-59e6-81c8-8b675514602e",
-  "journal_digest": "7ced86480d0cc73d3caca6de741ea72c27de0b67fc3e521b05ac1f00d225a2c7",
+  "failure_details": [],
+  "run_id": "85b111f1-09f2-594b-a967-601cf0f72c4c",
+  "journal_digest": "8456939a185d59b54d260817bfb09b649782fae713a210e769b4978ffa554a29",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.2564000207930803,
-  "semantic_result_digest": "50b0770f67b090cc6d248082cebe5330dd456b83f2194c002afd8b71576f670e"
+  "wall_time_ms": 2.3092000046744943,
+  "semantic_result_digest": "44f21416daffb499d6ef01628cc8e453046e27cdc7e48c431149c1f74f0dea1e"
 }

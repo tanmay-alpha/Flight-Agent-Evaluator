@@ -13,9 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import pytest
 
-from flight_agent_evaluator.agent.errors import ModelReplayMissingExchangeError
 from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
 from flight_agent_evaluator.agent.model_client import (
     MODEL_EXCHANGE_MANIFEST_SUFFIX,
@@ -122,6 +120,10 @@ class JournalCapturingAgent:
     def agent_version(self) -> str:
         return self._inner.agent_version
 
+    @property
+    def configuration_digest(self) -> str:
+        return self._inner.configuration_digest
+
     async def execute(
         self,
         task: AgentTask,
@@ -210,7 +212,14 @@ def test_benchmark_engine_records_and_replays_model_agent_per_scenario_rep(tmp_p
     http_client = httpx.AsyncClient(transport=httpx.MockTransport(server))
     record_dir = tmp_path / "model-exchanges"
 
-    record_registry = BenchmarkAgentRegistry()
+    record_registry = BenchmarkAgentRegistry(
+        model_settings=ModelAgentSettings(
+            mode="record",
+            record_dir=record_dir,
+            base_url="http://fake-openai.local/v1",
+            allow_live_model=True,
+        )
+    )
     meta = record_registry.get_metadata("model")
     record_registry.register(
         agent_id="model",
@@ -235,7 +244,9 @@ def test_benchmark_engine_records_and_replays_model_agent_per_scenario_rep(tmp_p
     manifests = sorted(record_dir.glob(f"*{MODEL_EXCHANGE_MANIFEST_SUFFIX}"))
     assert len(manifests) == 2
     assert {case.run_id for case in recorded.case_results} == {
-        m.name.removeprefix("jfk-lhr-delay__").removesuffix(MODEL_EXCHANGE_MANIFEST_SUFFIX)
+        ModelExchangeManifest.model_validate_json(m.read_bytes()).manifest_id.removeprefix(
+            "jfk-lhr-delay__"
+        )
         for m in manifests
     }
     assert all(case.task_success for case in recorded.case_results)
@@ -259,7 +270,15 @@ def test_benchmark_model_replay_fails_clearly_when_manifest_missing(tmp_path: Pa
     registry = BenchmarkAgentRegistry(
         model_settings=ModelAgentSettings(mode="replay", replay_dir=tmp_path)
     )
-    with pytest.raises(ModelReplayMissingExchangeError, match="not found"):
-        CanonicalBenchmarkEngine(registry=registry).run_benchmark(
-            agent_ids=["model"], scenario_filter=["jfk-lhr-delay"]
-        )
+    result = CanonicalBenchmarkEngine(registry=registry).run_benchmark(
+        agent_ids=["model"], scenario_filter=["jfk-lhr-delay"]
+    )
+    assert len(result.case_results) == 1
+    case = result.case_results[0]
+    assert not case.task_success
+    assert case.stop_reason == AgentStopReason.ERROR
+    assert case.evaluator_status == "execution_error"
+    assert case.overall_score == 0
+    assert "AGENT.EXECUTION_ERROR" in case.failure_codes
+    assert any(detail.code == "AGENT.EXECUTION_ERROR" for detail in case.failure_details)
+    assert case.journal_digest is not None

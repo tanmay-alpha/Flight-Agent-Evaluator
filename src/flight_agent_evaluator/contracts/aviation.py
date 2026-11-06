@@ -331,15 +331,13 @@ class FlightOffer(ContractModel):
 
 
 class FlightSearchResult(ContractModel):
-    """Result of a flight search, preserving provider provenance."""
+    """Result of a flight search, preserving provider provenance.
+
+    An empty ``offers`` tuple is a valid answer: the route was searched and has
+    no available alternatives.
+    """
 
     schema_version: SchemaVersion  # type: ignore[valid-type]
     query: FlightSearchRequest  # type: ignore[valid-type]
     offers: tuple[FlightOffer, ...]  # type: ignore[valid-type]
     source_metadata: SourceMetadata  # type: ignore[valid-type]
-
-    @model_validator(mode="after")
-    def _validate_result(self) -> FlightSearchResult:
-        if not self.offers:
-            raise ValueError("FlightSearchResult must have at least one offer")
-        return self

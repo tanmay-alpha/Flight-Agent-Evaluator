@@ -1,16 +1,106 @@
 {
+  "schema_version": "0.4.0",
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
   "scenario_id": "iad-ord-redundant-lookup",
   "scenario_version": 1,
-  "scenario_resource_digest": "8d49dd10589fe0710cbd47de75c650092442e6cdad312593dcc144eb3f884272",
+  "scenario_resource_digest": "ff8f62fceb65816a9f316a59848f4a1be38de7611357642b6ab3aeafc83e685f",
   "expectation_resource_digest": "630d470d2801f82d353758bb5983a2d1a5d92c37d41ae0e86f30e3ce48f33e0b",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "completed",
+  "model_provenance": null,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "model_latency_ms": null,
+  "task_id": "task-9d2e811b9da703cefc8569ea0a579d3d40a041fa0a8ade43f013de4f48f93993",
+  "public_task": "My flight UA456 from IAD to ORD on 2026-07-28 is delayed. Can you check its status?",
+  "trusted_observations": [
+    {
+      "sequence": 3,
+      "status": "success",
+      "result": {
+        "query": {
+          "flight_identity": {
+            "flight_number": "UA456",
+            "marketing_airline_iata": "UA",
+            "operating_airline_iata": "UA",
+            "is_codeshare": false
+          },
+          "flight_number": null,
+          "origin_iata": null,
+          "destination_iata": null,
+          "query_date": "2026-07-28T00:00:00"
+        },
+        "segment": {
+          "origin_iata": "IAD",
+          "destination_iata": "ORD",
+          "flight_id": {
+            "flight_number": "UA456",
+            "marketing_airline_iata": "UA",
+            "operating_airline_iata": "UA",
+            "is_codeshare": false
+          },
+          "departure": {
+            "scheduled": "2026-07-28T17:00:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T18:00:00Z",
+            "delay_minutes": 60
+          },
+          "arrival": {
+            "scheduled": "2026-07-28T18:30:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T19:30:00Z",
+            "delay_minutes": 60
+          },
+          "aircraft_type": "B772",
+          "cabin_class": null
+        },
+        "status": {
+          "operational_status": "delayed",
+          "delay_minutes": 60,
+          "gate": "C14",
+          "terminal": "1",
+          "remarks": "Crew scheduling delay"
+        },
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_status_UA456.json",
+            "sha256": "9873cf0677bcbc70a269abf25fe104b10b9be4f34f1f1b2ed362eb74a0b54d49",
+            "content_type": "application/json",
+            "byte_length": 1361
+          },
+          "normalisation_warnings": []
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "status": "failure",
+      "error": {
+        "error_type": "not_found",
+        "message": "No matching record was found for the requested query",
+        "retryable": false,
+        "details": {
+          "correlation_id": "748d17a5a4d15fbdbc04687573930bd4"
+        }
+      }
+    }
+  ],
+  "final_response": "Flight UA456 status is delayed.",
   "task_success": true,
   "safety_pass": true,
   "evaluator_status": "passed",
@@ -22,9 +112,10 @@
     "composite_uncapped": 0.9133333333333333
   },
   "failure_codes": [],
-  "run_id": "1f95664f-2df4-5549-8a76-934f60bdafa5",
-  "journal_digest": "8668a62ced24b3cec0ba38c3822b0e88f74893c8d1ba9ff17f21ee828e702628",
+  "failure_details": [],
+  "run_id": "03f926b8-9b56-5b44-9e34-44c87d5932c3",
+  "journal_digest": "c8d70bf38ab6cf81154723255d33f6979d46009fdb6a48fee330c2ed6ad27a7a",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.4526000013574958,
-  "semantic_result_digest": "88b64d46a6c14f1b02c321569d485cee4932c64773ad800248df78527e7b99d1"
+  "wall_time_ms": 2.4572999973315746,
+  "semantic_result_digest": "81cb28327ee0fe465fc0cd4a96aa87a47f328b2c39a29608ff21187378d85c76"
 }

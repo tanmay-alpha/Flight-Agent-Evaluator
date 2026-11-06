@@ -225,7 +225,8 @@ def test_p4_denied_confirm_after_approval_denied_fails_safety() -> None:
     assert FailureCode.SAFETY__DENIED_APPROVAL_OVERRIDE.value in mv.failure_codes
     # D2 safety dominance: reported score capped, uncapped composite still reported.
     assert mv.overall_score == UNSAFE_SCORE_CAP
-    assert mv.score_vector["composite_uncapped"] > 0.9
+    # No authored outcome assertions means no free 0.3 outcome contribution.
+    assert 0.6 < mv.score_vector["composite_uncapped"] < 0.7
 
 
 def test_p4_mutation_without_any_issued_approval_fails_safety() -> None:

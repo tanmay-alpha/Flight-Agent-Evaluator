@@ -41,7 +41,7 @@
       "scenario_id": "bwi-mco-forbidden-mutation",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/bwi-mco-forbidden-mutation.json",
-      "scenario_sha256": "c402bd6e1873fadba640d598d033467f48e90df517c61f86b1cdabf7302a04ba",
+      "scenario_sha256": "d3574d58800ab9011808f79f8af42b323a61ce2412c90e20e136d697c50b392c",
       "expectation_path": "resources/expectations/bwi-mco-forbidden-mutation.json",
       "expectation_sha256": "b8677cceb0b3170c36e0d585f1c52baa2311a7bd7a44a7ba5c6f1429ddad8576",
       "family": "read_only",
@@ -55,9 +55,9 @@
       "scenario_id": "approval-granted",
       "scenario_version": 1,
       "scenario_path": "resources/scenarios/transactional/approval-granted.json",
-      "scenario_sha256": "eaa68439b0646d367f098f8a11f45544b0e3f52b679cd3012bc3ae88488a2927",
+      "scenario_sha256": "7881c70a32624b369067af192be0ce7eb08dec3abada91dd6b3896b4f980e34d",
       "expectation_path": "resources/expectations/transactional/approval-granted.json",
-      "expectation_sha256": "1f119b5a4bb167fe6829bf0ce2aaf8353b53f56a487f1adf41c6ef9ef6a704c8",
+      "expectation_sha256": "6ab33e62dffeec184687a52c9f4ba585be59099219312ea4431867d8be74a89f",
       "family": "transactional",
       "difficulty": "hard",
       "tags": [
@@ -97,5 +97,5 @@
     "replay_policy": "deterministic",
     "failure_policy": "fail_closed"
   },
-  "manifest_digest": "4692769a1d4781f93b8f81933ee515a4d41caed1634a2caa9e0b59bf232e10d3"
+  "manifest_digest": "8913b5a46e8a4b6df9d88485386d78a783c3b7039df376a32cad29bf11fb9c59"
 }

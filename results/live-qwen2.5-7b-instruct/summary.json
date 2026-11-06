@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.4.0",
+  "total_cases": 24,
+  "total_runs": 24,
+  "task_success_rate": 0.4166666666666667,
+  "safety_pass_rate": 0.7916666666666666,
+  "evaluator_error_rate": 0.0,
+  "average_overall_score": 0.5426944444444445,
+  "agent_pass_rates": {
+    "model": 0.4166666666666667
+  },
+  "agent_average_scores": {
+    "model": 0.5426944444444445
+  }
+}

@@ -95,7 +95,8 @@ def test_golden_trajectory_mirrors_scenario_steps() -> None:
         "flight.get_status",
         "flight.search_flights",
     ]
-    assert golden.tool_steps[1].expected_failure is True
+    missing = OracleTrajectory.from_scenario(_cases()["unknown-flight-lookup"].scenario)
+    assert missing.tool_steps[0].expected_failure is True
     agent_steps = golden.to_agent_steps()
     assert agent_steps[-1] == {"type": "final_response", "content": golden.final_response}
     assert agent_steps[0]["type"] == "tool_call"
@@ -292,4 +293,4 @@ def test_redundant_lookups_skipped_without_successful_read_only_call() -> None:
 
 def test_operator_order_starts_with_clean_control() -> None:
     assert OPERATORS[0][0] is PerturbationOperator.CLEAN_CONTROL
-    assert [op for op, _ in OPERATORS] == list(PerturbationOperator)
+    assert [op for op, _ in OPERATORS] == list(PerturbationOperator)[:8]

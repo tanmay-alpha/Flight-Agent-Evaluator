@@ -57,8 +57,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Passenger on booking AS-1007 asks to be rebooked onto alternative flight AS158.",
-      "initial_message": "Passenger on booking AS-1007 asks to be rebooked onto alternative flight AS158."
+      "description": "The passenger on booking reference AS-1007 (JFK to LHR) asks to be rebooked onto alternative flight AS158.",
+      "initial_message": "The passenger on booking reference AS-1007 (JFK to LHR) asks to be rebooked onto alternative flight AS158."
     }
   ],
   "limits": {

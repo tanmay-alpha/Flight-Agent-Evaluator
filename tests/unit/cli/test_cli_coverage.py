@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -43,7 +44,7 @@ def test_sanitise_error() -> None:
 
 
 def test_get_version() -> None:
-    assert _get_version() == "0.3.0"
+    assert _get_version() == "0.4.0"
 
 
 def test_cli_agents_list(capsys: pytest.CaptureFixture[str]) -> None:
@@ -109,18 +110,18 @@ def test_cli_agent_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     args.json = False
     assert cmd_agent_run(args) in (0, 1)
 
-    # No-op
+    # The no-op negative control deliberately reports AgentStopReason.ERROR.
     args.agent = "noop"
-    assert cmd_agent_run(args) in (0, 1)
+    assert cmd_agent_run(args) == 3
 
     # Invalid scenario path
     args.scenario = "nonexistent.json"
-    assert cmd_agent_run(args) == 1
+    assert cmd_agent_run(args) == 2
 
     # Invalid agent
     args.scenario = "resources/scenarios/jfk-lhr-delay.json"
     args.agent = "unsupported_agent"
-    assert cmd_agent_run(args) == 1
+    assert cmd_agent_run(args) == 2
 
 
 def test_cli_scenario_validate(capsys: pytest.CaptureFixture[str]) -> None:
@@ -250,7 +251,6 @@ def test_cli_benchmark_commands(tmp_path: Path, capsys: pytest.CaptureFixture[st
     args_val = argparse.Namespace(
         manifest="builtin:benchmark-v1",
         manifest_pos=None,
-        scenarios=None,
         json=False,
     )
     assert cmd_benchmark_validate(args_val) == 0
@@ -263,7 +263,6 @@ def test_cli_benchmark_commands(tmp_path: Path, capsys: pytest.CaptureFixture[st
         manifest="builtin:benchmark-v1",
         agents="scripted-oracle",
         repetitions=1,
-        scenarios=None,
         output=str(out_dir),
         json=False,
     )
@@ -304,6 +303,30 @@ def test_cli_demo_and_verify_release(capsys: pytest.CaptureFixture[str]) -> None
     demo_args.json = True
     assert cmd_demo_run(demo_args) == 0
 
+    # Test goal accuracy when outcome assertions exist
+    assert "Goal Accuracy:          1.000" in captured.out
+
+
+def test_cli_demo_goal_accuracy_no_assertions(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from flight_agent_evaluator.engine.scenario_loader import LoadedScenario, ScenarioLoader
+
+    real_load = ScenarioLoader.load_builtin
+
+    def mock_load(self: Any, name: str) -> Any:
+        loaded = real_load(self, name)
+        return LoadedScenario(
+            scenario=loaded.scenario.model_copy(update={"assertions": ()}),
+            raw_bytes=loaded.raw_bytes,
+            digest=loaded.digest,
+        )
+
+    monkeypatch.setattr(ScenarioLoader, "load_builtin", mock_load)
+    demo_args = argparse.Namespace(json=False)
+    assert cmd_demo_run(demo_args) == 0
+    captured = capsys.readouterr()
+    assert "Goal Accuracy:          n/a (no outcome assertions)" in captured.out
     rel_args = argparse.Namespace(json=False)
     assert cmd_verify_release(rel_args) == 0
     rel_args.json = True

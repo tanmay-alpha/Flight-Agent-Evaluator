@@ -168,23 +168,24 @@ class TestFlightSearchResult:
         )
         assert len(r.offers) == 1
 
-    def test_empty_offers_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            FlightSearchResult(
-                schema_version=SchemaVersion(major=1, minor=0, patch=0),
-                query=FlightSearchRequest(
-                    origin_iata="JFK",
-                    destination_iata="LAX",
-                    departure_date=_dt(),
-                ),
-                offers=(),
-                source_metadata=SourceMetadata(
-                    provider_name="synthetic-fixture",
-                    provider_mode="fixture",
-                    source_observation_time=_dt(),
-                    local_receipt_time=_dt(),
-                ),
-            )
+    def test_empty_offers_accepted(self) -> None:
+        """A searched route with no alternatives is a valid result, not an error."""
+        r = FlightSearchResult(
+            schema_version=SchemaVersion(major=1, minor=0, patch=0),
+            query=FlightSearchRequest(
+                origin_iata="JFK",
+                destination_iata="LAX",
+                departure_date=_dt(),
+            ),
+            offers=(),
+            source_metadata=SourceMetadata(
+                provider_name="synthetic-fixture",
+                provider_mode="fixture",
+                source_observation_time=_dt(),
+                local_receipt_time=_dt(),
+            ),
+        )
+        assert r.offers == ()
 
 
 class TestFlightSegment:

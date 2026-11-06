@@ -175,7 +175,9 @@ def test_replay_directory_loads_manifest_per_run(tmp_path: Path) -> None:
         model_configuration=ModelConfiguration(),
         exchanges=[_exchange(req)],
     )
-    write_model_exchange_manifest(model_exchange_manifest_path(tmp_path, "scn", "run-1"), manifest)
+    write_model_exchange_manifest(
+        model_exchange_manifest_path(tmp_path, "scn", "run-1", "0" * 64), manifest
+    )
     client = ReplayModelClient.from_directory(tmp_path)
 
     with pytest.raises(ModelReplayMissingExchangeError, match="not found"):
@@ -196,10 +198,24 @@ def test_replay_directory_rejects_manifest_bound_to_another_run(tmp_path: Path) 
     manifest = ModelExchangeManifest(
         manifest_id="other__run", model_configuration=ModelConfiguration()
     )
-    write_model_exchange_manifest(model_exchange_manifest_path(tmp_path, "scn", "r"), manifest)
+    write_model_exchange_manifest(
+        model_exchange_manifest_path(tmp_path, "scn", "r", "0" * 64), manifest
+    )
     client = ReplayModelClient.from_directory(tmp_path)
     with pytest.raises(ModelReplayManifestInvalidError):
         client.begin_run(scenario_id="scn", run_id="r", configuration=ModelConfiguration())
+
+
+def test_manifest_file_uses_lf_line_endings(tmp_path: Path) -> None:
+    # Committed live manifests must be byte-identical whether recorded on Windows or Linux.
+    path = tmp_path / "m.json"
+    write_model_exchange_manifest(
+        path,
+        ModelExchangeManifest(manifest_id="scn__run", model_configuration=ModelConfiguration()),
+    )
+    raw = path.read_bytes()
+    assert b"\r\n" not in raw
+    assert raw.endswith(b"}\n")
 
 
 def test_malformed_manifest_is_rejected(tmp_path: Path) -> None:
@@ -330,7 +346,8 @@ def test_chat_completions_client_maps_tool_names_at_the_wire(tmp_path: Path) -> 
     assert response.tool_calls[0].arguments == {"flight_id": "AS142"}
     # Internal names are preserved in the recorded exchange.
     assert manifest.exchanges[0].request.tools[0]["function"]["name"] == "flight.get_status"
-    written = model_exchange_manifest_path(tmp_path, "scn", "run")
+    assert manifest.configuration_digest is not None
+    written = model_exchange_manifest_path(tmp_path, "scn", "run", manifest.configuration_digest)
     assert ModelExchangeManifest.model_validate_json(written.read_text("utf-8")) == manifest
 
 
@@ -396,15 +413,17 @@ def test_malformed_tool_arguments_are_typed_errors() -> None:
                 http_client=http_client,
             )
             client.begin_run(scenario_id="s", run_id="r", configuration=ModelConfiguration())
-            await client.create_completion(_request())
+            response = await client.create_completion(_request())
+            assert response.tool_calls[0].arguments_error is not None
+            assert response.tool_calls[0].raw_arguments == "[1"
+            manifest = await client.end_run()
+            assert manifest.exchanges[0].response == response
 
-    with pytest.raises(ModelProviderError) as excinfo:
-        asyncio.run(scenario())
-    assert excinfo.value.error.error_type == ModelErrorType.INVALID_TOOL_CALL
+    asyncio.run(scenario())
 
 
 def test_record_manifest_never_contains_planted_api_keys(tmp_path: Path) -> None:
-    """Regression (C10): keys echoed by the model or present in the conversation are redacted."""
+    """Secret-bearing exchanges cannot be persisted or silently rewritten."""
     gateway_key = "gw-live-0123456789abcdef"  # custom format: only caught as the real key value
     project_key = "sk-proj-AbCdEf_0123456789-ghijklmnop"
 
@@ -447,15 +466,8 @@ def test_record_manifest_never_contains_planted_api_keys(tmp_path: Path) -> None
             await client.create_completion(req)
             await client.end_run()
 
-    asyncio.run(scenario())
-    text = model_exchange_manifest_path(tmp_path, "scn", "run").read_text("utf-8")
-    assert gateway_key not in text
-    assert project_key not in text
-    assert "[REDACTED_SECRET]" in text
-    # The redacted manifest is still a valid, replayable manifest.
-    manifest = ModelExchangeManifest.model_validate_json(text)
-    replay = ReplayModelClient(manifest)
-    replay.begin_run(scenario_id="scn", run_id="run", configuration=ModelConfiguration())
-    assert asyncio.run(replay.create_completion(req)).tool_calls[0].tool_name == (
-        "flight.get_status"
-    )
+    with pytest.raises(ModelProviderError, match="secret") as excinfo:
+        asyncio.run(scenario())
+    assert gateway_key not in str(excinfo.value)
+    assert project_key not in str(excinfo.value)
+    assert not list(tmp_path.glob("*.model-exchanges.json"))

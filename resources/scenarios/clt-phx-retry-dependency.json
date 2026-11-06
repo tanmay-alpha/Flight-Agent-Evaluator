@@ -14,7 +14,7 @@
     {
       "step_id": "step1",
       "description": "Check AA321 status and search for alternative flights.",
-      "initial_message": "Flight AA321 CLT to PHX is delayed. Please check flight status and search for alternative flights."
+      "initial_message": "My flight AA321 from CLT to PHX on 2026-07-28 is delayed. Can you check its status and look for alternative flights?"
     }
   ],
   "limits": {

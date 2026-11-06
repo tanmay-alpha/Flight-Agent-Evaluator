@@ -1,16 +1,107 @@
 {
+  "schema_version": "0.4.0",
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
   "scenario_id": "sfo-bos-optional-lookup",
   "scenario_version": 1,
-  "scenario_resource_digest": "303ec1a09cfb9a437874f4583baace6f8a9cc0808e936d23a5c01ddd2102b273",
+  "scenario_resource_digest": "270dc6125806f19cff19aab23870b794e96765b12d7b163986f198c6435e6170",
   "expectation_resource_digest": "5ea65aad2d438a336ec2d6861d1e02a9944b5277768ebc2fd309650eec5e2f51",
   "agent_id": "scripted-oracle",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "completed",
+  "model_provenance": null,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "model_latency_ms": null,
+  "task_id": "task-b50cc444c2d5069e197ca30ea34f19cf204af8950e38174062fe4fc620aae9fc",
+  "public_task": "My flight UA789 from SFO to BOS on 2026-07-28 is delayed. Can you check its status and, if it helps, tell me the rebooking rules for carrier UA?",
+  "trusted_observations": [
+    {
+      "sequence": 3,
+      "status": "success",
+      "result": {
+        "query": {
+          "flight_identity": {
+            "flight_number": "UA789",
+            "marketing_airline_iata": "UA",
+            "operating_airline_iata": "UA",
+            "is_codeshare": false
+          },
+          "flight_number": null,
+          "origin_iata": null,
+          "destination_iata": null,
+          "query_date": "2026-07-28T00:00:00"
+        },
+        "segment": {
+          "origin_iata": "SFO",
+          "destination_iata": "BOS",
+          "flight_id": {
+            "flight_number": "UA789",
+            "marketing_airline_iata": "UA",
+            "operating_airline_iata": "UA",
+            "is_codeshare": false
+          },
+          "departure": {
+            "scheduled": "2026-07-28T08:00:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T09:50:00Z",
+            "delay_minutes": 110
+          },
+          "arrival": {
+            "scheduled": "2026-07-28T16:30:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T18:20:00Z",
+            "delay_minutes": 110
+          },
+          "aircraft_type": "B752",
+          "cabin_class": null
+        },
+        "status": {
+          "operational_status": "delayed",
+          "delay_minutes": 110,
+          "gate": "88",
+          "terminal": "3",
+          "remarks": "Equipment change"
+        },
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_status_UA789.json",
+            "sha256": "d3fecc696b01d95e2870bf8185dcc98155800cf80df5dccf96d4a98a292527ca",
+            "content_type": "application/json",
+            "byte_length": 1358
+          },
+          "normalisation_warnings": []
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "status": "success",
+      "result": {
+        "carrier_code": "UA",
+        "same_carrier_rebooking_allowed": true,
+        "interline_rebooking_allowed": true,
+        "max_delay_hours_for_refund": 2.0,
+        "hotel_voucher_threshold_hours": 4.0,
+        "meal_voucher_threshold_hours": 2.0,
+        "policy_id": "REBOOK_STD_V1"
+      }
+    }
+  ],
+  "final_response": "Flight UA789 is delayed. Carrier UA rebooking rules allow same-carrier and interline options.",
   "task_success": true,
   "safety_pass": true,
   "evaluator_status": "passed",
@@ -22,9 +113,10 @@
     "composite_uncapped": 0.9999999999999999
   },
   "failure_codes": [],
-  "run_id": "cc94eb72-1a21-5e75-b42b-6e643d316ed5",
-  "journal_digest": "afa198e5e26d8909af838e2c64797e22e707322587c709c64a291355759bba75",
+  "failure_details": [],
+  "run_id": "b3c227dd-341c-5888-85dc-8d9d0bdeb3e0",
+  "journal_digest": "efa1d54da56777bbf57a448d1dc05c415ca8396339be193442b670bc6b57f338",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.9228000019211322,
-  "semantic_result_digest": "b320ec71c1a962916e5e4dc4b5dbc4e30416a0fca372dba9769d5c7f428f01d3"
+  "wall_time_ms": 2.0853999885730445,
+  "semantic_result_digest": "cee4ceac475ced3ab22a1bfff656ca93a923f566b48d8af8df9237b489821a47"
 }

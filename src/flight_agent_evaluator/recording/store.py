@@ -13,6 +13,7 @@ import os
 import tempfile
 from pathlib import Path
 
+from flight_agent_evaluator.agent.security import redact_secrets
 from flight_agent_evaluator.recording.contracts import (
     RecordingBundleManifest,
     RunRecording,
@@ -102,6 +103,11 @@ class FileRecordingStore:
     def _write_atomic(self, path: Path, content_bytes: bytes) -> None:
         """Write *content_bytes* to *path* atomically via temp-file rename."""
         target = self._resolve_safe(path)
+        payload = content_bytes.decode("utf-8", errors="replace")
+        if redact_secrets(payload) != payload:
+            raise RecordingStoreError(
+                f"Refusing to write {path.name}: payload contains unredacted secrets"
+            )
         parent = target.parent
         parent.mkdir(parents=True, exist_ok=True)
         tmp_path: str | None = None

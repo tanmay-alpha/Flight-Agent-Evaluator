@@ -21,6 +21,7 @@ Technical documentation for Flight Agent Evaluator, organized by subsystem and c
 | --- | --- |
 | [`methodology/limitations.md`](methodology/limitations.md) | **Read first.** What the evaluation does and does not prove |
 | [`methodology/benchmark.md`](methodology/benchmark.md) | Benchmark corpus contents, manifest binding, committed benchmark-v1 results, and evaluator-validation results |
+| [`methodology/live-model-results.md`](methodology/live-model-results.md) | Live `qwen2.5:7b-instruct` run: setup, results, hand-checked safety verdicts, reproduction |
 | [`methodology/scoring.md`](methodology/scoring.md) | Six-component composite score, safety cap, safety checks, pass rules, and evaluator errors |
 | [`methodology/judge-validation.md`](methodology/judge-validation.md) | Judge contracts, rubric, and calibration status |
 
@@ -39,6 +40,7 @@ Technical documentation for Flight Agent Evaluator, organized by subsystem and c
 | [`adr/0007-contract-consolidation-and-evaluation-schema.md`](adr/0007-contract-consolidation-and-evaluation-schema.md) | Contract consolidation and evaluation schema | Accepted (errata 2026-11-05, revised 2026-11-06) |
 | [`adr/0008-trajectory-constraint-scoring.md`](adr/0008-trajectory-constraint-scoring.md) | Trajectory constraint scoring and multiple valid paths | Accepted (errata 2026-11-05, revised 2026-11-06) |
 | [`adr/0009-failure-taxonomy-and-diagnostics.md`](adr/0009-failure-taxonomy-and-diagnostics.md) | Failure taxonomy, evidence-backed diagnostics, and root-cause attribution | Accepted (errata 2026-11-05, revised 2026-11-06) |
+| [`adr/0010-domain-coupling-and-extension-seam.md`](adr/0010-domain-coupling-and-extension-seam.md) | Domain coupling analysis and DomainPack extension seam | Proposed |
 
 ---
 

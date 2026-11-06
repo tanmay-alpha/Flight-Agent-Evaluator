@@ -45,6 +45,8 @@ class ToolCall(ContractModel):
     run_id: uuid.UUID = Field(description="ID of the enclosing agent run")
     tool_name: ToolName  # type: ignore[valid-type]
     arguments: dict[str, Any] = Field(description="Structured JSON arguments")  # type: ignore[valid-type]
+    arguments_error: str | None = None
+    raw_arguments: str | None = None
     # This is untrusted request metadata.  The executor resolves and journals
     # the authoritative value from ToolRegistry/ToolDefinition.
     mutation_class: ToolMutationClass | None = None
@@ -84,6 +86,7 @@ class ToolError(ContractModel):
         "duplicate_side_effect",
         "transaction_conflict",
         "ambiguous_commit",
+        "not_found",
         "provider_error",
         "internal_error",
     ]

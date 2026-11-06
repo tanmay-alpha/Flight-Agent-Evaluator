@@ -6,6 +6,10 @@ import asyncio
 import copy
 import datetime
 import json
+import os
+import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 from typing import Any, cast
@@ -332,17 +336,21 @@ def _path_trace(scenario: dict[str, Any]) -> Any:
 
 
 def test_path_scenario_with_explicit_expectation(tmp_path: Path) -> None:
+    for kind in ("scenarios", "expectations"):
+        (tmp_path / f"{kind}.json").write_bytes(
+            (RESOURCES / kind / "jfk-lhr-delay.json").read_bytes()
+        )
     report = evaluate_trace(
         _path_trace(
             {
-                "path": str(RESOURCES / "scenarios" / "jfk-lhr-delay.json"),
-                "expectation_path": str(RESOURCES / "expectations" / "jfk-lhr-delay.json"),
+                "path": "scenarios.json",
+                "expectation_path": "expectations.json",
             }
         ),
         base_dir=tmp_path,
     )
     assert report.metrics.task_success is True
-    assert report.expectation_source.endswith("jfk-lhr-delay.json")
+    assert report.expectation_source.endswith("expectations.json")
     assert not report.expectation_source.startswith("builtin:")
 
 
@@ -393,3 +401,342 @@ def test_evaluation_is_deterministic() -> None:
     second = evaluate_trace(copy.deepcopy(trace))
     assert first.divergences == second.divergences
     assert first.metrics.journal_digest == second.metrics.journal_digest
+
+
+def test_windows_junction_is_rejected(tmp_path: Path) -> None:
+    if sys.platform != "win32":
+        pytest.skip("junctions are Windows-only")
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    scenario_bytes = (RESOURCES / "scenarios" / "jfk-lhr-delay.json").read_bytes()
+    (real_dir / "jfk.json").write_bytes(scenario_bytes)
+    junc_dir = tmp_path / "junc"
+    cmd_exe = shutil.which("cmd") or os.environ.get("COMSPEC", "cmd.exe")
+    proc = subprocess.run(
+        [cmd_exe, "/c", "mklink", "/J", str(junc_dir), str(real_dir)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        pytest.skip(f"mklink /J failed: {proc.stderr}")
+    try:
+        with pytest.raises(TraceResolutionError, match="must not contain symbolic links"):
+            evaluate_trace(
+                _path_trace({"path": "junc/jfk.json"}),
+                base_dir=tmp_path,
+            )
+    finally:
+        if junc_dir.exists():
+            os.rmdir(junc_dir)
+
+
+def test_trace_replay_policy_respects_task_tool_call_limit() -> None:
+    from types import SimpleNamespace
+
+    class DummyRegistry:
+        def get(self, name: str) -> Any:
+            return SimpleNamespace(
+                tool_definition=SimpleNamespace(mutation_class="read_only", tool_name=name),
+                execute=self._execute,
+            )
+
+        def definition_for(self, name: str) -> Any:
+            return SimpleNamespace(mutation_class="read_only", tool_name=name)
+
+        async def _execute(self, **_: Any) -> dict[str, bool]:
+            return {"ok": True}
+
+    clock = DeterministicVirtualClock(T0)
+    id_fac = DeterministicIdFactory("unit", 1, 1)
+    journal = HashChainJournal()
+    executor = ToolExecutor(
+        registry=DummyRegistry(),  # type: ignore[arg-type]
+        faults=(),
+        clock=clock,
+        id_factory=id_fac,
+        journal=journal,
+        tool_call_limit=10,
+        logical_time_limit_ns=60_000_000_000,
+    )
+    trace = parse_trace(
+        {
+            "schema_version": "1.0",
+            "scenario": {"builtin": "unit"},
+            "agent": {"name": "unit-agent"},
+            "calls": [
+                {"tool_name": "tool1"},
+                {"tool_name": "tool2"},
+                {"tool_name": "tool3"},
+            ],
+        }
+    )
+    policy = TraceReplayPolicy(trace)
+    task = AgentTask(task_id="t", scenario_id="unit", public_request="r", tool_call_limit=1)
+    context = RunContext(
+        run_id=uuid.UUID(int=1),
+        scenario_id="unit",
+        scenario_version=1,
+        seed=1,
+        clock=clock,
+        id_factory=id_fac,
+        tool_call_limit=1,
+        time_limit_seconds=60,
+        correlation_id="corr",
+        scenario_digest="0" * 64,
+        trajectory_digest="0" * 64,
+    )
+    res = asyncio.run(policy.execute(task, executor, StateSnapshot(), context))
+    assert res.stop_reason == AgentStopReason.TOOL_LIMIT_EXCEEDED
+    assert res.tool_call_count == 2
+    assert any("replay stopped at the executor tool-call limit" in w for w in res.warnings)
+
+
+@pytest.mark.parametrize("field", ["path", "expectation_path"])
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        "../outside.json",
+        "nested/../../outside.json",
+        r"nested\..\outside.json",
+        "/etc/private.json",
+        r"C:\private.json",
+        "C:/private.json",
+        r"C:private.json",
+        r"\private.json",
+        r"\\server\share\private.json",
+        "//server/share/private.json",
+    ],
+)
+def test_trace_targets_reject_nonlocal_paths(tmp_path: Path, field: str, unsafe: str) -> None:
+    (tmp_path / "scenario.json").write_bytes(
+        (RESOURCES / "scenarios" / "jfk-lhr-delay.json").read_bytes()
+    )
+    ref = {"path": "scenario.json", field: unsafe}
+    with pytest.raises(TraceResolutionError, match="relative path without traversal"):
+        evaluate_trace(_path_trace(ref), base_dir=tmp_path, allow_root=RESOURCES)
+
+
+def test_explicit_allow_root_loads_relative_targets(tmp_path: Path) -> None:
+    trace = _path_trace(
+        {
+            "path": "scenarios/jfk-lhr-delay.json",
+            "expectation_path": "expectations/jfk-lhr-delay.json",
+        }
+    )
+    with pytest.raises(TraceResolutionError, match="allowed root"):
+        evaluate_trace(trace, base_dir=tmp_path)
+    report = evaluate_trace(trace, base_dir=tmp_path, allow_root=RESOURCES)
+    assert report.metrics.task_success is True
+    scenario, expectation, _, _ = trace_evaluate.resolve_trace_target(
+        trace.scenario, tmp_path, allow_root=RESOURCES
+    )
+    assert scenario.scenario_id.id == expectation.scenario_id
+    async_report = asyncio.run(
+        trace_evaluate.evaluate_trace_async(trace, base_dir=tmp_path, allow_root=RESOURCES)
+    )
+    assert async_report == report
+
+
+@pytest.mark.parametrize("field", ["path", "expectation_path"])
+@pytest.mark.parametrize("ancestor", [False, True])
+def test_trace_targets_reject_symlink_files_and_ancestors(
+    tmp_path: Path, field: str, ancestor: bool
+) -> None:
+    (tmp_path / "scenario.json").write_bytes(
+        (RESOURCES / "scenarios" / "jfk-lhr-delay.json").read_bytes()
+    )
+    target = RESOURCES / ("scenarios" if field == "path" else "expectations")
+    link = tmp_path / "linked"
+    try:
+        link.symlink_to(
+            target if ancestor else target / "jfk-lhr-delay.json",
+            target_is_directory=ancestor,
+        )
+    except (OSError, NotImplementedError):
+        pytest.skip("Creating symbolic links is unavailable")
+    ref = {
+        "path": "scenario.json",
+        field: "linked/jfk-lhr-delay.json" if ancestor else "linked",
+    }
+    with pytest.raises(TraceResolutionError, match="symbolic links"):
+        evaluate_trace(_path_trace(ref), base_dir=tmp_path, allow_root=RESOURCES)
+
+
+@pytest.mark.parametrize("root_argument", ["base_dir", "allow_root"])
+def test_trace_target_rejects_linked_root_ancestor(tmp_path: Path, root_argument: str) -> None:
+    link = tmp_path / "linked"
+    try:
+        link.symlink_to(RESOURCES, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("Creating symbolic links is unavailable")
+    with pytest.raises(TraceResolutionError, match="symbolic links"):
+        evaluate_trace(
+            _path_trace({"path": "jfk-lhr-delay.json"}),
+            base_dir=link / "scenarios" if root_argument == "base_dir" else tmp_path,
+            allow_root=link / "scenarios" if root_argument == "allow_root" else None,
+        )
+
+
+@pytest.mark.parametrize("field", ["path", "expectation_path"])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"duplicate": 1, "duplicate": 2}',
+        '{"value": NaN}',
+        '{"value": Infinity}',
+        "\ufeff{}",
+        "[" * 65 + "0" + "]" * 65,
+        " " * (trace_evaluate.MAX_TARGET_BYTES + 1),
+    ],
+    ids=["duplicate", "nan", "infinity", "bom", "depth", "size"],
+)
+def test_referenced_targets_require_strict_bounded_json(
+    tmp_path: Path, field: str, payload: str
+) -> None:
+    from flight_agent_evaluator.engine.scenario_loader import ScenarioLoaderError
+
+    (tmp_path / "scenario.json").write_bytes(
+        (RESOURCES / "scenarios" / "jfk-lhr-delay.json").read_bytes()
+    )
+    (tmp_path / "invalid.json").write_text(payload, encoding="utf-8")
+    with pytest.raises((ScenarioLoaderError, ValueError)):
+        evaluate_trace(
+            _path_trace({"path": "scenario.json", field: "invalid.json"}),
+            base_dir=tmp_path,
+        )
+
+
+def test_invalid_calls_are_counted_like_model_loop() -> None:
+    doc = _doc(CORRECT_EXAMPLE)
+    doc["calls"] = [
+        {"tool_name": "unknown.tool"},
+        {"tool_name": "flight.get_status", "arguments": {}},
+        {"tool_name": "booking.confirm_rebooking", "arguments": {}},
+    ]
+    report = evaluate_trace(parse_trace(doc))
+    assert report.metrics.tool_calls == 3
+    assert report.metrics.invalid_tool_calls == 3
+
+
+def test_openai_reference_arguments_remain_literal_after_roundtrip() -> None:
+    arguments = {
+        "string": "$ref:0/secret",
+        "object": {"$ref_step": 0, "json_pointer": "/secret"},
+    }
+    trace = parse_trace(
+        {
+            "schema_version": "1.0",
+            "format": "openai_chat",
+            "scenario": {"builtin": "unit"},
+            "agent": {"name": "unit-agent"},
+            "messages": [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "c",
+                            "function": {"name": "a__use", "arguments": json.dumps(arguments)},
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    restored = parse_trace(trace.model_dump(mode="json", exclude_unset=True))
+    executor = _ScriptedExecutor([("success", {})])
+    policy = TraceReplayPolicy(restored)
+    result = asyncio.run(
+        policy.execute(
+            AgentTask(task_id="t", scenario_id="unit", public_request="r"),
+            cast(ToolExecutor, executor),
+            StateSnapshot(),
+            _context(),
+        )
+    )
+    assert executor.calls[0].arguments == arguments
+    assert restored.source == trace.source
+    assert result.stop_reason == AgentStopReason.COMPLETED
+
+
+def test_budget_refusal_is_journaled_once_and_stops_replay(
+    tmp_path: Path, captured_journals: list[HashChainJournal]
+) -> None:
+    scenario = _doc(RESOURCES / "scenarios" / "jfk-lhr-delay.json")
+    scenario["limits"]["tool_call_limit"] = 1
+    (tmp_path / "scenario.json").write_text(json.dumps(scenario), encoding="utf-8")
+    doc = _doc(CORRECT_EXAMPLE)
+    doc["scenario"] = {"path": "scenario.json"}
+    doc["calls"] = [doc["calls"][0]] * 4
+    report = evaluate_trace(parse_trace(doc), base_dir=tmp_path)
+    (journal,) = captured_journals
+    calls = [e.payload for e in journal.entries if e.type == "tool_call"]
+    results = [e.payload for e in journal.entries if e.type == "tool_result"]
+    assert len(calls) == len(results) == report.replayed_call_count == 2
+    assert results[-1]["error"]["error_type"] == "tool_call_limit_exceeded"
+    final = next(e.payload for e in journal.entries if e.type == "final_response")
+    assert final["stop_reason"] == AgentStopReason.TOOL_LIMIT_EXCEEDED.value
+    assert report.metrics.invalid_tool_calls == 0
+    assert [d.call_index for d in report.divergences if d.kind == "not_replayed"] == [2, 3]
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_intermediate_assistant_text_is_report_only_and_user_mismatch_warns(
+    mismatch: bool,
+) -> None:
+    native = _doc(CORRECT_EXAMPLE)
+    scenario = _doc(RESOURCES / "scenarios" / "jfk-lhr-delay.json")
+    request = scenario.get("public_request") or scenario["steps"][0]["initial_message"]
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": "different task" if mismatch else request}
+    ]
+    for index, call in enumerate(native["calls"]):
+        messages.append(
+            {
+                "role": "assistant",
+                "content": "Your rebooking is confirmed. INTERMEDIATE_ONLY",
+                "tool_calls": [
+                    {
+                        "id": f"c{index}",
+                        "function": {
+                            "name": call["tool_name"],
+                            "arguments": json.dumps(call["arguments"]),
+                        },
+                    }
+                ],
+            }
+        )
+    messages.append({"role": "assistant", "content": native["final_response"]})
+    report = evaluate_trace(
+        parse_trace(
+            {
+                "schema_version": "1.0",
+                "format": "openai_chat",
+                "scenario": native["scenario"],
+                "agent": native["agent"],
+                "messages": messages,
+            }
+        )
+    )
+    baseline = evaluate_trace(parse_trace(native))
+    assert report.metrics == baseline.metrics
+    assert report.source is not None
+    assert report.source.format == "openai_chat"
+    assert report.source.user_messages == [messages[0]["content"]]
+    retained = report.source.intermediate_assistant_content
+    assert len(retained) == len(native["calls"])
+    assert retained[0].content.endswith("INTERMEDIATE_ONLY")
+    assert retained[0].tool_call_ids == ["c0"]
+    assert report.trace_consistent is not mismatch
+    assert [d.kind for d in report.divergences] == (["user_request_mismatch"] if mismatch else [])
+
+
+def test_user_request_mismatch_is_an_agent_warning_without_echoing_text() -> None:
+    policy, _, result = _run_policy(
+        [],
+        [],
+        source={"format": "openai_chat", "user_messages": ["PRIVATE_REQUEST"]},
+    )
+    assert [d.kind for d in policy.divergences] == ["user_request_mismatch"]
+    assert len(result.warnings) == 1
+    assert "scenario public_request" in result.warnings[0]
+    assert "PRIVATE_REQUEST" not in result.warnings[0]

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+import os
+import stat
+import sys
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,16 +14,23 @@ from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.contracts.trajectory_expectation import (
     TrajectoryExpectation,
     load_builtin_expectation,
-    load_expectation_from_path,
+    validate_trajectory_expectation,
 )
 from flight_agent_evaluator.engine.benchmark import BenchmarkMetricVector, BenchmarkRunner
 from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
 from flight_agent_evaluator.resources.contracts import ResourceKind, ResourceOrigin, ResourceRef
 from flight_agent_evaluator.resources.locator import get_builtin_locator
-from flight_agent_evaluator.traces.format import AgentMetadata, AgentTrace, ScenarioReference
+from flight_agent_evaluator.strict_json import load_strict_path
+from flight_agent_evaluator.traces.format import (
+    AgentMetadata,
+    AgentTrace,
+    ScenarioReference,
+    TraceSourceMetadata,
+)
 from flight_agent_evaluator.traces.policy import TraceDivergence, TraceReplayPolicy
 
 _BUILTIN_SCENARIO_DIRS = ("", "transactional/")
+MAX_TARGET_BYTES = 1024 * 1024
 
 
 class TraceResolutionError(ValueError):
@@ -49,6 +59,7 @@ class TraceEvaluationReport(BaseModel):
     trace_consistent: bool
     divergences: list[TraceDivergence] = Field(default_factory=list)
     reported_latency_ms: float | None = None
+    source: TraceSourceMetadata | None = None
 
 
 def _builtin_exists(logical_path: str, kind: ResourceKind) -> bool:
@@ -65,14 +76,92 @@ def _builtin_relative_path(scenario_id: str) -> str | None:
     return None
 
 
+def _is_link_component(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    if hasattr(path, "is_junction") and path.is_junction():
+        return True
+    if not os.path.lexists(path):
+        return False
+    try:
+        st = os.lstat(path)
+        reparse_attr = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        file_attrs = getattr(st, "st_file_attributes", 0)
+        if file_attrs and (file_attrs & reparse_attr):
+            return True
+    except (OSError, ValueError):
+        pass
+    try:
+        rp = os.path.realpath(path)
+        ap = os.path.abspath(path)
+        if sys.platform == "win32":
+            if rp.lower() != ap.lower():
+                return True
+        else:
+            if rp != ap:
+                return True
+    except (OSError, ValueError):
+        pass
+    return False
+
+
+def _reject_symlink_ancestors(path: Path) -> None:
+    for component in (path, *path.parents):
+        if _is_link_component(component):
+            raise TraceResolutionError("Trace target must not contain symbolic links")
+
+
+def _target_path(value: str, base_dir: Path, allow_root: Path | None) -> Path:
+    """Resolve a portable relative path without traversing any links."""
+    posix = PurePosixPath(value)
+    windows = PureWindowsPath(value)
+    if (
+        posix.is_absolute()
+        or windows.drive
+        or windows.root
+        or ".." in posix.parts
+        or ".." in windows.parts
+        or "\x00" in value
+    ):
+        raise TraceResolutionError("Trace target must be a relative path without traversal")
+    relative = Path(*windows.parts)
+    roots = [base_dir.absolute()]
+    if allow_root is not None:
+        roots.append(allow_root.absolute())
+    for root in roots:
+        candidate = root / relative
+        _reject_symlink_ancestors(candidate)
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(root.resolve()):
+            raise TraceResolutionError("Trace target is outside the allowed root")
+        if candidate.exists():
+            return candidate
+    raise TraceResolutionError("Trace target was not found within an allowed root")
+
+
+def _load_target_expectation(path: Path) -> TrajectoryExpectation:
+    expectation = TrajectoryExpectation.model_validate(
+        load_strict_path(path, max_bytes=MAX_TARGET_BYTES)
+    )
+    if validate_trajectory_expectation(expectation):
+        raise TraceResolutionError("Authored expectation graph is invalid")
+    return expectation
+
+
 def resolve_trace_target(
-    ref: ScenarioReference, base_dir: Path | None = None
+    ref: ScenarioReference,
+    base_dir: Path | None = None,
+    *,
+    allow_root: Path | None = None,
 ) -> tuple[BenchmarkScenario, TrajectoryExpectation, str, str]:
     """Load the scenario and its authored expectation for *ref*.
 
     Returns ``(scenario, expectation, scenario_source, expectation_source)``.
     Never falls back to an expectation derived from the scenario's golden
     trajectory: an imported trace is only scored against authored expectations.
+    Paths are relative to ``base_dir`` or, if absent there, ``allow_root``.
+    Absolute paths, parent traversal and symbolic links (including ancestors)
+    are rejected even when an explicit additional root is supplied.
     """
     if ref.builtin is not None:
         rel = _builtin_relative_path(ref.builtin)
@@ -94,14 +183,16 @@ def resolve_trace_target(
     if ref.path is None:  # pragma: no cover - guaranteed by ScenarioReference validation
         raise TraceResolutionError("scenario reference has neither 'builtin' nor 'path'")
     root = base_dir or Path.cwd()
-    scenario_path = (root / ref.path).resolve()
-    scenario = ScenarioLoader().load_from_path(scenario_path).scenario
+    scenario_path = _target_path(ref.path, root, allow_root)
+    with scenario_path.open("rb") as handle:
+        raw = handle.read(MAX_TARGET_BYTES + 1)
+    scenario = ScenarioLoader(max_bytes=MAX_TARGET_BYTES).load_from_bytes(raw).scenario
 
     if ref.expectation_path is not None:
-        exp_path = (root / ref.expectation_path).resolve()
+        exp_path = _target_path(ref.expectation_path, root, allow_root)
         return (
             scenario,
-            load_expectation_from_path(exp_path),
+            _load_target_expectation(exp_path),
             str(scenario_path),
             str(exp_path),
         )
@@ -109,8 +200,7 @@ def resolve_trace_target(
     rel = _builtin_relative_path(scenario.scenario_id.id)
     if rel is None or not _builtin_exists(f"expectations/{rel}", ResourceKind.EXPECTATION):
         raise TraceResolutionError(
-            f"Scenario {scenario.scenario_id.id!r} from {scenario_path} has no authored "
-            "expectation; set scenario.expectation_path in the trace"
+            "Scenario has no authored expectation; set scenario.expectation_path in the trace"
         )
     return (
         scenario,
@@ -124,6 +214,7 @@ async def evaluate_trace_async(
     trace: AgentTrace,
     *,
     base_dir: Path | None = None,
+    allow_root: Path | None = None,
     runner: BenchmarkRunner | None = None,
 ) -> TraceEvaluationReport:
     """Re-execute *trace* in the simulated environment and score the resulting journal.
@@ -132,10 +223,11 @@ async def evaluate_trace_async(
         trace: Parsed trace (see :func:`flight_agent_evaluator.traces.parse_trace`).
         base_dir: Directory that relative scenario/expectation paths resolve
             against (normally the trace file's directory). Defaults to CWD.
+        allow_root: Additional directory in which relative targets may be found.
         runner: Benchmark runner to use; a fresh ``BenchmarkRunner`` by default.
     """
     scenario, expectation, scenario_source, expectation_source = resolve_trace_target(
-        trace.scenario, base_dir
+        trace.scenario, base_dir, allow_root=allow_root
     )
     policy = TraceReplayPolicy(trace)
     metrics = await (runner or BenchmarkRunner()).run_scenario(
@@ -154,6 +246,7 @@ async def evaluate_trace_async(
         trace_consistent=not divergences,
         divergences=divergences,
         reported_latency_ms=trace.latency_ms,
+        source=trace.source,
     )
 
 
@@ -161,10 +254,13 @@ def evaluate_trace(
     trace: AgentTrace,
     *,
     base_dir: Path | None = None,
+    allow_root: Path | None = None,
     runner: BenchmarkRunner | None = None,
 ) -> TraceEvaluationReport:
     """Synchronous wrapper around :func:`evaluate_trace_async`."""
-    return asyncio.run(evaluate_trace_async(trace, base_dir=base_dir, runner=runner))
+    return asyncio.run(
+        evaluate_trace_async(trace, base_dir=base_dir, allow_root=allow_root, runner=runner)
+    )
 
 
 __all__ = [

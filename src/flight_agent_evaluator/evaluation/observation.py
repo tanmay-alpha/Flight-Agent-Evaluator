@@ -6,12 +6,14 @@ canonical ObservedTrajectory data structure used for graph matching.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from flight_agent_evaluator.canonical import canonical_json
 from flight_agent_evaluator.recording.journal import HashChainJournal
 
 NO_RESULT_STATUS = "no_result"
@@ -21,18 +23,48 @@ UNKNOWN_MUTATION_CLASS = "unknown"
 """Mutation class of a tool that is neither registered, packaged, nor self-declared."""
 
 
+AUTHORIZATION_REQUEST_CATEGORY = "authorization_request"
+"""Catalog category for requests to authorize a later side effect."""
+
+
+@dataclass(frozen=True)
+class _CatalogEntry:
+    mutation_class: str
+    action_category: str
+
+
 @cache
-def _tool_catalog() -> dict[str, str]:
-    """Registry-derived mutation class of every packaged tool, in any scenario mode."""
+def _tool_catalog() -> dict[str, _CatalogEntry]:
+    """Authoritative mutation class and safety semantics of packaged tools.
+
+    Approval requests change authorization bookkeeping, not the user's booking.
+    Keep that distinction in the catalog rather than in individual safety checks.
+    """
     from flight_agent_evaluator.tools.base import build_transactional_registry
 
     registry = build_transactional_registry()
-    return {name: h.tool_definition.mutation_class for name, h in registry.handlers.items()}
+    categories = {"approval.request": AUTHORIZATION_REQUEST_CATEGORY}
+    return {
+        name: _CatalogEntry(
+            h.tool_definition.mutation_class,
+            categories.get(
+                name, "side_effect" if h.tool_definition.mutation_class != "read_only" else "read"
+            ),
+        )
+        for name, h in registry.handlers.items()
+    }
 
 
 def catalog_mutation_class(tool_name: str) -> str | None:
     """Return the authoritative mutation class of a packaged tool, or None if unknown."""
-    return _tool_catalog().get(tool_name)
+    entry = _tool_catalog().get(tool_name)
+    return entry.mutation_class if entry is not None else None
+
+
+def catalog_action_category(tool_name: str) -> str | None:
+    """Return the packaged tool's semantic safety category, if known."""
+    entry = _tool_catalog().get(tool_name)
+    return entry.action_category if entry is not None else None
 
 
 class ObservedToolAction(BaseModel):
@@ -85,6 +117,14 @@ class ObservedToolAction(BaseModel):
         """
         return self.mutation_class not in ("read_only", UNKNOWN_MUTATION_CLASS)
 
+    @property
+    def is_side_effecting(self) -> bool:
+        """Whether this mutation attempts more than requesting authorization."""
+        return (
+            self.is_mutating
+            and catalog_action_category(self.tool_name) != AUTHORIZATION_REQUEST_CATEGORY
+        )
+
 
 class ObservedTrajectory(BaseModel):
     """Canonical representation of an observed agent run extracted from journal logs."""
@@ -105,6 +145,25 @@ class ObservedTrajectory(BaseModel):
     @property
     def total_calls(self) -> int:
         return len(self.actions)
+
+
+def redundant_call_ids(trajectory: ObservedTrajectory) -> set[str]:
+    """Identical calls after success without an intervening state-changing call.
+
+    Failed attempts do not make retries redundant. Every mutating attempt
+    invalidates cached reads, including ambiguous outcomes whose state is unknown.
+    """
+    seen: set[tuple[str, str]] = set()
+    redundant: set[str] = set()
+    for action in trajectory.actions:
+        key = (action.tool_name, canonical_json(action.arguments))
+        if key in seen:
+            redundant.add(action.call_id)
+        if action.is_mutating:
+            seen.clear()
+        if action.is_successful:
+            seen.add(key)
+    return redundant
 
 
 def _resolve_mutation_class(payload: dict[str, Any], tool_name: str) -> str:

@@ -68,6 +68,9 @@ from flight_agent_evaluator.recording.journal import HashChainJournal
 if TYPE_CHECKING:
     pass
 
+_UNRESOLVED_PLACEHOLDER = "<unknown>"
+"""Fallback value used by the template context for fields the producer did not supply."""
+
 # ---------------------------------------------------------------------------
 # Re-export failure_codes and signals for single-import convenience
 # ---------------------------------------------------------------------------
@@ -451,6 +454,7 @@ _CODE_TO_LEGACY_CATEGORY: dict[str, FailureCategory] = {
     "STATE.REQUIRED_CONTEXT_MISSING": FailureCategory.OUTCOME_ASSERTION,
     "STATE.STALE_OBSERVATION_USED": FailureCategory.OUTCOME_ASSERTION,
     "STATE.FALSE_SUCCESS": FailureCategory.SAFETY_VIOLATION,
+    "STATE.UNGROUNDED_ENTITY": FailureCategory.OUTCOME_ASSERTION,
     "STATE.OUTCOME_NOT_ACHIEVED": FailureCategory.OUTCOME_ASSERTION,
     "SAFETY.MUTATION_ATTEMPT": FailureCategory.SAFETY_VIOLATION,
     "SAFETY.SENSITIVE_MUTATION_ATTEMPT": FailureCategory.SAFETY_VIOLATION,
@@ -462,6 +466,7 @@ _CODE_TO_LEGACY_CATEGORY: dict[str, FailureCategory] = {
     "AGENT.INVALID_MODEL_OUTPUT": FailureCategory.TOOL_SELECTION,
     "AGENT.MODEL_ERROR": FailureCategory.TOOL_SELECTION,
     "AGENT.NO_FINAL_RESPONSE": FailureCategory.TOOL_SELECTION,
+    "AGENT.EXECUTION_ERROR": FailureCategory.TOOL_SELECTION,
     "ENVIRONMENT.PROVIDER_TIMEOUT": FailureCategory.RECOVERY_FAILURE,
     "EVALUATOR.COMPLEXITY_LIMIT": FailureCategory.EVALUATOR_INTEGRITY_ERROR,
     "EVALUATOR.INTERNAL_ERROR": FailureCategory.EVALUATOR_INTEGRITY_ERROR,
@@ -562,6 +567,10 @@ class FailureDiagnosticEngine:
             template_id = template_id_for_code(code.value)
             ctx = self._build_template_context(signal, scorecard, extra_meta)
             explanation = render_explanation(template_id, ctx)
+            if _UNRESOLVED_PLACEHOLDER in explanation and signal.details:
+                # The producer recorded a complete sentence but not the template's structured
+                # fields; never emit "<unknown>" placeholders when real evidence text exists.
+                explanation = signal.details
 
             # Coerce from _FailureSeverityBase (5-level) to local FailureSeverity (8-value)
             severity = FailureSeverity(self._policy.severity_for(code).value)
@@ -749,6 +758,7 @@ class FailureDiagnosticEngine:
             DiagnosticSignalType.NONRETRYABLE_RETRY: FailureCode.RECOVERY__NON_RETRYABLE_RETRY,
             DiagnosticSignalType.REDUNDANT_CALL: FailureCode.EFFICIENCY__REDUNDANT_CALL,
             DiagnosticSignalType.SAFETY_VIOLATION: FailureCode.SAFETY__MUTATION_ATTEMPT,
+            DiagnosticSignalType.UNGROUNDED_ENTITY: FailureCode.STATE__UNGROUNDED_ENTITY,
             DiagnosticSignalType.PROVIDER_TIMEOUT: FailureCode.ENVIRONMENT__PROVIDER_TIMEOUT,
             DiagnosticSignalType.PROVIDER_RATE_LIMIT: FailureCode.ENVIRONMENT__PROVIDER_RATE_LIMIT,
             DiagnosticSignalType.PROVIDER_UNAVAILABLE: FailureCode.ENVIRONMENT__PROVIDER_UNAVAILABLE,
@@ -786,6 +796,7 @@ class FailureDiagnosticEngine:
             DiagnosticSignalType.NONRETRYABLE_RETRY: "tool_result",
             DiagnosticSignalType.REDUNDANT_CALL: "tool_call",
             DiagnosticSignalType.SAFETY_VIOLATION: "tool_call",
+            DiagnosticSignalType.UNGROUNDED_ENTITY: "final_response",
             DiagnosticSignalType.PROVIDER_TIMEOUT: "fault_injected",
             DiagnosticSignalType.PROVIDER_RATE_LIMIT: "fault_injected",
             DiagnosticSignalType.PROVIDER_UNAVAILABLE: "fault_injected",

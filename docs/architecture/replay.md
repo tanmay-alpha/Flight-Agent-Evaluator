@@ -33,8 +33,20 @@ The manifest holds:
 
 All of these are plain SHA-256 values. Nothing is signed.
 
-Run IDs are deterministic. In `ScenarioRunner` the ID derives from scenario, seed, scenario digest and agent (`engine/runner.py:66-71`). Files are written with `os.replace` (`recording/store.py:114`), so re-running the same scenario with the same agent overwrites the earlier recording.
+Run IDs are deterministic. In `ScenarioRunner` the ID derives from scenario, seed, scenario digest and agent (`engine/runner.py:66-71`). In benchmark runs, run IDs incorporate the agent ID, `configuration_digest`, and scenario digest (`engine/benchmark.py:288-295`), preventing collisions across different configurations. Files are written with `os.replace` (`recording/store.py:114`), so re-running the exact same scenario and configuration overwrites the earlier recording.
 
+## Execution and Replay Integrity
+
+The platform enforces strict integrity rules during execution, exchange capture, and replay:
+
+- **Model provenance and configuration digest.** Every model-calling agent computes a canonical `configuration_digest` covering model settings, prompt templates, and endpoint host (`agent/model_client.py:74-78`, `agent/loop.py:64-70`). `ModelExchangeManifest` records this digest, and manifest filenames are bound to it (`model_exchange_manifest_path`, `:90-97`).
+- **Exact replay of malformed calls.** When a model outputs syntactically invalid JSON or non-object tool arguments, `loads_strict` captures the syntax error, preserves the raw string in `raw_arguments`, and sets `arguments_error` (`agent/model_client.py:344-366`). These calls are executed, journaled with `raw_arguments`, and replayed verbatim (`agent/loop.py:213-217, 306-307`, `engine/tool_executor.py:650-660`).
+- **Refusal of secret-bearing manifests.** Before writing a `ModelExchangeManifest` to disk, `model_client.py:245-252` scans the serialized manifest using `redact_secrets()`. If any secret is detected, persistence is refused with a `ModelProviderError`. Secret patterns (`agent/security.py`) require a negative lookbehind left boundary `(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}` to avoid false positives on task/risk identifiers, and explicit custom secrets must be at least 12 characters (`_MIN_CUSTOM_SECRET_LENGTH = 12`) so placeholder keys do not match common English words.
+- **Over-budget calls are journaled.** When an agent exceeds the scenario's tool-call limit or logical-time limit, the executor does not drop the call silently. It invokes `_budget_exhausted` (`engine/tool_executor.py:415-440`), which writes both `tool_call` and `tool_result` journal entries recording the denial.
+- **Per-call model timeout.** Turn executions are bounded by `asyncio.wait_for(..., timeout=request_timeout_seconds)` (`agent/loop.py:176-178`), stopping the loop on timeout.
+- **Cancellation journaled as unknown outcome.** When tool execution is cancelled via `asyncio.CancelledError`, the executor journals a `tool_result` with `error_type="cancelled"` and `unknown_outcome=True` (`engine/tool_executor.py:313-322`).
+- **Argument validation runs before fault injection.** Input validation against tool JSON schemas runs strictly before any fault is evaluated (`:248-259`). Rejected inputs can never trigger faults or appear to have committed.
+- **Bounded inputs and finite numbers.** Arguments are bounded to 64 KiB (`len(canonical_bytes) <= 65536`, `:656`), non-finite floats (NaN, Inf) are rejected at all nesting depths (`_finite_json`, `:692-700`), and `strict_json` is used everywhere across the platform.
 ## Replay verification
 
 `ReplayEngine.verify` (`replay/engine.py:85-330`) works in these steps:
