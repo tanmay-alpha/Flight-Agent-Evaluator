@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from flight_agent_evaluator.agent.baselines import NoOpBaselineAgent, ScriptedOracleAgent
+from flight_agent_evaluator.agent.errors import ModelProviderError
 from flight_agent_evaluator.benchmarks.consistency import ResultBundleConsistencyVerifier
 from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
 from flight_agent_evaluator.benchmarks.loader import (
@@ -26,6 +27,8 @@ from flight_agent_evaluator.benchmarks.results import (
 from flight_agent_evaluator.contracts.model import (
     AgentRunResult,
     AgentStopReason,
+    ModelError,
+    ModelErrorType,
     ModelProvenance,
     ModelUsage,
 )
@@ -127,6 +130,75 @@ def test_agent_exception_is_recorded_and_journal_closed(tmp_path: Path) -> None:
     assert journal.entries[-1].type == "run_completed"
     assert "private-value" not in journal.to_jsonl_string()
     assert "secret-value" not in result.model_dump_json()
+
+
+class PrivateProviderFailure(RuntimeError):
+    """Distinct failure class whose diagnostic payload must never be persisted."""
+
+
+@pytest.mark.parametrize(
+    ("exception", "model_error_type"),
+    [
+        (PrivateProviderFailure("provider payload sk-planted-private-key"), None),
+        (
+            ModelProviderError(
+                ModelError(
+                    error_type=ModelErrorType.PROVIDER_UNAVAILABLE,
+                    message="provider payload sk-planted-private-key",
+                )
+            ),
+            ModelErrorType.PROVIDER_UNAVAILABLE,
+        ),
+    ],
+)
+def test_agent_exception_records_safe_type_without_provider_payload(
+    tmp_path: Path, exception: Exception, model_error_type: ModelErrorType | None
+) -> None:
+    class FailingAgent(NoOpBaselineAgent):
+        async def execute(self, *args: Any, **kwargs: Any) -> AgentRunResult:
+            raise exception
+
+    runner = BenchmarkRunner()
+    case = _case()
+    result = asyncio.run(runner.run_case(case, FailingAgent()))
+    failure = next(detail for detail in result.failure_details if detail.code == "AGENT.EXECUTION_ERROR")
+    assert type(exception).__name__ in failure.message
+    if model_error_type is not None:
+        assert model_error_type.value in failure.message
+    assert "sk-planted-private-key" not in result.model_dump_json()
+
+    persisted = asyncio.run(
+        runner.run_scenario(
+            case.scenario,
+            FailingAgent(),
+            expectation=case.expectation,
+            output_dir=tmp_path,
+            scenario_source_digest=case.scenario_raw_sha256,
+        )
+    )
+    journal = HashChainJournal.read_unverified_jsonl(next(tmp_path.glob("*.jsonl")))
+    event = next(
+        entry
+        for entry in journal.entries
+        if entry.type == "domain_event"
+        and entry.payload.get("event_type") == "agent_execution_error"
+    )
+    assert event.payload["exception_type"] == type(exception).__name__
+    assert type(exception).__name__ in event.payload["message"]
+    if model_error_type is not None:
+        assert event.payload["model_error_type"] == model_error_type.value
+        assert model_error_type.value in event.payload["message"]
+    else:
+        assert "model_error_type" not in event.payload
+    assert event.seq in next(
+        detail.evidence_sequences
+        for detail in persisted.failure_details
+        if detail.code == "AGENT.EXECUTION_ERROR"
+    )
+    for path in tmp_path.rglob("*"):
+        if path.is_file():
+            assert "sk-planted-private-key" not in path.read_text(encoding="utf-8")
+
 
 
 @pytest.mark.parametrize("exception", [asyncio.CancelledError, KeyboardInterrupt])

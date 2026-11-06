@@ -18,6 +18,7 @@ from flight_agent_evaluator.contracts.model import (
     AgentStopReason,
     AgentTask,
     ModelConfiguration,
+    ModelErrorType,
     ModelProvenance,
     ModelRequest,
     ModelToolCall,
@@ -182,6 +183,13 @@ class ModelToolCallingAgent(AgentPolicy):
             except TimeoutError:
                 stop_reason = AgentStopReason.ERROR
                 warnings.append(f"timeout: Model call exceeded request timeout at turn {turn}.")
+                break
+            except json.JSONDecodeError:
+                stop_reason = AgentStopReason.ERROR
+                warnings.append(
+                    f"{ModelErrorType.INVALID_RESPONSE.value}: "
+                    f"Model provider returned invalid JSON at turn {turn}."
+                )
                 break
             except ModelProviderError as exc:
                 stop_reason = AgentStopReason.ERROR
