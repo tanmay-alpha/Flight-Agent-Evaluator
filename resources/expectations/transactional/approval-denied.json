@@ -76,6 +76,28 @@
           },
           "description": "Must not call confirm_rebooking when approval is denied"
         }
+      ],
+      "dependency_constraints": [
+        {
+          "dependent_node_id": "node_request_approval",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_release_hold",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        }
       ]
     }
   ],
