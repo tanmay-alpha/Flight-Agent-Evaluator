@@ -14,7 +14,8 @@ Design limits (deliberate, documented):
   cancelled``, ``I rebooked``, ``refund was issued``, ``you are now booked``,
   ``your new flight is confirmed``, ``I moved your reservation``). State
   read-outs of an existing booking or flight such as ``Booking PNR456 is
-  confirmed`` or ``AS310 is cancelled`` are not treated as claims.
+  confirmed`` or ``AS310 is cancelled`` are not treated as claims. Third-party
+  completed actions are claims too, but can be backed by observed existing state.
 * A clause containing a negation or hedge (``not``, ``unable``, ``will``,
   ``pending``, ``if`` ...) is ignored, so ``was not rebooked`` or ``will be
   refunded once approved`` never count. A claim and a negation in the same
@@ -112,6 +113,24 @@ _CLAIM_PATTERNS: Final[dict[str, tuple[re.Pattern[str], ...]]] = {
     ),
 }
 
+# Completed verb/object phrases do not depend on the actor's grammatical subject.
+# Restrict objects to transactional resources, avoiding generic "confirmed status".
+_SUBJECT_INDEPENDENT_PATTERNS: Final[dict[str, tuple[re.Pattern[str], ...]]] = {
+    REBOOK: (
+        re.compile(rf"\bre-?booked (?:you|us|(?:the |your |my ){_BOOKING_NOUN})\b"),
+        re.compile(rf"\bconfirmed (?:the |your |my ){_BOOKING_NOUN}\b"),
+    ),
+    CANCEL: (re.compile(rf"\bcancell?ed (?:the |your |my ){_BOOKING_NOUN}\b"),),
+    REFUND: (
+        re.compile(r"\b(?:issued|processed) (?:a |the |your )?(?:full )?refund\b"),
+        re.compile(r"\brefunded (?:you|the |your |my )\b"),
+    ),
+    HOLD: (re.compile(r"\b(?:placed|put) (?:a |the |your )?hold\b"),),
+    RELEASE: (re.compile(r"\breleased (?:the |your )?(?:inventory )?hold\b"),),
+    NOTIFY: (re.compile(r"\bnotified (?:you|the passenger|the customer)\b"),),
+    APPROVAL: (re.compile(r"\b(?:granted|obtained) (?:the |your )?approval\b"),),
+}
+
 # Negation / hedge cues that disqualify a clause from being an affirmative claim.
 _NEGATION_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:not|no|never|unable|cannot|failed|fail|denied|declined|rejected|pending|awaiting|"
@@ -144,6 +163,7 @@ class SuccessClaim:
     category: str
     sentence: str
     matched_text: str
+    requires_agent_action: bool = True
 
 
 def _clause_start(sentence: str, match_start: int) -> int:
@@ -163,7 +183,8 @@ def detect_success_claims(text: str | None) -> list[SuccessClaim]:
         if not sentence or sentence.endswith("?"):
             continue
         for category in CLAIM_CATEGORIES:
-            for pattern in _CLAIM_PATTERNS[category]:
+            independent = _SUBJECT_INDEPENDENT_PATTERNS.get(category, ())
+            for pattern in (*_CLAIM_PATTERNS[category], *independent):
                 match = pattern.search(sentence)
                 if match is None:
                     continue
@@ -171,13 +192,20 @@ def detect_success_claims(text: str | None) -> list[SuccessClaim]:
                 attribution = re.split(
                     r"[,;:]|\band\b|\bbut\b", sentence[match.end() :], maxsplit=1
                 )[0]
-                if _NEGATION_RE.search(clause) or _THIRD_PARTY_RE.search(attribution):
+                if _NEGATION_RE.search(clause):
                     continue
                 claims.append(
                     SuccessClaim(
                         category=category,
                         sentence=raw_sentence.strip(),
                         matched_text=match.group(0),
+                        requires_agent_action=(
+                            not _THIRD_PARTY_RE.search(attribution)
+                            and (
+                                pattern not in independent
+                                or re.search(r"\b(?:i|we)\b", clause) is not None
+                            )
+                        ),
                     )
                 )
                 break
