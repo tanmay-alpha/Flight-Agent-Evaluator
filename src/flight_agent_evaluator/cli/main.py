@@ -991,7 +991,22 @@ def cmd_evaluator_validate(args: argparse.Namespace) -> int:
     """CLI handler: run the evaluator validation harness and write report.json/report.md."""
     from flight_agent_evaluator.evaluation.validation.__main__ import main as validation_main
 
-    return validation_main(["--output", str(args.output), "--benchmark", str(args.benchmark)])
+    argv = ["--output", str(args.output), "--benchmark", str(args.benchmark)]
+    if getattr(args, "suite", None):
+        argv += ["--suite", str(args.suite)]
+    if getattr(args, "dev_report", None):
+        argv += ["--dev-report", str(args.dev_report)]
+    return validation_main(argv)
+
+
+def cmd_annotation_workflow(args: argparse.Namespace) -> int:
+    """CLI handler: delegate to the annotation workflow (single source of its arguments)."""
+    from flight_agent_evaluator.annotation.cli import main as annotation_main
+
+    forwarded = list(getattr(args, "workflow_args", []) or [])
+    if forwarded[:1] == ["--"]:
+        forwarded = forwarded[1:]
+    return annotation_main(forwarded)
 
 
 def cmd_demo_run(args: argparse.Namespace) -> int:
@@ -1455,6 +1470,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     )
     ann_val.add_argument("bundle", help="Path to annotation bundle JSON file.")
     ann_val.set_defaults(func=cmd_annotation_validate)
+    ann_flow = ann_sub.add_parser(
+        "workflow",
+        help=(
+            "Human annotation workflow: export | validate | agreement | adjudicate | "
+            "compare-evaluator (run 'annotation workflow -- --help')."
+        ),
+        add_help=False,
+    )
+    ann_flow.add_argument("workflow_args", nargs=argparse.REMAINDER)
+    ann_flow.set_defaults(func=cmd_annotation_workflow)
 
     # judge subcommand
     jdg_p = subparsers.add_parser(
@@ -1545,6 +1570,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: ARG001
     )
     evaluator_val.add_argument("--output", "-o", required=True, help="Report output directory.")
     evaluator_val.add_argument("--benchmark", default="benchmark-v1", help="Built-in benchmark id.")
+    evaluator_val.add_argument(
+        "--suite",
+        choices=["dev", "heldout"],
+        help="Validation v2 split; omit for the historical v1 baseline.",
+    )
+    evaluator_val.add_argument(
+        "--dev-report",
+        help="v2 dev report.json produced with the same detector source digest (heldout only).",
+    )
     evaluator_val.set_defaults(func=cmd_evaluator_validate)
 
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
