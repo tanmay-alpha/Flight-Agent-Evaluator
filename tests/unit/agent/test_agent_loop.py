@@ -15,7 +15,6 @@ from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
 from flight_agent_evaluator.agent.model_client import (
     OpenAIChatCompletionsClient,
     ReplayModelClient,
-    model_exchange_manifest_path,
 )
 from flight_agent_evaluator.agent.prompt import get_default_prompt_policy
 from flight_agent_evaluator.agent.protocol import ModelClient
@@ -70,7 +69,8 @@ class ScriptedClient:
         self._responses = responses
 
     def begin_run(
-        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration
+        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration,
+        prompt_digest: str | None = None,
     ) -> None:
         self._manifest = ModelExchangeManifest(
             manifest_id=f"{scenario_id}__{run_id}", model_configuration=configuration
@@ -175,7 +175,10 @@ def test_record_then_replay_reproduces_trajectory_without_network(tmp_path: Path
     assert recorded.stop_reason == AgentStopReason.COMPLETED, recorded.warnings
     assert recorded.final_response == "Flight AS142 is on time."
     assert len(wire_requests) == 2
-    assert model_exchange_manifest_path(tmp_path, "s1", str(RUN_ID)).is_file()
+    paths = list(tmp_path.glob("*.model-exchanges.json"))
+    assert len(paths) == 1
+    assert recorded.model_provenance is not None
+    assert recorded.model_provenance.endpoint_host == "fake-openai.local"
 
     replay_journal = HashChainJournal()
     replayed = _execute(ReplayModelClient.from_directory(tmp_path), task, _executor(replay_journal))

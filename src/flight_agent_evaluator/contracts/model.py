@@ -75,6 +75,7 @@ class ModelConfiguration(BaseModel):
     temperature: float = 0.0
     max_tokens: int | None = None
     top_p: float | None = None
+    request_timeout_seconds: float = Field(default=120, gt=0, allow_inf_nan=False)
 
     def canonical_digest(self) -> str:
         """SHA-256 digest of model configuration."""
@@ -84,6 +85,7 @@ class ModelConfiguration(BaseModel):
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "top_p": self.top_p,
+            "request_timeout_seconds": self.request_timeout_seconds,
         }
         raw = json.dumps(data, sort_keys=True)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -97,6 +99,8 @@ class ModelToolCall(BaseModel):
     call_id: str
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
+    raw_arguments: str | None = None
+    arguments_error: str | None = None
 
 
 class ModelUsage(BaseModel):
@@ -192,6 +196,8 @@ class ModelExchangeManifest(BaseModel):
     manifest_id: str
     model_configuration: ModelConfiguration
     exchanges: list[ModelExchange] = Field(default_factory=list)
+    endpoint_host: str | None = None
+    configuration_digest: str | None = None
 
     def manifest_digest(self) -> str:
         """SHA-256 digest of exchange manifest."""
@@ -203,6 +209,8 @@ class ModelExchangeManifest(BaseModel):
             "manifest_id": self.manifest_id,
             "model_id": self.model_configuration.model_id,
             "provider": self.model_configuration.provider,
+            "configuration_digest": self.configuration_digest,
+            "endpoint_host": self.endpoint_host,
             "exchanges": [
                 {
                     "turn_index": e.turn_index,
@@ -259,7 +267,6 @@ class AgentRunResult(BaseModel):
     run_id: str
     agent_id: str
     agent_version: str
-    model_config_digest: str | None = None
     stop_reason: AgentStopReason
     final_response: str | None = None
     model_call_count: int = 0
