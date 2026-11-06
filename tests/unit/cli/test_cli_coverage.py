@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -302,6 +303,30 @@ def test_cli_demo_and_verify_release(capsys: pytest.CaptureFixture[str]) -> None
     demo_args.json = True
     assert cmd_demo_run(demo_args) == 0
 
+    # Test goal accuracy when outcome assertions exist
+    assert "Goal Accuracy:          1.000" in captured.out
+
+
+def test_cli_demo_goal_accuracy_no_assertions(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from flight_agent_evaluator.engine.scenario_loader import LoadedScenario, ScenarioLoader
+
+    real_load = ScenarioLoader.load_builtin
+
+    def mock_load(self: Any, name: str) -> Any:
+        loaded = real_load(self, name)
+        return LoadedScenario(
+            scenario=loaded.scenario.model_copy(update={"assertions": ()}),
+            raw_bytes=loaded.raw_bytes,
+            digest=loaded.digest,
+        )
+
+    monkeypatch.setattr(ScenarioLoader, "load_builtin", mock_load)
+    demo_args = argparse.Namespace(json=False)
+    assert cmd_demo_run(demo_args) == 0
+    captured = capsys.readouterr()
+    assert "Goal Accuracy:          n/a (no outcome assertions)" in captured.out
     rel_args = argparse.Namespace(json=False)
     assert cmd_verify_release(rel_args) == 0
     rel_args.json = True

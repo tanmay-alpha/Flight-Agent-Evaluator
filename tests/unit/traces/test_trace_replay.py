@@ -6,6 +6,10 @@ import asyncio
 import copy
 import datetime
 import json
+import os
+import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 from typing import Any, cast
@@ -397,6 +401,94 @@ def test_evaluation_is_deterministic() -> None:
     second = evaluate_trace(copy.deepcopy(trace))
     assert first.divergences == second.divergences
     assert first.metrics.journal_digest == second.metrics.journal_digest
+
+
+def test_windows_junction_is_rejected(tmp_path: Path) -> None:
+    if sys.platform != "win32":
+        pytest.skip("junctions are Windows-only")
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    scenario_bytes = (RESOURCES / "scenarios" / "jfk-lhr-delay.json").read_bytes()
+    (real_dir / "jfk.json").write_bytes(scenario_bytes)
+    junc_dir = tmp_path / "junc"
+    cmd_exe = shutil.which("cmd") or os.environ.get("COMSPEC", "cmd.exe")
+    proc = subprocess.run(
+        [cmd_exe, "/c", "mklink", "/J", str(junc_dir), str(real_dir)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        pytest.skip(f"mklink /J failed: {proc.stderr}")
+    try:
+        with pytest.raises(TraceResolutionError, match="must not contain symbolic links"):
+            evaluate_trace(
+                _path_trace({"path": "junc/jfk.json"}),
+                base_dir=tmp_path,
+            )
+    finally:
+        if junc_dir.exists():
+            os.rmdir(junc_dir)
+
+
+def test_trace_replay_policy_respects_task_tool_call_limit() -> None:
+    from types import SimpleNamespace
+
+    class DummyRegistry:
+        def get(self, name: str) -> Any:
+            return SimpleNamespace(
+                tool_definition=SimpleNamespace(mutation_class="read_only", tool_name=name),
+                execute=self._execute,
+            )
+
+        def definition_for(self, name: str) -> Any:
+            return SimpleNamespace(mutation_class="read_only", tool_name=name)
+
+        async def _execute(self, **_: Any) -> dict[str, bool]:
+            return {"ok": True}
+
+    clock = DeterministicVirtualClock(T0)
+    id_fac = DeterministicIdFactory("unit", 1, 1)
+    journal = HashChainJournal()
+    executor = ToolExecutor(
+        registry=DummyRegistry(),  # type: ignore[arg-type]
+        faults=(),
+        clock=clock,
+        id_factory=id_fac,
+        journal=journal,
+        tool_call_limit=10,
+        logical_time_limit_ns=60_000_000_000,
+    )
+    trace = parse_trace(
+        {
+            "schema_version": "1.0",
+            "scenario": {"builtin": "unit"},
+            "agent": {"name": "unit-agent"},
+            "calls": [
+                {"tool_name": "tool1"},
+                {"tool_name": "tool2"},
+                {"tool_name": "tool3"},
+            ],
+        }
+    )
+    policy = TraceReplayPolicy(trace)
+    task = AgentTask(task_id="t", scenario_id="unit", public_request="r", tool_call_limit=1)
+    context = RunContext(
+        run_id=uuid.UUID(int=1),
+        scenario_id="unit",
+        scenario_version=1,
+        seed=1,
+        clock=clock,
+        id_factory=id_fac,
+        tool_call_limit=1,
+        time_limit_seconds=60,
+        correlation_id="corr",
+        scenario_digest="0" * 64,
+        trajectory_digest="0" * 64,
+    )
+    res = asyncio.run(policy.execute(task, executor, StateSnapshot(), context))
+    assert res.stop_reason == AgentStopReason.TOOL_LIMIT_EXCEEDED
+    assert res.tool_call_count == 2
+    assert any("replay stopped at the executor tool-call limit" in w for w in res.warnings)
 
 
 @pytest.mark.parametrize("field", ["path", "expectation_path"])

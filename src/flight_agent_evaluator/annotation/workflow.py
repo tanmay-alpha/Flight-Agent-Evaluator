@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from flight_agent_evaluator.agent.security import redact_secrets
 from flight_agent_evaluator.annotation.records import Adjudication, Annotation
 from flight_agent_evaluator.annotation.tasks import (
     ExportManifest,
@@ -21,6 +22,7 @@ from flight_agent_evaluator.strict_json import load_strict_path, loads_strict
 
 _LABELS = ("task_completed", "unsafe_action", "misleading_claim")
 _OBSERVATION_FIELDS = {"sequence", "tool_name", "arguments", "status", "result", "error"}
+MISLEADING_RESPONSE_CODES = {"STATE.FALSE_SUCCESS", "STATE.UNGROUNDED_ENTITY"}
 
 
 def source_cases(paths: list[Path]) -> list[dict[str, Any]]:
@@ -78,6 +80,12 @@ def export_tasks(
     tasks = {task.task_id: task for task in map(task_from_case, cases)}
     if not tasks:
         raise ValueError("no annotation tasks in source")
+    for task in tasks.values():
+        task_dump = task.model_dump()
+        if redact_secrets(task_dump) != task_dump:
+            raise ValueError(
+                f"Refusing to export task {task.task_id}: payload contains unredacted secrets"
+            )
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError("annotation output directory must be empty")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -86,11 +94,14 @@ def export_tasks(
         ordered = sorted(tasks)
         rng = random.Random(f"{seed}:{annotator}")  # noqa: S311 -- reproducible blinding
         rng.shuffle(ordered)
-        raw = "".join(
+        filename = f"{annotator}.jsonl"
+        raw_text = "".join(
             canonical_json({"annotator_id": annotator, **tasks[task_id].model_dump()}) + "\n"
             for task_id in ordered
-        ).encode("utf-8")
-        filename = f"{annotator}.jsonl"
+        )
+        if redact_secrets(raw_text) != raw_text:
+            raise ValueError(f"Refusing to write {filename}: payload contains unredacted secrets")
+        raw = raw_text.encode("utf-8")
         (output_dir / filename).write_bytes(raw)
         files[filename] = hashlib.sha256(raw).hexdigest()
     manifest = {
@@ -109,7 +120,10 @@ def export_tasks(
     manifest["manifest_digest"] = hashlib.sha256(
         canonical_json(manifest).encode("utf-8")
     ).hexdigest()
-    (output_dir / "manifest.json").write_bytes((canonical_json(manifest) + "\n").encode("utf-8"))
+    manifest_text = canonical_json(manifest) + "\n"
+    if redact_secrets(manifest_text) != manifest_text:
+        raise ValueError("Refusing to write manifest.json: payload contains unredacted secrets")
+    (output_dir / "manifest.json").write_bytes(manifest_text.encode("utf-8"))
     return manifest
 
 
@@ -277,7 +291,7 @@ def compare_evaluator(
     """Join on task_id using adjudication or unanimous labels from >=2 annotators.
 
     Task failure = not task_success; safety violation = not safety_pass; misleading
-    claim = STATE.FALSE_SUCCESS. Evaluator errors and unclear/unresolved labels are
+    claim = failure code in MISLEADING_RESPONSE_CODES. Evaluator errors and unclear/unresolved labels are
     excluded with counts. Identical-content repeats count once, not as independent labels.
     """
     adjudication_report(annotations, adjudications)
@@ -308,7 +322,7 @@ def compare_evaluator(
             prediction = {
                 "task_failure": not case["task_success"],
                 "safety_violation": not case["safety_pass"],
-                "misleading_claim": "STATE.FALSE_SUCCESS" in case["failure_codes"],
+                "misleading_claim": bool(set(case["failure_codes"]) & MISLEADING_RESPONSE_CODES),
             }
         if task_id in predictions:
             if prediction != predictions[task_id]:
@@ -373,6 +387,6 @@ def compare_evaluator(
         "unique_tasks": len(predictions),
         "duplicate_content_cases": duplicate_cases,
         "human_tasks_without_case": len((set(grouped) | set(resolutions)) - predictions.keys()),
-        "misleading_claim_detector": "STATE.FALSE_SUCCESS",
+        "misleading_claim_detector": sorted(MISLEADING_RESPONSE_CODES),
         "metrics": metrics,
     }
