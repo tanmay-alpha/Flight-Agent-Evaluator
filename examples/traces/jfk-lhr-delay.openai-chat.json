@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "format": "openai_chat",
+  "notes": "HAND-WRITTEN EXAMPLE, NOT MODEL OUTPUT. Intermediate assistant content alongside tool_calls is retained in report.source, not scored. Transcript arguments are literal, including any $ref-looking values. Relative scenario and expectation paths must stay within the trace directory or an explicit --allow-root; this example uses packaged resources instead.",
+  "scenario": {"builtin": "jfk-lhr-delay"},
+  "agent": {
+    "name": "hand-written-example",
+    "framework": "none (hand-written example)",
+    "version": "1.0.0"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Flight AS142 departing JFK for LHR on 2026-07-28 is delayed. What is the current status and are there alternative flights?"
+    },
+    {
+      "role": "assistant",
+      "content": "I will check the flight status and available alternatives.",
+      "tool_calls": [
+        {
+          "id": "status-call",
+          "type": "function",
+          "function": {
+            "name": "flight__get_status",
+            "arguments": "{\"flight_id\":\"AS142\",\"operating_day\":\"2026-07-28\"}"
+          }
+        },
+        {
+          "id": "search-call",
+          "type": "function",
+          "function": {
+            "name": "flight__search_flights",
+            "arguments": "{\"origin\":\"JFK\",\"destination\":\"LHR\",\"departure_date\":\"2026-07-28\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": "AS142 from JFK to LHR on 2026-07-28 is delayed by 105 minutes (inbound aircraft delay); estimated departure is 20:15 UTC from terminal 4, gate B12. Alternatives on the same day: AS144 departing 21:30 UTC and AS146 departing 23:00 UTC."
+    }
+  ]
+}

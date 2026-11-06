@@ -269,3 +269,89 @@ def test_load_trace_rejects_oversized_file(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(trace_format, "MAX_TRACE_BYTES", 10)
     with pytest.raises(TraceFormatError, match="exceeds 10 bytes"):
         load_trace(path)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"schema_version":"1.0","schema_version":"1.0"}',
+        b'{"number":NaN}',
+        b'{"number":Infinity}',
+        b'{"number":-Infinity}',
+        b"\xef\xbb\xbf{}",
+        b"[" * 65 + b"0" + b"]" * 65,
+    ],
+)
+def test_load_trace_rejects_non_strict_json(tmp_path: Path, raw: bytes) -> None:
+    path = tmp_path / "trace.json"
+    path.write_bytes(raw)
+    with pytest.raises(TraceFormatError):
+        load_trace(path)
+
+
+def test_parse_trace_rejects_overdeep_decoded_arguments() -> None:
+    value: Any = 0
+    for _ in range(65):
+        value = {"nested": value}
+    with pytest.raises(TraceFormatError, match="nesting limit"):
+        parse_trace(_native(calls=[{"tool_name": "a.b", "arguments": value}]))
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        '{"duplicate": 1, "duplicate": 2}',
+        '{"number": NaN}',
+        '{"number": Infinity}',
+        "\ufeff{}",
+        '{"nested":' + "[" * 65 + "0" + "]" * 65 + "}",
+        " " * (trace_format.MAX_TRACE_BYTES + 1) + "{}",
+    ],
+    ids=["duplicate", "nan", "infinity", "bom", "depth", "size"],
+)
+def test_openai_embedded_arguments_require_strict_bounded_json(arguments: str) -> None:
+    with pytest.raises(TraceFormatError, match="arguments are not valid JSON"):
+        parse_trace(_chat([_assistant_call("c", "a__b", arguments)]))
+
+
+def test_openai_embedded_tool_observation_depth_is_bounded() -> None:
+    with pytest.raises(TraceFormatError, match="strict, bounded JSON"):
+        parse_trace(
+            _chat(
+                [
+                    _assistant_call("c", "a__b", "{}"),
+                    {
+                        "role": "tool",
+                        "tool_call_id": "c",
+                        "content": "[" * 65 + "0" + "]" * 65,
+                    },
+                ]
+            )
+        )
+
+
+def test_normalized_source_metadata_preserves_intermediate_text_and_roundtrips() -> None:
+    alongside = _assistant_call("c", "a__b", "{}")
+    alongside["content"] = [{"type": "text", "text": "Intermediate claim"}]
+    trace = parse_trace(
+        _chat(
+            [
+                {"role": "user", "content": "original request"},
+                {"role": "assistant", "content": "Before tools"},
+                alongside,
+                {"role": "assistant", "content": "Final claim"},
+            ]
+        )
+    )
+    assert trace.source is not None
+    assert trace.source.format == "openai_chat"
+    assert trace.source.user_messages == ["original request"]
+    assert [item.content for item in trace.source.intermediate_assistant_content] == [
+        "Before tools",
+        "Intermediate claim",
+    ]
+    assert trace.source.intermediate_assistant_content[1].tool_call_ids == ["c"]
+    assert trace.source.intermediate_assistant_content[1].message_index == 2
+    assert trace.final_response == "Final claim"
+    restored = parse_trace(trace.model_dump(mode="json", exclude_unset=True))
+    assert restored == trace

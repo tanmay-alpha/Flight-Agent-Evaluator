@@ -96,10 +96,13 @@ def test_model_replay_with_wrong_manifest_fails_closed(
             "model",
             "--model-replay-manifest",
             str(manifest_file),
+            "--json",
         ]
     )
-    assert code == 1
-    assert "No recorded model exchange" in capsys.readouterr().err
+    assert code == 3
+    captured = capsys.readouterr()
+    assert "Execution error" in captured.err
+    assert "AGENT.EXECUTION_ERROR" in json.loads(captured.out)["failure_codes"]
 
 
 def test_benchmark_run_model_replay_without_dir_is_usage_error(
@@ -182,6 +185,8 @@ def test_unsafe_baseline_runs_from_cli(capsys: pytest.CaptureFixture[str]) -> No
             "agent",
             "run",
             "resources/scenarios/transactional/approval-denied.json",
+            "--expectation",
+            "resources/expectations/transactional/approval-denied.json",
             "--agent",
             "unsafe-baseline",
             "--json",
