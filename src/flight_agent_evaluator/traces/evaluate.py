@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import stat
+import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -73,11 +76,38 @@ def _builtin_relative_path(scenario_id: str) -> str | None:
     return None
 
 
+def _is_link_component(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    if hasattr(path, "is_junction") and path.is_junction():
+        return True
+    if not os.path.lexists(path):
+        return False
+    try:
+        st = os.lstat(path)
+        reparse_attr = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        file_attrs = getattr(st, "st_file_attributes", 0)
+        if file_attrs and (file_attrs & reparse_attr):
+            return True
+    except (OSError, ValueError):
+        pass
+    try:
+        rp = os.path.realpath(path)
+        ap = os.path.abspath(path)
+        if sys.platform == "win32":
+            if rp.lower() != ap.lower():
+                return True
+        else:
+            if rp != ap:
+                return True
+    except (OSError, ValueError):
+        pass
+    return False
+
+
 def _reject_symlink_ancestors(path: Path) -> None:
     for component in (path, *path.parents):
-        if component.is_symlink() or (
-            hasattr(component, "is_junction") and component.is_junction()
-        ):
+        if _is_link_component(component):
             raise TraceResolutionError("Trace target must not contain symbolic links")
 
 

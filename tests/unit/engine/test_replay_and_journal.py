@@ -319,6 +319,36 @@ class TestFileRecordingStore:
                 "../escape", HashChainJournal(), _minimal_recording(_make_run_id())
             )
 
+    def test_write_recording_refuses_secrets(self, tmp_path: Path):
+        store = FileRecordingStore(tmp_path)
+        run_id = _make_run_id()
+        journal = HashChainJournal()
+        journal.append_event(
+            entry_type="domain_event",
+            run_id=run_id,
+            correlation_id="corr",
+            time=datetime.now(UTC),
+            payload={"msg": "Secret sk-12345678901234567890abcdef"},
+        )
+        rec = _minimal_recording(run_id, journal)
+        with pytest.raises(RecordingStoreError, match="unredacted secrets"):
+            store.write_recording(run_id, journal, rec)
+        assert not (tmp_path / f"{run_id}.jsonl").exists()
+
+        # Clean recording writes successfully
+        clean_run_id = _make_run_id()
+        clean_journal = HashChainJournal()
+        clean_journal.append_event(
+            entry_type="domain_event",
+            run_id=clean_run_id,
+            correlation_id="corr",
+            time=datetime.now(UTC),
+            payload={"msg": "safe value"},
+        )
+        clean_rec = _minimal_recording(clean_run_id, clean_journal)
+        store.write_recording(clean_run_id, clean_journal, clean_rec)
+        assert (tmp_path / f"{clean_run_id}.jsonl").is_file()
+
     def test_write_and_read_roundtrip(self, tmp_path: Path):
         store = FileRecordingStore(tmp_path)
         run_id = _make_run_id()

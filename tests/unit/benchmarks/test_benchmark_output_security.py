@@ -111,6 +111,23 @@ def test_c5_force_and_existing_bundle_are_allowed_without_temp_leftovers(tmp_pat
     assert not list(tmp_path.rglob("*.tmp"))
 
 
+def test_persist_verified_bundle_refuses_secrets(tmp_path: Path) -> None:
+    art = _artifact()
+    case = art.case_results[0].model_copy(
+        update={"public_task": "Secret sk-12345678901234567890abcdef"}
+    )
+    art_with_secret = art.model_copy(update={"case_results": [case]})
+    out_dir = tmp_path / "secret_out"
+    with pytest.raises(ValueError, match="unredacted secrets"):
+        art_with_secret.persist_verified_bundle(out_dir)
+    assert not out_dir.exists()
+
+    # Normal bundle writes successfully
+    normal_out = tmp_path / "normal_out"
+    art.persist_verified_bundle(normal_out)
+    assert (normal_out / "run.json").is_file()
+
+
 def test_c5_engine_refuses_before_running_any_case(tmp_path: Path) -> None:
     (tmp_path / "keep.txt").write_text("keep", encoding="utf-8")
 
