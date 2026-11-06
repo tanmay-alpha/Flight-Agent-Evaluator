@@ -14,7 +14,7 @@
     {
       "step_id": "step1",
       "description": "Check status of DL123.",
-      "initial_message": "Flight DL123 ATL to MIA is delayed. Please check the flight status."
+      "initial_message": "My flight DL123 from ATL to MIA on 2026-07-28 is delayed. Can you check its current status?"
     }
   ],
   "limits": {

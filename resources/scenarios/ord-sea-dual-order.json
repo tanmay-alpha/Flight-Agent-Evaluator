@@ -14,7 +14,7 @@
     {
       "step_id": "step1",
       "description": "Investigate DL456 delay and PNR456 booking details.",
-      "initial_message": "Flight DL456 ORD to SEA on 2026-07-28 is delayed. Please check the flight status and PNR456 booking itinerary."
+      "initial_message": "My flight DL456 from ORD to SEA on 2026-07-28 is delayed. Can you check its status and pull up the itinerary for my booking reference PNR456?"
     }
   ],
   "limits": {

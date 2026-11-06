@@ -18,7 +18,7 @@
     {
       "step_id": "check-flight-status-with-timeout",
       "description": "First status call times out, retry succeeds, alternatives searched",
-      "initial_message": "Flight AS142 status query timed out initially. Please check status and find available alternatives."
+      "initial_message": "My flight AS142 from JFK to LHR on 2026-07-28 is delayed. Can you check its status and find available alternative flights?"
     }
   ],
   "assertions": [

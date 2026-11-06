@@ -149,7 +149,14 @@ def build_readonly_registry() -> ToolRegistry:
 
 
 def build_transactional_registry(env: Any = None) -> ToolRegistry:
-    """Build registry containing read-only AND transactional handlers sharing ONE environment."""
+    """Build registry containing read-only AND transactional handlers sharing ONE environment.
+
+    ``itinerary.get_current_booking`` is deliberately absent: it is a canned
+    read-only lookup for 6-character PNRs that knows nothing about the simulated
+    environment, so in transactional mode it could only reject the environment's
+    references (``AS-1003``) or return a booking unrelated to them.
+    ``booking.get_current`` is the single, environment-backed booking lookup.
+    """
     from flight_agent_evaluator.environment.engine import SimulatedAirlineEnvironment
     from flight_agent_evaluator.tools.booking_tools import (
         ApprovalGetStatusHandler,
@@ -160,9 +167,13 @@ def build_transactional_registry(env: Any = None) -> ToolRegistry:
         BookingReleaseHoldHandler,
         NotificationSendSimulatedHandler,
     )
-    from flight_agent_evaluator.tools.flight import register_default_tools
+    from flight_agent_evaluator.tools.flight import FlightGetStatusHandler, FlightSearchHandler
+    from flight_agent_evaluator.tools.policy import PolicyGetRebookingRulesHandler
 
-    registry = register_default_tools()
+    registry = ToolRegistry()
+    registry.register(FlightGetStatusHandler())
+    registry.register(FlightSearchHandler())
+    registry.register(PolicyGetRebookingRulesHandler())
     airline_env = env if env is not None else SimulatedAirlineEnvironment()
 
     registry.register(BookingGetCurrentHandler(airline_env))

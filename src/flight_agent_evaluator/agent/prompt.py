@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flight_agent_evaluator.contracts.model import PromptPolicy
+from flight_agent_evaluator.contracts.model import AgentTask, PromptPolicy
 
 READ_ONLY_DISRUPTION_PROMPT_TEXT = (
     "You are an AI aviation disruption analyst operating in a read-only investigation environment for Horizon Synthetic Air (a synthetic benchmark carrier).\n\n"
@@ -19,9 +19,32 @@ READ_ONLY_DISRUPTION_PROMPT_TEXT = (
 
 
 def get_default_prompt_policy() -> PromptPolicy:
-    """Return the canonical versioned prompt policy for read-only agent evaluation."""
+    """Return the canonical versioned prompt policy for read-only agent evaluation.
+
+    Version 1.1.0 renders the task's in-world current date into the system prompt
+    (see :func:`render_system_prompt`).
+    """
     return PromptPolicy(
         policy_id="read_only_disruption_v1",
-        version="1.0.0",
+        version="1.1.0",
         content=READ_ONLY_DISRUPTION_PROMPT_TEXT,
+    )
+
+
+def render_system_prompt(policy: PromptPolicy, task: AgentTask) -> PromptPolicy:
+    """Return *policy* with the task's in-world context appended to its content.
+
+    The rendered policy is what the model sees, so its ``canonical_digest`` covers
+    the date. Only the scenario's in-world date is used, never the wall clock, so
+    the same task always renders the same prompt.
+    """
+    if task.current_date is None:
+        return policy
+    return policy.model_copy(
+        update={
+            "content": (
+                f"{policy.content}\n\nIN-WORLD CONTEXT:\n"
+                f"Current date: {task.current_date.isoformat()}"
+            )
+        }
     )
