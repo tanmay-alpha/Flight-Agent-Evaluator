@@ -1050,10 +1050,20 @@ def cmd_demo_run(args: argparse.Namespace) -> int:
         f"Status:                 {status_str} [{metric_vector.overall_score * 100:.1f}%]\n"
     )
     sys.stdout.write(f"Overall Score:          {metric_vector.overall_score:.3f} / 1.000\n")
+    outcome_evaluated = getattr(metric_vector, "outcome_evaluated", None)
+    if outcome_evaluated is None:
+        if "outcome_evaluated" in metric_vector.score_vector:
+            outcome_evaluated = bool(metric_vector.score_vector["outcome_evaluated"])
+        else:
+            outcome_evaluated = bool(getattr(loaded.scenario, "assertions", None))
     goal_acc = metric_vector.score_vector.get("goal_accuracy")
-    sys.stdout.write(
-        f"Goal Accuracy:          {f'{goal_acc:.3f}' if goal_acc is not None else 'N/A'}\n"
-    )
+    if not outcome_evaluated:
+        goal_acc_str = "n/a (no outcome assertions)"
+    elif goal_acc is not None:
+        goal_acc_str = f"{goal_acc:.3f}"
+    else:
+        goal_acc_str = "N/A"
+    sys.stdout.write(f"Goal Accuracy:          {goal_acc_str}\n")
     constraint_sc = metric_vector.score_vector.get("constraint_satisfaction")
     sys.stdout.write(
         f"Constraint Score:       {f'{constraint_sc:.3f}' if constraint_sc is not None else 'N/A'}\n"

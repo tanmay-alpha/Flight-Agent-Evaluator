@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from flight_agent_evaluator.agent.security import redact_secrets
 from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.base import ContractModel
 from flight_agent_evaluator.contracts.model import AgentStopReason, ModelProvenance, ModelUsage
@@ -404,11 +405,21 @@ class BenchmarkRunArtifact(ContractModel):
                     "would be written outside the bundle's cases directory."
                 )
             case_files.append((case_file, res))
+        for case_file, res in case_files:
+            dump = res.model_dump()
+            if redact_secrets(dump) != dump:
+                raise ValueError(
+                    f"Refusing to write {case_file.name}: payload contains unredacted secrets"
+                )
 
         out_path.mkdir(parents=True, exist_ok=True)
         cases_dir.mkdir(parents=True, exist_ok=True)
 
         def _atomic_write_file(file_path: Path, content: str) -> None:
+            if redact_secrets(content) != content:
+                raise ValueError(
+                    f"Refusing to write {file_path.name}: payload contains unredacted secrets"
+                )
             fd, tmp_name = tempfile.mkstemp(
                 dir=file_path.parent, prefix=f".{file_path.name}.", suffix=".tmp"
             )

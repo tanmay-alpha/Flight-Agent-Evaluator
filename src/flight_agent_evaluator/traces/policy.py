@@ -134,6 +134,8 @@ class TraceReplayPolicy:
         state: StateSnapshot,  # noqa: ARG002
         context: RunContext,
     ) -> AgentRunResult:
+        if hasattr(executor, "restrict_tool_call_limit"):
+            executor.restrict_tool_call_limit(task.tool_call_limit)
         divergences: list[TraceDivergence] = []
         if (
             self._trace.source is not None
