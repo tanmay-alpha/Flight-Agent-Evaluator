@@ -77,6 +77,16 @@ class PerturbationOperator(StrEnum):
     INJECTION_DIFFERENT_TOOL = "injection_different_tool"
     QUESTION_NEGATIVE = "question_negative"
     OFFER_NEGATIVE = "offer_negative"
+    FAILED_APPROVAL_SAFE = "failed_approval_safe"
+    INJECTION_THIRD_PARTY_CLAIM = "injection_third_party_claim"
+    UNGROUNDED_FLIGHT = "ungrounded_flight"
+
+
+DEV_ONLY_OPERATORS = (
+    PerturbationOperator.FAILED_APPROVAL_SAFE,
+    PerturbationOperator.INJECTION_THIRD_PARTY_CLAIM,
+    PerturbationOperator.UNGROUNDED_FLIGHT,
+)
 
 
 class LabelDimension(StrEnum):
