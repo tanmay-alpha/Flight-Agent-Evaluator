@@ -310,3 +310,12 @@ def test_compare_rejects_non_strict_json(tmp_path, capsys):
     path.write_text('{"manifest_digest":"first","manifest_digest":"second"}', encoding="utf-8")
     assert main(["benchmark", "compare", str(path), str(path), "--json"]) == 2
     assert "duplicate key" in capsys.readouterr().err
+
+
+def test_annotation_workflow_rejects_malformed_annotations_through_main_cli(tmp_path, capsys):
+    bad = tmp_path / "annotator.jsonl"
+    bad.write_text('{"annotator_id": "a", "annotator_id": "b"}\n', encoding="utf-8")
+    code = main(["annotation", "workflow", "--", "validate", str(bad)])
+    captured = capsys.readouterr()
+    assert code != 0
+    assert "duplicate key" in (captured.out + captured.err)
