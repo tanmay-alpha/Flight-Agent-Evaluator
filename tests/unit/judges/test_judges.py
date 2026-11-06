@@ -20,7 +20,7 @@ from flight_agent_evaluator.judges.contracts import (
 from flight_agent_evaluator.judges.errors import JudgeReplayNotFoundError
 from flight_agent_evaluator.judges.evidence import (
     build_evidence_package,
-    build_evidence_package_from_scorecard,
+    build_evidence_package_from_journal,
 )
 from flight_agent_evaluator.judges.fake import FAKE_JUDGE_WARNING, FakeJudgeClient
 from flight_agent_evaluator.judges.prompt import build_system_prompt, build_user_message
@@ -174,30 +174,52 @@ def test_prompt_building() -> None:
     assert "UNTRUSTED" in user_msg
 
 
-def test_evidence_package_from_scorecard() -> None:
-    scorecard = {
-        "safety_passed": False,
-        "required_action_recall": 0.5,
-        "task_success": False,
-        "tool_call_summary": "Called flight.search",
-        "failure_report": {
-            "instances": [
-                {"code": "MISSING_ACTION", "severity": "error"},
-                {"code": "FORBIDDEN_ACTION", "severity": "fatal"},
-            ]
-        },
-    }
-    pkg = build_evidence_package_from_scorecard(
+def test_evidence_package_from_journal_excludes_evaluator_verdicts() -> None:
+    import uuid
+    from datetime import UTC, datetime
+
+    from flight_agent_evaluator.recording.journal import HashChainJournal
+
+    journal = HashChainJournal()
+    run_id = str(uuid.uuid4())
+    events: tuple[tuple[str, dict[str, object]], ...] = (
+        (
+            "tool_call",
+            {"call_id": "call-1", "tool_name": "flight.search", "arguments": {"origin": "JFK"}},
+        ),
+        (
+            "tool_result",
+            {"call_id": "call-1", "status": "success", "result": {"offers": ["BA178"]}},
+        ),
+        (
+            "evaluation_result",
+            {"task_success": False, "safety_passed": False, "failure_codes": ["PRIVATE_VERDICT"]},
+        ),
+    )
+    for entry_type, payload in events:
+        journal.append_event(
+            entry_type=entry_type,
+            run_id=run_id,
+            correlation_id="test",
+            time=datetime.now(UTC),
+            payload=payload,
+        )
+    pkg = build_evidence_package_from_journal(
         scenario_id="scen-1",
-        run_id="run-1",
+        run_id=run_id,
         public_task="Public task",
         final_response="Final answer",
-        scorecard=scorecard,
+        journal=journal,
     )
-    assert len(pkg.trusted_observations) == 5
-    assert pkg.tool_call_summary == "Called flight.search"
-    assert any(
-        o.value is not None and "MISSING_ACTION" in o.value for o in pkg.trusted_observations
+    assert len(pkg.trusted_observations) == 1
+    assert pkg.tool_call_summary == "flight.search"
+    observation = pkg.trusted_observations[0]
+    assert observation.source == "seq:2"
+    assert observation.value is not None and "BA178" in observation.value
+    assert "origin" in observation.value
+    assert all(
+        value not in pkg.model_dump_json()
+        for value in ("task_success", "safety_passed", "PRIVATE_VERDICT")
     )
 
 
