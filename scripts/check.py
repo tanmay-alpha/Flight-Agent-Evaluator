@@ -254,12 +254,61 @@ def gate_install_wheel() -> bool:
         python = scripts / f"python{exe}"
         cli_bin = scripts / f"flight-evaluator{exe}"
         uv_bin = shutil.which("uv") or "uv"
-        result = subprocess.run(  # noqa: S603
-            [uv_bin, "pip", "install", "--python", str(python), str(wheel)],
+        wheel_res = subprocess.run(  # noqa: S603
+            [uv_bin, "pip", "install", "--no-deps", "--python", str(python), str(wheel)],
             check=False,
+            capture_output=True,
+            text=True,
         )
-        if result.returncode != 0:
-            print("Failed to install wheel")
+        if wheel_res.returncode != 0:
+            print(f"Failed to install wheel: {wheel_res.stderr}")
+            return False
+
+        req_file = tmp_dir / "requirements-locked.txt"
+        export_res = subprocess.run(  # noqa: S603
+            [
+                uv_bin,
+                "export",
+                "--frozen",
+                "--no-dev",
+                "--no-hashes",
+                "--no-emit-project",
+                "-o",
+                str(req_file),
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if export_res.returncode != 0:
+            print(f"Failed to export locked dependencies: {export_res.stderr}")
+            return False
+
+        deps_res = subprocess.run(  # noqa: S603
+            [uv_bin, "pip", "install", "--offline", "--python", str(python), "-r", str(req_file)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if deps_res.returncode != 0:
+            offline_err = deps_res.stderr
+            deps_res = subprocess.run(  # noqa: S603
+                [uv_bin, "pip", "install", "--python", str(python), "-r", str(req_file)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if deps_res.returncode != 0:
+                print(
+                    f"Failed to install dependencies (both offline and online fallback failed):\n"
+                    f"Offline error:\n{offline_err}\n"
+                    f"Online error:\n{deps_res.stderr}"
+                )
+                return False
+
+        if not cli_bin.is_file():
+            print(f"Console script missing: {cli_bin}")
             return False
 
         work_dir = tmp_dir / "unrelated_cwd"
