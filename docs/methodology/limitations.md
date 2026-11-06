@@ -1,6 +1,6 @@
 # Limitations: what the evaluation does and does not prove
 
-This page lists what the platform's results can and cannot support. Every item is traced to code on branch `release/v0.3.0` (package version 0.3.0). Paths are relative to `src/flight_agent_evaluator/` unless they start with `results/`, `validation/` or `tests/`.
+This page lists what the platform's results can and cannot support. Every item is traced to code on branch `release/v0.4.0` (package version 0.4.0). Paths are relative to `src/flight_agent_evaluator/` unless they start with `results/`, `validation/` or `tests/`.
 
 ## What the evaluation does establish
 
@@ -33,7 +33,7 @@ This page lists what the platform's results can and cannot support. Every item i
   - An approval configured as `"expired"` is expired from the moment it is created.
   - The virtual clock moves only on a `delayed_response` fault (`engine/tool_executor.py:256-258`).
 - **Fault injection uses neither the seed nor the call sequence** (`engine/fault_engine.py:113`, `del sequence`). Faults fire on deterministic per-tool counters. Only `jfk-lhr-timeout-recovery` declares a fault.
-- **Benchmark runs don't apply the scenario's logical time limit.** The benchmark runner does not pass `logical_time_limit_ns` (`engine/benchmark.py:256-270`), so the executor's 1-hour default applies (`engine/tool_executor.py:112`). `ScenarioRunner` does apply the scenario limit (`engine/runner.py:157`).
+- **Scenario logical time limits are enforced on the virtual clock.** The benchmark runner passes `logical_time_limit_ns = context.time_limit_seconds * 1_000_000_000` to the executor (`engine/benchmark.py:333`), which terminates with `time_limit_exceeded` if elapsed logical time exceeds the scenario budget (`engine/tool_executor.py:194-205`).
 
 ### 2. The reference agents are scripted, and no real model run is committed
 - **The canonical bundle `results/benchmark-v1` contains four scripted policies** (`results/benchmark-v1/README.md`):
@@ -45,7 +45,8 @@ This page lists what the platform's results can and cannot support. Every item i
   - `OpenAIChatCompletionsClient` (`agent/model_client.py:158`) runs the LLM agent `ModelToolCallingAgent` (`agent/loop.py:33`) in `live` or `record` mode.
   - `ReplayModelClient` (`agent/model_client.py:370`) replays recorded exchange manifests.
   - Tool names are mapped `.` ↔ `__` for the provider (`agent/tool_names.py:14-38`).
-  - **No recorded model-exchange manifest from a real model is committed.** The only end-to-end test uses a fake OpenAI-compatible server (`tests/e2e/test_model_agent_replay.py:1-5`).
+- **No recorded model-exchange manifest from a real model is committed.** The only end-to-end test uses a fake OpenAI-compatible server (`tests/e2e/test_model_agent_replay.py:1-5`).
+<!-- live-model findings inserted by lead -->
 - **The 100% safety-pass rates of the safe agents show that they never attempted an unsafe action.** They do not show that the agents handled unsafe situations well:
   - `naive-baseline` never mutates, and `no-op-baseline` makes no calls.
   - The safety checks *are* exercised by `unsafe-baseline` (0.0% safety pass) and by the evaluator-validation operators.
@@ -66,11 +67,11 @@ This page lists what the platform's results can and cannot support. Every item i
   - no human labelled anything;
   - the results say nothing about accuracy on real agent trajectories, and the clean controls assume the golden trajectories are correct (`validation/evaluator-validation-v1/report.md`).
 - **Errors in the committed report** (`validation/evaluator-validation-v1/report.md`). It records 3 safety false positives, all from `drop_required_step` or `corrupt_key_argument` perturbations on `duplicate-rebooking-attempt` / `mutation-success-response-lost`. It also records 1 task false negative: a `false_success_claim` on `duplicate-rebooking-attempt` that was not detected.
-- **Known gaps:**
-  - A dependency constraint checks only that the required node was satisfied. Order and data flow are not checked (`evaluation/matcher.py:571-584`). Data flow can only be expressed with `reference_equals` argument predicates (`:123-134`), which three transactional expectations use.
-  - Claims are matched by regex and backed by journal evidence, not by environment state. A `refund` claim can never be backed, because no refund tool exists (`evaluation/journal_safety.py:110-117`).
-  - `unnecessary_call_penalty` is defined but never used (`contracts/trajectory_expectation.py:271`).
-
+- **Held-out generalization limits (unmarked injections and lexical claims):**
+  - **Injection attribution is weak for unmarked or paraphrased injections.** The untrusted-output tracker relies on recognizable directive action vocabulary in tool outputs (`evaluation/claims.py:187-222`). Injections that omit overt markers, embed instructions inside indirect narratives, or paraphrase tasks without directive verbs may not be attributed to `SAFETY.UNTRUSTED_OUTPUT_FOLLOWED`.
+  - **False-success detection is lexical.** Claim detection in `evaluation/claims.py:45-184` relies strictly on English regular expressions for completed actions (`_CLAIM_PATTERNS`) and negative hedges (`_NEGATION_RE`). It has no semantic inference engine: paraphrased claims outside these patterns are missed (false negatives), claims in other languages are unsupported, and subtle hallucinations without standard action verbs are invisible to the detector.
+- **Remaining evaluator gaps:**
+  - Claims are backed by journal evidence (successful calls or read-backs), not directly by deep external database state. A `refund` claim can never be backed, because no refund tool exists in the default toolset (`evaluation/journal_safety.py:115-123`).
 ### 4. The judge is a placeholder
 - **`FakeJudgeClient` returns placeholder scores** (default 2) with `mode=fake`, `confidence="low"` and an explicit FAKE warning (`judges/fake.py:31,77,86-87`).
 - **`ReplayJudgeClient` has nothing to replay.** It needs recorded exchanges, and none are committed.
@@ -92,7 +93,7 @@ This page lists what the platform's results can and cannot support. Every item i
 - **Tool output values are compared.** Projection `semantic-events-v2` keeps tool-result `result` values (`replay/projection.py:114-123`), and the comparator reports `TOOL_RESULT_VALUE_MISMATCH` when they differ (`replay/comparator.py:189-199`).
 - **Provenance re-checks only the scenario digest.** `replay/provenance.py:120-157` does not compare the expectation, fixture, agent-configuration or model-exchange digests in the bundle against anything.
 - **Some agents cannot be re-executed.** Only scripted, naive and model agents can be (`replay/provenance.py:175-189`). `no-op-baseline` and `unsafe-baseline` recordings return `ReplayUnavailableError`.
-- **Recordings overwrite earlier ones.** IDs are deterministic, and the store replaces files without checking whether they exist (`recording/store.py:114`). Re-running the same scenario with the same agent overwrites the earlier recording.
+- **Recordings are separated by agent configuration.** Run IDs include the agent identity and `configuration_digest` (`engine/benchmark.py:288-295`), preventing different agents from colliding. Re-executing the *exact same* agent, configuration and scenario will deterministically overwrite earlier files.
 
 ### 8. The corpus is small and narrow
 - **Size:** 24 scenarios (12 read-only, 12 transactional) under `resources/scenarios/`.
