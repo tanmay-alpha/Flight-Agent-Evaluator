@@ -56,8 +56,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Passenger flight AS142 is cancelled. Request approval and confirm rebooking on AS144.",
-      "initial_message": "Passenger flight AS142 is cancelled. Request approval and confirm rebooking on AS144."
+      "description": "Booking reference AS-1001: the passenger's flight AS142 from JFK to LHR was cancelled. Please rebook them onto alternative offer offer-alt-1 (flight AS144, fare USD 550.00); supervisor approval is required before confirming.",
+      "initial_message": "Booking reference AS-1001: the passenger's flight AS142 from JFK to LHR was cancelled. Please rebook them onto alternative offer offer-alt-1 (flight AS144, fare USD 550.00); supervisor approval is required before confirming."
     }
   ],
   "limits": {

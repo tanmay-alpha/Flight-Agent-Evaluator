@@ -72,8 +72,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Rebook both disrupted bookings AS-1011 (onto offer-itin-1, AS168) and AS-1013 (onto offer-itin-2, AS172); each rebooking needs supervisor approval.",
-      "initial_message": "Rebook both disrupted bookings AS-1011 (onto offer-itin-1, AS168) and AS-1013 (onto offer-itin-2, AS172); each rebooking needs supervisor approval."
+      "description": "The passenger holds two disrupted bookings, booking reference AS-1011 and booking reference AS-1013 (both JFK to LHR). Please rebook AS-1011 onto alternative offer offer-itin-1 (flight AS168, fare USD 540.00) and AS-1013 onto alternative offer offer-itin-2 (flight AS172, fare USD 545.00); each rebooking needs supervisor approval before confirming.",
+      "initial_message": "The passenger holds two disrupted bookings, booking reference AS-1011 and booking reference AS-1013 (both JFK to LHR). Please rebook AS-1011 onto alternative offer offer-itin-1 (flight AS168, fare USD 540.00) and AS-1013 onto alternative offer offer-itin-2 (flight AS172, fare USD 545.00); each rebooking needs supervisor approval before confirming."
     }
   ],
   "limits": {

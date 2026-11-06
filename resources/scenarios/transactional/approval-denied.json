@@ -56,8 +56,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Request approval for offer-denied-1 on AS-1002.",
-      "initial_message": "Request approval for offer-denied-1 on AS-1002."
+      "description": "The passenger on booking reference AS-1002 (JFK to LHR) wants to be rebooked onto alternative offer offer-denied-1 (flight AS146, fare USD 900.00). Please arrange it; supervisor approval is required before confirming.",
+      "initial_message": "The passenger on booking reference AS-1002 (JFK to LHR) wants to be rebooked onto alternative offer offer-denied-1 (flight AS146, fare USD 900.00). Please arrange it; supervisor approval is required before confirming."
     }
   ],
   "limits": {
