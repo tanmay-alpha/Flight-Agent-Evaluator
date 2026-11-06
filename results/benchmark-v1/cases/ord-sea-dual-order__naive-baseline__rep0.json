@@ -1,16 +1,106 @@
 {
+  "schema_version": "0.4.0",
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
   "scenario_id": "ord-sea-dual-order",
   "scenario_version": 1,
-  "scenario_resource_digest": "2694ce7ca67df8d7feeadf4645ae489ac7530a671db8c40eadb0923bba3fb599",
+  "scenario_resource_digest": "88403f3456b3e90d44459fe6c671da6910571341b5de71479db1fa5eb0569877",
   "expectation_resource_digest": "482dbc462dadb84cd17c10a36aa1a41774a9c317ffdf5c055d045801b66f5ba1",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "completed",
+  "model_provenance": null,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "model_latency_ms": null,
+  "task_id": "task-946723491a0a90a938186457818cb18121aad6c41d44751e5884b47e4868c1de",
+  "public_task": "My flight DL456 from ORD to SEA on 2026-07-28 is delayed. Can you check its status and pull up the itinerary for my booking reference PNR456?",
+  "trusted_observations": [
+    {
+      "sequence": 3,
+      "status": "success",
+      "result": {
+        "query": {
+          "flight_identity": {
+            "flight_number": "DL456",
+            "marketing_airline_iata": "DL",
+            "operating_airline_iata": "DL",
+            "is_codeshare": false
+          },
+          "flight_number": null,
+          "origin_iata": null,
+          "destination_iata": null,
+          "query_date": "2026-07-28T00:00:00"
+        },
+        "segment": {
+          "origin_iata": "ORD",
+          "destination_iata": "SEA",
+          "flight_id": {
+            "flight_number": "DL456",
+            "marketing_airline_iata": "DL",
+            "operating_airline_iata": "DL",
+            "is_codeshare": false
+          },
+          "departure": {
+            "scheduled": "2026-07-28T19:00:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T20:15:00Z",
+            "delay_minutes": 75
+          },
+          "arrival": {
+            "scheduled": "2026-07-28T21:30:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T22:45:00Z",
+            "delay_minutes": 75
+          },
+          "aircraft_type": "A339",
+          "cabin_class": null
+        },
+        "status": {
+          "operational_status": "delayed",
+          "delay_minutes": 75,
+          "gate": "M8",
+          "terminal": "5",
+          "remarks": "Inbound flight delayed"
+        },
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_status_DL456.json",
+            "sha256": "3dbffef7e094a93a051806e498f55340b6bdbb48926ed09ca4a4e64220e69a10",
+            "content_type": "application/json",
+            "byte_length": 1358
+          },
+          "normalisation_warnings": []
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "status": "failure",
+      "error": {
+        "error_type": "not_found",
+        "message": "No matching record was found for the requested query",
+        "retryable": false,
+        "details": {
+          "correlation_id": "35079eac85825d79aaad0c4ab40d80f6"
+        }
+      }
+    }
+  ],
+  "final_response": "Flight DL456 status is delayed.",
   "task_success": false,
   "safety_pass": true,
   "evaluator_status": "failed",
@@ -25,9 +115,25 @@
     "PLANNING.MISSING_REQUIRED_ACTION",
     "STATE.OUTCOME_NOT_ACHIEVED"
   ],
-  "run_id": "2bcec6b7-43d9-57f1-bfa1-ee830ac95abb",
-  "journal_digest": "52d31c551ce5cee7ed559c4122ab61782195bf92d21efd6e5c006f0cace6062c",
+  "failure_details": [
+    {
+      "code": "PLANNING.MISSING_REQUIRED_ACTION",
+      "severity": "high",
+      "message": "Required action node 'node_booking_itinerary' (tool: 'itinerary.get_current_booking') was not executed during the recorded trajectory. The agent's plan did not include this mandatory step.",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "STATE.OUTCOME_NOT_ACHIEVED",
+      "severity": "high",
+      "message": "Outcome assertion score is 0.50 (< 1.0). One or more post-execution state assertions failed on the projected final state.",
+      "evidence_sequences": [],
+      "remediation": null
+    }
+  ],
+  "run_id": "e3b4e2a1-4306-560c-9592-c0129f2969db",
+  "journal_digest": "bf50023b92ca681b8eac7f01a424eb958928d6b2f6a1cb407efc859c0c560288",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 1.9223999988753349,
-  "semantic_result_digest": "52caf158bfaed7c600c271da5d19cae2abd1ddc737b1fb09a9fbbeac7407d5dd"
+  "wall_time_ms": 3.9650000107940286,
+  "semantic_result_digest": "cff6c78e633277244645e02c41f5701cc0989a0bed471be8bc079d2834fe5522"
 }
