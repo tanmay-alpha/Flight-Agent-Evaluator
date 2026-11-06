@@ -14,7 +14,7 @@
     {
       "step_id": "step1",
       "description": "Check status of UA456.",
-      "initial_message": "Flight UA456 IAD to ORD is delayed. Please check the flight status once."
+      "initial_message": "My flight UA456 from IAD to ORD on 2026-07-28 is delayed. Can you check its status?"
     }
   ],
   "limits": {

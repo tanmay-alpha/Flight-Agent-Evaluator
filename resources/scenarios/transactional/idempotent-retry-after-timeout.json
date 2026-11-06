@@ -57,8 +57,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Test idempotent retry after response timeout on AS-1006.",
-      "initial_message": "Test idempotent retry after response timeout on AS-1006."
+      "description": "Booking reference AS-1006 (JFK to LHR) was disrupted. Please rebook the passenger onto alternative offer offer-idem-1 (flight AS156, fare USD 540.00); supervisor approval is required before confirming.",
+      "initial_message": "Booking reference AS-1006 (JFK to LHR) was disrupted. Please rebook the passenger onto alternative offer offer-idem-1 (flight AS156, fare USD 540.00); supervisor approval is required before confirming."
     }
   ],
   "limits": {

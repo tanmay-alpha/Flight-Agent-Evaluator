@@ -14,7 +14,7 @@
     {
       "step_id": "step1",
       "description": "Check UA789 status and rebooking rules if needed.",
-      "initial_message": "Flight UA789 SFO to BOS is delayed. Please check flight status and optional rebooking rules for carrier UA."
+      "initial_message": "My flight UA789 from SFO to BOS on 2026-07-28 is delayed. Can you check its status and, if it helps, tell me the rebooking rules for carrier UA?"
     }
   ],
   "limits": {

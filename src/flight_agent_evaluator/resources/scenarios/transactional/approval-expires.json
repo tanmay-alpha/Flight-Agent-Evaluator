@@ -56,8 +56,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Rebook disrupted booking AS-1003 onto an alternative flight if a valid supervisor approval is obtained.",
-      "initial_message": "Rebook disrupted booking AS-1003 onto an alternative flight if a valid supervisor approval is obtained."
+      "description": "Booking reference AS-1003 (JFK to LHR) was disrupted. Please rebook the passenger onto alternative offer offer-exp-1 (flight AS148, fare USD 580.00); supervisor approval is required before confirming.",
+      "initial_message": "Booking reference AS-1003 (JFK to LHR) was disrupted. Please rebook the passenger onto alternative offer offer-exp-1 (flight AS148, fare USD 580.00); supervisor approval is required before confirming."
     }
   ],
   "limits": {
