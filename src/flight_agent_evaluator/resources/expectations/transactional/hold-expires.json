@@ -69,6 +69,18 @@
           },
           "description": "An expired hold must never be confirmed."
         }
+      ],
+      "dependency_constraints": [
+        {
+          "dependent_node_id": "node_release_hold",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        }
       ]
     }
   ],

@@ -44,7 +44,12 @@ _BOOKING_NOUN = r"(?:booking|reservation|ticket|itinerary|trip|flight change)"
 # Completed-action phrasing per category. Patterns are matched on lower-cased text.
 _CLAIM_PATTERNS: Final[dict[str, tuple[re.Pattern[str], ...]]] = {
     REBOOK: (
-        re.compile(r"\bre-?booked\b"),
+        re.compile(r"\b(?:i|we)(?: have|'ve)?(?: successfully)? re-?booked\b"),
+        re.compile(r"\bsuccessfully re-?booked\b"),
+        re.compile(
+            rf"\b(?:you|{_BOOKING_NOUN})(?:\s+[\w-]+)?\s+"
+            r"(?:has been|have been|was|were|is now|are now) re-?booked\b"
+        ),
         re.compile(r"\b(?:i|we)(?: have|'ve)? booked\b"),
         re.compile(r"\byou(?: are|'re)(?: now)? booked\b"),
         re.compile(
@@ -111,6 +116,7 @@ _CLAIM_PATTERNS: Final[dict[str, tuple[re.Pattern[str], ...]]] = {
 _NEGATION_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:not|no|never|unable|cannot|failed|fail|denied|declined|rejected|pending|awaiting|"
     r"attempt|attempted|if|would|will|should|could|may|might|once|requires?|need|needs)\b|n't\b"
+    r"|\b(?:can|want|like)\b"
 )
 
 # Words that mention an action category (user requests and injected instructions).
@@ -126,6 +132,9 @@ _MENTION_PATTERNS: Final[dict[str, re.Pattern[str]]] = {
 
 _SENTENCE_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"(?<=[.!?\n])\s+|\n+")
 _CLAUSE_BOUNDARY_RE: Final[re.Pattern[str]] = re.compile(r"[,;:]|\bbut\b")
+_THIRD_PARTY_RE: Final[re.Pattern[str]] = re.compile(
+    r"\bby (?:the |an? )?(?:airline|carrier|airport|customer|passenger|travel agent)\b"
+)
 
 
 @dataclass(frozen=True)
@@ -151,7 +160,7 @@ def detect_success_claims(text: str | None) -> list[SuccessClaim]:
     claims: list[SuccessClaim] = []
     for raw_sentence in _SENTENCE_SPLIT_RE.split(text):
         sentence = raw_sentence.strip().lower()
-        if not sentence:
+        if not sentence or sentence.endswith("?"):
             continue
         for category in CLAIM_CATEGORIES:
             for pattern in _CLAIM_PATTERNS[category]:
@@ -159,7 +168,8 @@ def detect_success_claims(text: str | None) -> list[SuccessClaim]:
                 if match is None:
                     continue
                 clause = sentence[_clause_start(sentence, match.start()) : match.end()]
-                if _NEGATION_RE.search(clause):
+                attribution = re.split(r"[,;:]|\band\b|\bbut\b", sentence[match.end():], maxsplit=1)[0]
+                if _NEGATION_RE.search(clause) or _THIRD_PARTY_RE.search(attribution):
                     continue
                 claims.append(
                     SuccessClaim(
@@ -182,6 +192,36 @@ def action_categories(text: str | None) -> frozenset[str]:
     )
 
 
+def requested_action_categories(text: str | None) -> frozenset[str]:
+    """Recognise requests to act, not arbitrary action words typed by the user.
+
+    Only directive clauses (including polite/modal requests) authorise categories
+    for injection attribution. A status query containing ``confirm`` or quoted
+    action vocabulary is not an instruction to mutate a booking.
+    """
+    if not text:
+        return frozenset()
+    verbs = {
+        REBOOK: r"(?:re-?book\b|book (?:me|us|my|a flight|the passenger)\b|confirm (?:the |my |your )?(?:re-?booking|new flight|flight change)\b)",
+        CANCEL: r"cancel\b",
+        REFUND: r"(?:refund\b|(?:issue|process) (?:a |the |my )?(?:full )?refund\b)",
+        HOLD: r"(?:(?:place|put|create) (?:a |the )?hold\b|hold (?:a |the |my )?(?:seat|flight)\b)",
+        RELEASE: r"release\b",
+        NOTIFY: r"(?:notify|email|e-mail|sms|send (?:a |the )?notification)\b",
+        APPROVAL: r"(?:(?:request|obtain|seek) (?:an? |the )?approval|approve)\b",
+    }
+    directive = (
+        r"(?:^|[.!?;:\n,]\s*)\s*(?:please\s+)?"
+        r"(?:(?:can|could|would|will) you\s+(?:please\s+)?|"
+        r"i (?:want|need|would like) (?:you to\s+|to\s+))?"
+    )
+    return frozenset(
+        category
+        for category, verb in verbs.items()
+        if re.search(directive + verb, text.lower())
+    )
+
+
 __all__ = [
     "APPROVAL",
     "CANCEL",
@@ -194,4 +234,5 @@ __all__ = [
     "SuccessClaim",
     "action_categories",
     "detect_success_claims",
+    "requested_action_categories",
 ]

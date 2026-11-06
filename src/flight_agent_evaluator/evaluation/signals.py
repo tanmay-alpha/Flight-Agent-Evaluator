@@ -472,7 +472,7 @@ class SignalExtractor:
                 )
             )
 
-        if scorecard.outcome_score < 1.0:
+        if scorecard.outcome_evaluated and scorecard.outcome_score < 1.0:
             signals.append(
                 DiagnosticSignal(
                     signal_type=DiagnosticSignalType.OUTCOME_ASSERTION_FAILED,

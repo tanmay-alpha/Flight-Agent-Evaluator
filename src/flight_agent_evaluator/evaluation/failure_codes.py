@@ -196,6 +196,9 @@ class FailureCode(StrEnum):
     AGENT__NO_FINAL_RESPONSE = "AGENT.NO_FINAL_RESPONSE"
     """The agent terminated without producing a final response."""
 
+    AGENT__EXECUTION_ERROR = "AGENT.EXECUTION_ERROR"
+    """The agent policy raised an exception; the run was recorded as an ERROR case without trajectory scoring."""
+
     # ------------------------------------------------------------------
     # ENVIRONMENT — failures caused by the external environment
     # ------------------------------------------------------------------
@@ -353,6 +356,7 @@ _DEFAULT_SEVERITY_MAP: dict[str, FailureSeverity] = {
     FailureCode.AGENT__INVALID_MODEL_OUTPUT: FailureSeverity.HIGH,
     FailureCode.AGENT__MODEL_ERROR: FailureSeverity.HIGH,
     FailureCode.AGENT__NO_FINAL_RESPONSE: FailureSeverity.HIGH,
+    FailureCode.AGENT__EXECUTION_ERROR: FailureSeverity.HIGH,
     # ENVIRONMENT
     FailureCode.ENVIRONMENT__PROVIDER_TIMEOUT: FailureSeverity.MEDIUM,
     FailureCode.ENVIRONMENT__PROVIDER_RATE_LIMIT: FailureSeverity.LOW,

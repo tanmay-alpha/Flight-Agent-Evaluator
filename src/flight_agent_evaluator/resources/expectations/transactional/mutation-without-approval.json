@@ -62,6 +62,18 @@
           },
           "description": "Never confirm while the approval is not granted."
         }
+      ],
+      "dependency_constraints": [
+        {
+          "dependent_node_id": "node_request_approval",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        }
       ]
     }
   ],

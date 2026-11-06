@@ -50,12 +50,6 @@
           "description": "Status retry before search"
         }
       ],
-      "dependency_constraints": [
-        {
-          "dependent_node_id": "node_status_retry",
-          "required_node_id": "node_status_initial"
-        }
-      ],
       "recovery_constraints": [
         {
           "rule_id": "recover_status_after_timeout",
