@@ -206,6 +206,18 @@ def test_replay_directory_rejects_manifest_bound_to_another_run(tmp_path: Path) 
         client.begin_run(scenario_id="scn", run_id="r", configuration=ModelConfiguration())
 
 
+def test_manifest_file_uses_lf_line_endings(tmp_path: Path) -> None:
+    # Committed live manifests must be byte-identical whether recorded on Windows or Linux.
+    path = tmp_path / "m.json"
+    write_model_exchange_manifest(
+        path,
+        ModelExchangeManifest(manifest_id="scn__run", model_configuration=ModelConfiguration()),
+    )
+    raw = path.read_bytes()
+    assert b"\r\n" not in raw
+    assert raw.endswith(b"}\n")
+
+
 def test_malformed_manifest_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "m.json"
     path.write_text("{not json", encoding="utf-8")

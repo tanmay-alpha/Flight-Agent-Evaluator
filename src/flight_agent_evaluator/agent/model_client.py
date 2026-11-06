@@ -98,9 +98,9 @@ def model_exchange_manifest_path(
 
 
 def write_model_exchange_manifest(path: Path, manifest: ModelExchangeManifest) -> None:
-    """Persist a manifest as canonical, human-readable JSON."""
+    """Persist a manifest as canonical, human-readable JSON with LF line endings on every OS."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(manifest.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    path.write_bytes((manifest.model_dump_json(indent=2) + "\n").encode("utf-8"))
 
 
 def load_model_exchange_manifest(path: Path) -> ModelExchangeManifest:
