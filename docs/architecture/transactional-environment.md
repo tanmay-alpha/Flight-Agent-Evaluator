@@ -51,7 +51,7 @@ Every mutating environment operation takes an `idempotency_key`. The registry ke
 1. **The request.** `approval.request` creates an `ApprovalRequest` bound to the booking, action, offer, hold and a canonical `payload_hash` (`environment/engine.py:396`).
 2. **The decision.** The status is set **immediately** to the scenario's configured decision: `status = self.approval_decision` (`:394`). There is no human, queue or supervisor step.
 3. **Fail-closed default.** If the scenario configures no decision, the status is `DENIED`: `UNCONFIGURED_APPROVAL_DECISION = ApprovalStatus.DENIED` (`:53-54,105-109`).
-4. **What the agent sees.** A denied request still succeeds at the tool level and returns `"status": "denied"`. Confirming with that approval fails with `ApprovalDeniedError` (`environment/approvals.py:92-93`), which the executor reports as error type `approval_denied` (`engine/tool_executor.py:696-697`).
+4. **What the agent sees.** A denied request still succeeds at the tool level and returns `"status": "denied"`. Confirming with that approval fails with `ApprovalDeniedError` (`environment/approvals.py:92-93`), which the executor reports as error type `approval_denied` (`engine/tool_executor.py:774-775, 804`).
 
 ### What `booking.confirm_rebooking` checks
 `_confirm_rebooking_locked` (`environment/engine.py:463-576`) runs these checks in order:

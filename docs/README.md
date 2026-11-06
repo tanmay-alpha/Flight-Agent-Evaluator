@@ -39,6 +39,7 @@ Technical documentation for Flight Agent Evaluator, organized by subsystem and c
 | [`adr/0007-contract-consolidation-and-evaluation-schema.md`](adr/0007-contract-consolidation-and-evaluation-schema.md) | Contract consolidation and evaluation schema | Accepted (errata 2026-11-05, revised 2026-11-06) |
 | [`adr/0008-trajectory-constraint-scoring.md`](adr/0008-trajectory-constraint-scoring.md) | Trajectory constraint scoring and multiple valid paths | Accepted (errata 2026-11-05, revised 2026-11-06) |
 | [`adr/0009-failure-taxonomy-and-diagnostics.md`](adr/0009-failure-taxonomy-and-diagnostics.md) | Failure taxonomy, evidence-backed diagnostics, and root-cause attribution | Accepted (errata 2026-11-05, revised 2026-11-06) |
+| [`adr/0010-domain-coupling-and-extension-seam.md`](adr/0010-domain-coupling-and-extension-seam.md) | Domain coupling analysis and DomainPack extension seam | Proposed |
 
 ---
 
