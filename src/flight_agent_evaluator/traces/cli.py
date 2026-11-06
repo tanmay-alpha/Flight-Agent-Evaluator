@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 from flight_agent_evaluator.engine.scenario_loader import (
     ScenarioLoaderError,
@@ -32,8 +33,15 @@ EXIT_FAILED = 1
 EXIT_INPUT_ERROR = 2
 
 
+class _TraceArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:  # noqa: ARG002
+        """Do not echo untrusted argument values in parser errors."""
+        self.print_usage(sys.stderr)
+        self.exit(EXIT_INPUT_ERROR, "error: invalid trace command-line arguments\n")
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _TraceArgumentParser(
         prog="python -m flight_agent_evaluator.traces",
         description=(
             "Evaluate an externally produced agent tool-call trace by re-executing it "
@@ -42,6 +50,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("trace", type=Path, help="Path to a trace JSON file.")
     parser.add_argument("--json", action="store_true", help="Emit the full report as JSON.")
+    parser.add_argument(
+        "--allow-root",
+        type=Path,
+        help="Additional root for relative scenario and expectation paths (no links or '..').",
+    )
     return parser
 
 
@@ -67,6 +80,11 @@ def render_text(report: TraceEvaluationReport) -> str:
         f"Trace consistent with environment: {report.trace_consistent}",
     ]
     lines.extend(f"  - {d.as_warning()}" for d in report.divergences)
+    for detail in m.failure_details:
+        lines.append(f"  [{detail.severity}] {detail.code}: {detail.message}")
+        lines.append(f"    Evidence sequences: {detail.evidence_sequences}")
+        if detail.remediation:
+            lines.append(f"    Remediation: {detail.remediation}")
     return "\n".join(lines)
 
 
@@ -76,9 +94,13 @@ def main(argv: list[str] | None = None) -> int:
     trace_path: Path = args.trace
     try:
         trace = load_trace(trace_path)
-        report = evaluate_trace(trace, base_dir=trace_path.resolve().parent)
-    except _INPUT_ERRORS as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        report = evaluate_trace(
+            trace, base_dir=trace_path.absolute().parent, allow_root=args.allow_root
+        )
+    except _INPUT_ERRORS:
+        print(
+            "error: trace or referenced scenario/expectation could not be loaded", file=sys.stderr
+        )
         return EXIT_INPUT_ERROR
 
     if args.json:
