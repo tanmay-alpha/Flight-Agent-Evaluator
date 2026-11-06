@@ -342,7 +342,12 @@ def test_r22_strict_score_monotonicity() -> None:
     no_op_score = score_agent(lambda: NoOpBaselineAgent())
 
     assert oracle_score > naive_score > no_op_score
-    assert oracle_score >= 0.95
+    # Missing authored assertions provide no outcome credit, even for a valid reference path.
+    expected_reference_score = sum(
+        1.0 if case.scenario.assertions else 1.0 - case.expectation.scoring_profile.weight_outcome
+        for case in cases
+    ) / len(cases)
+    assert oracle_score == pytest.approx(expected_reference_score)
     assert no_op_score <= 0.35
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime
 import hashlib
-import json
 import logging
 import uuid
 from pathlib import Path
@@ -14,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
 from flight_agent_evaluator.agent.protocol import AgentPolicy
+from flight_agent_evaluator.annotation.tasks import deterministic_task_id
 from flight_agent_evaluator.benchmarks.results import FailureDetail
 from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.model import (
@@ -186,20 +186,9 @@ class BenchmarkRunner:
             public_task=mv.public_task,
             trusted_observations=mv.trusted_observations,
             final_response=mv.final_response,
-            task_id="task-"
-            + hashlib.sha256(
-                json.dumps(
-                    {
-                        "public_task": mv.public_task,
-                        "trusted_observations": mv.trusted_observations,
-                        "final_response": mv.final_response,
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    ensure_ascii=False,
-                    allow_nan=False,
-                ).encode("utf-8")
-            ).hexdigest(),
+            task_id=deterministic_task_id(
+                mv.public_task, mv.trusted_observations, mv.final_response
+            ),
             seed=execution_seed if execution_seed is not None else scenario.seed,
             repetition_index=repetition_index,
             task_success=mv.task_success,
