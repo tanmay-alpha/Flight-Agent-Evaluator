@@ -68,6 +68,9 @@ from flight_agent_evaluator.recording.journal import HashChainJournal
 if TYPE_CHECKING:
     pass
 
+_UNRESOLVED_PLACEHOLDER = "<unknown>"
+"""Fallback value used by the template context for fields the producer did not supply."""
+
 # ---------------------------------------------------------------------------
 # Re-export failure_codes and signals for single-import convenience
 # ---------------------------------------------------------------------------
@@ -563,6 +566,10 @@ class FailureDiagnosticEngine:
             template_id = template_id_for_code(code.value)
             ctx = self._build_template_context(signal, scorecard, extra_meta)
             explanation = render_explanation(template_id, ctx)
+            if _UNRESOLVED_PLACEHOLDER in explanation and signal.details:
+                # The producer recorded a complete sentence but not the template's structured
+                # fields; never emit "<unknown>" placeholders when real evidence text exists.
+                explanation = signal.details
 
             # Coerce from _FailureSeverityBase (5-level) to local FailureSeverity (8-value)
             severity = FailureSeverity(self._policy.severity_for(code).value)
