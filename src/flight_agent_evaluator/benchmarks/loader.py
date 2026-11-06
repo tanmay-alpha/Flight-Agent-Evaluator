@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +13,7 @@ from flight_agent_evaluator.contracts.trajectory_expectation import (
     TrajectoryExpectation,
     validate_trajectory_expectation,
 )
+from flight_agent_evaluator.strict_json import loads_strict
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ class BenchmarkManifestLoader:
         raw_manifest_bytes = locator.read_bytes(ref)
 
         try:
-            data = json.loads(raw_manifest_bytes.decode("utf-8"))
+            data = loads_strict(raw_manifest_bytes)
             manifest = BenchmarkManifest.model_validate(data)
         except Exception as exc:
             raise ManifestValidationError(f"Invalid benchmark manifest schema: {exc}") from exc
@@ -165,7 +165,7 @@ class BenchmarkManifestLoader:
                 )
                 sc_bytes = locator.read_bytes(sc_ref)
                 try:
-                    sc_data = json.loads(sc_bytes.decode("utf-8"))
+                    sc_data = loads_strict(sc_bytes)
                     scenario = BenchmarkScenario.model_validate(sc_data)
                 except Exception as exc:
                     raise ManifestValidationError(
@@ -184,7 +184,7 @@ class BenchmarkManifestLoader:
                 )
                 exp_bytes = locator.read_bytes(exp_ref)
                 try:
-                    exp_data = json.loads(exp_bytes.decode("utf-8"))
+                    exp_data = loads_strict(exp_bytes)
                     expectation = TrajectoryExpectation.model_validate(exp_data)
                 except Exception as exc:
                     raise ManifestValidationError(
@@ -243,7 +243,7 @@ class BenchmarkManifestLoader:
 
         raw_manifest_bytes = p.read_bytes()
         try:
-            data = json.loads(raw_manifest_bytes.decode("utf-8"))
+            data = loads_strict(raw_manifest_bytes)
             manifest = BenchmarkManifest.model_validate(data)
         except Exception as exc:
             raise ManifestValidationError(f"Invalid benchmark manifest schema: {exc}") from exc
@@ -281,7 +281,7 @@ class BenchmarkManifestLoader:
 
                 sc_bytes = self.verify_file_digest(sc_file, entry.scenario_sha256)
                 try:
-                    sc_data = json.loads(sc_bytes.decode("utf-8"))
+                    sc_data = loads_strict(sc_bytes)
                     scenario = BenchmarkScenario.model_validate(sc_data)
                 except Exception as exc:
                     raise ManifestValidationError(
@@ -308,7 +308,7 @@ class BenchmarkManifestLoader:
 
                 exp_bytes = self.verify_file_digest(exp_file, entry.expectation_sha256)
                 try:
-                    exp_data = json.loads(exp_bytes.decode("utf-8"))
+                    exp_data = loads_strict(exp_bytes)
                     expectation = TrajectoryExpectation.model_validate(exp_data)
                 except Exception as exc:
                     raise ManifestValidationError(

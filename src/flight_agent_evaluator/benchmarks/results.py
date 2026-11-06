@@ -5,17 +5,21 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 import uuid
 from pathlib import Path
 from shutil import which
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
 from flight_agent_evaluator.canonical import canonical_hash
 from flight_agent_evaluator.contracts.base import ContractModel
+from flight_agent_evaluator.contracts.model import AgentStopReason, ModelProvenance, ModelUsage
+
+ExecutionMode = Literal["offline-reference", "model-replay", "model-record", "model-live"]
 
 SOURCE_TREE_DIGEST_VERSION = "source-tree-v1"
 CASE_RESULT_DIGEST_VERSION = "benchmark-case-result-v2"
@@ -140,6 +144,16 @@ def ensure_bundle_output_dir(output_dir: Path | str) -> None:
         )
 
 
+class FailureDetail(ContractModel):
+    """Consumer-facing projection of an evidence-backed failure diagnostic."""
+
+    code: str
+    severity: str
+    message: str
+    evidence_sequences: list[int] = Field(default_factory=list)
+    remediation: str | None = None
+
+
 class BenchmarkExecutionIdentity(ContractModel):
     """Canonical, machine-independent identity for one authoritative case execution."""
 
@@ -155,6 +169,7 @@ class BenchmarkExecutionIdentity(ContractModel):
     agent_configuration_digest: str | None = None
     execution_seed: int
     repetition_index: int
+    max_turns: int = 10
 
     def semantic_digest(self) -> str:
         """Return the content-addressed execution digest."""
@@ -168,6 +183,7 @@ class BenchmarkExecutionIdentity(ContractModel):
 class BenchmarkCaseResult(ContractModel):
     """Evaluation result for a single agent policy on a single verified benchmark case."""
 
+    schema_version: Literal["0.4.0"] = "0.4.0"
     benchmark_id: str
     benchmark_version: str
     manifest_digest: str | None = None
@@ -183,6 +199,15 @@ class BenchmarkCaseResult(ContractModel):
 
     seed: int = 42
     repetition_index: int = 0
+    max_turns: int = 10
+    stop_reason: AgentStopReason | None = None
+    model_provenance: ModelProvenance | None = None
+    usage: ModelUsage = Field(default_factory=ModelUsage)
+    model_latency_ms: float | None = None
+    task_id: str | None = None
+    public_task: str = ""
+    trusted_observations: list[dict[str, Any]] = Field(default_factory=list)
+    final_response: str | None = None
 
     task_success: bool
     safety_pass: bool
@@ -191,6 +216,7 @@ class BenchmarkCaseResult(ContractModel):
     overall_score: float = Field(..., ge=0.0, le=1.0)
     score_vector: dict[str, float] = Field(default_factory=dict)
     failure_codes: list[str] = Field(default_factory=list)
+    failure_details: list[FailureDetail] = Field(default_factory=list)
 
     run_id: str
     journal_digest: str | None = None
@@ -235,6 +261,14 @@ class BenchmarkCaseResult(ContractModel):
             "agent_configuration_digest": self.agent_configuration_digest,
             "seed": self.seed,
             "repetition_index": self.repetition_index,
+            "task_id": self.task_id,
+            "max_turns": self.max_turns,
+            "stop_reason": self.stop_reason,
+            "model_provenance": (
+                self.model_provenance.model_dump(mode="json") if self.model_provenance else None
+            ),
+            "usage": self.usage.model_dump(mode="json"),
+            "failure_details": [detail.model_dump(mode="json") for detail in self.failure_details],
             "task_success": self.task_success,
             "safety_pass": self.safety_pass,
             "evaluator_status": self.evaluator_status,
@@ -276,6 +310,8 @@ class BenchmarkInvocation(ContractModel):
     agent_ids: list[str]
     scenario_ids: list[str] | None = None
     repetitions: int | None = None
+    output_dir: str | None = None
+    model_options: dict[str, str | bool] = Field(default_factory=dict)
 
 
 def render_reproduction_command(invocation: BenchmarkInvocation) -> str | None:
@@ -289,13 +325,21 @@ def render_reproduction_command(invocation: BenchmarkInvocation) -> str | None:
     )
     if invocation.repetitions is not None:
         command += f" --repetitions {invocation.repetitions}"
+    for name, value in invocation.model_options.items():
+        if value is True:
+            command += f" --{name}"
+        elif value is not False:
+            command += f" --{name} {shlex.quote(str(value))}"
     benchmark_id = invocation.manifest_reference.removeprefix("builtin:")
-    return f"{command} --output results/{benchmark_id}"
+    output = invocation.output_dir or f"results/{benchmark_id}"
+    return f"{command} --output {shlex.quote(output)}"
 
 
 class BenchmarkRunArtifact(ContractModel):
     """Complete, self-contained artifact recording an authoritative benchmark execution run."""
 
+    schema_version: Literal["0.4.0"] = "0.4.0"
+    execution_mode: ExecutionMode = "offline-reference"
     run_semantic_id: str
     benchmark_id: str
     benchmark_version: str
@@ -341,8 +385,9 @@ class BenchmarkRunArtifact(ContractModel):
         cases_root = cases_dir.resolve()
         case_files: list[tuple[Path, BenchmarkCaseResult]] = []
         for res in self.case_results:
-            case_file = (
-                cases_dir / f"{res.scenario_id}__{res.agent_id}__rep{res.repetition_index}.json"
+            seed_tag = f"__seed{res.seed}" if len(self.run_policy.get("seeds", [])) > 1 else ""
+            case_file = cases_dir / (
+                f"{res.scenario_id}__{res.agent_id}{seed_tag}__rep{res.repetition_index}.json"
             )
             if case_file.resolve().parent != cases_root:
                 raise ValueError(
@@ -443,7 +488,7 @@ def render_benchmark_report(artifact: BenchmarkRunArtifact) -> str:
             "## Limitations & Evaluation Scope",
             "",
             "1. **Simulated Environment**: Scenarios execute in a simulated airline environment with synthetic fixtures, scenario-configured approval decisions and deterministic fault injection.",
-            "2. **Deterministic Reference Agents Only**: `scripted-oracle` replays each scenario's golden trajectory (an upper reference, not a capability claim); `naive-baseline` is a fixed heuristic; `no-op-baseline` does nothing; `unsafe-baseline` is a negative control that mutates without or against approval and always claims success. No live LLM was run for this bundle.",
+            f"2. **Execution Mode**: `{artifact.execution_mode}`. Reference policies are deterministic controls, not model capability evidence; model provenance is recorded per case when a model is used.",
             "3. **Rule-Based Evaluator**: Task success and safety are decided by deterministic rules over the journal. Their false-negative/false-positive rates are measured separately by `flight-evaluator evaluator validate` on construction-labelled perturbations, not on human labels.",
             "4. **Qualitative Judge Not Used**: No calibrated judge exists; the packaged judge is a placeholder and its human calibration has 0 annotations.",
             "",
