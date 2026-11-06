@@ -212,7 +212,9 @@ def test_provider_failure_returns_typed_warning_and_persists_manifest(
             )
             assert result.stop_reason == AgentStopReason.ERROR
             assert result.final_response is None
-            assert any(warning.startswith(f"{expected_error.value}:") for warning in result.warnings)
+            assert any(
+                warning.startswith(f"{expected_error.value}:") for warning in result.warnings
+            )
             assert secret not in result.model_dump_json()
             manifests = list(tmp_path.glob("*.model-exchanges.json"))
             assert len(manifests) == 1

@@ -161,7 +161,9 @@ def test_agent_exception_records_safe_type_without_provider_payload(
     runner = BenchmarkRunner()
     case = _case()
     result = asyncio.run(runner.run_case(case, FailingAgent()))
-    failure = next(detail for detail in result.failure_details if detail.code == "AGENT.EXECUTION_ERROR")
+    failure = next(
+        detail for detail in result.failure_details if detail.code == "AGENT.EXECUTION_ERROR"
+    )
     assert type(exception).__name__ in failure.message
     if model_error_type is not None:
         assert model_error_type.value in failure.message
@@ -198,7 +200,6 @@ def test_agent_exception_records_safe_type_without_provider_payload(
     for path in tmp_path.rglob("*"):
         if path.is_file():
             assert "sk-planted-private-key" not in path.read_text(encoding="utf-8")
-
 
 
 @pytest.mark.parametrize("exception", [asyncio.CancelledError, KeyboardInterrupt])
