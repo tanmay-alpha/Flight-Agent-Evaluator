@@ -17,6 +17,8 @@ from flight_agent_evaluator.strict_json import StrictJSONError, load_strict_path
         (b'{"a": 1, "a": 2}', "duplicate key"),
         (b'{"outer": {"k": 1, "k": 1}}', "duplicate key"),
         (b'{"x": NaN}', "non-finite"),
+        (b'{"x": 1e999}', "non-finite"),
+        (b'{"x": -1e999}', "non-finite"),
         (b'{"x": -Infinity}', "non-finite"),
         (b"\xef\xbb\xbf{}", "BOM"),
         (b'{"x": "\xff"}', "invalid UTF-8"),

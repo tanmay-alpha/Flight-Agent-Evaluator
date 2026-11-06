@@ -14,6 +14,7 @@ payloads above ``max_bytes``, and nesting deeper than ``max_depth``.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any, Final
 
@@ -37,6 +38,14 @@ def _object_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def _reject_constant(name: str) -> Any:
     raise StrictJSONError(f"non-finite number {name} is not valid JSON")
+
+
+def _finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        # e.g. 1e999 overflows to inf without passing through parse_constant.
+        raise StrictJSONError(f"number {text} overflows to a non-finite value")
+    return value
 
 
 def _check_depth(value: Any, max_depth: int) -> None:
@@ -76,6 +85,7 @@ def loads_strict(
             text,
             object_pairs_hook=_object_without_duplicates,
             parse_constant=_reject_constant,
+            parse_float=_finite_float,
         )
     except StrictJSONError as exc:
         raise StrictJSONError(f"{source}: {exc}") from None
