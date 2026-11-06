@@ -13,10 +13,17 @@
           "selector": {
             "tool_name": "booking.get_current",
             "argument_constraints": [
-              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1011"}
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1011"
+              }
             ]
           },
-          "occurrence": {"min_occurs": 1, "max_occurs": 3},
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
@@ -25,8 +32,16 @@
           "selector": {
             "tool_name": "booking.hold_alternative",
             "argument_constraints": [
-              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1011"},
-              {"field_pointer": "/offer_id", "operator": "equals", "value": "offer-itin-1"}
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1011"
+              },
+              {
+                "field_pointer": "/offer_id",
+                "operator": "equals",
+                "value": "offer-itin-1"
+              }
             ]
           },
           "required": true
@@ -37,7 +52,11 @@
           "selector": {
             "tool_name": "approval.request",
             "argument_constraints": [
-              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1011"}
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1011"
+              }
             ]
           },
           "required": true
@@ -48,7 +67,11 @@
           "selector": {
             "tool_name": "booking.confirm_rebooking",
             "argument_constraints": [
-              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1011"},
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1011"
+              },
               {
                 "field_pointer": "/approval_id",
                 "operator": "reference_equals",
@@ -71,10 +94,17 @@
           "selector": {
             "tool_name": "booking.get_current",
             "argument_constraints": [
-              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1013"}
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1013"
+              }
             ]
           },
-          "occurrence": {"min_occurs": 1, "max_occurs": 3},
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
@@ -83,8 +113,16 @@
           "selector": {
             "tool_name": "booking.hold_alternative",
             "argument_constraints": [
-              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1013"},
-              {"field_pointer": "/offer_id", "operator": "equals", "value": "offer-itin-2"}
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1013"
+              },
+              {
+                "field_pointer": "/offer_id",
+                "operator": "equals",
+                "value": "offer-itin-2"
+              }
             ]
           },
           "required": true
@@ -95,7 +133,11 @@
           "selector": {
             "tool_name": "approval.request",
             "argument_constraints": [
-              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1013"}
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1013"
+              }
             ]
           },
           "required": true
@@ -106,7 +148,11 @@
           "selector": {
             "tool_name": "booking.confirm_rebooking",
             "argument_constraints": [
-              {"field_pointer": "/booking_reference", "operator": "equals", "value": "AS-1013"},
+              {
+                "field_pointer": "/booking_reference",
+                "operator": "equals",
+                "value": "AS-1013"
+              },
               {
                 "field_pointer": "/approval_id",
                 "operator": "reference_equals",
@@ -125,14 +171,84 @@
         }
       ],
       "precedence_constraints": [
-        {"before_node_id": "node_hold_1011", "after_node_id": "node_approval_1011"},
-        {"before_node_id": "node_approval_1011", "after_node_id": "node_confirm_1011"},
-        {"before_node_id": "node_hold_1013", "after_node_id": "node_approval_1013"},
-        {"before_node_id": "node_approval_1013", "after_node_id": "node_confirm_1013"}
+        {
+          "before_node_id": "node_hold_1011",
+          "after_node_id": "node_approval_1011"
+        },
+        {
+          "before_node_id": "node_approval_1011",
+          "after_node_id": "node_confirm_1011"
+        },
+        {
+          "before_node_id": "node_hold_1013",
+          "after_node_id": "node_approval_1013"
+        },
+        {
+          "before_node_id": "node_approval_1013",
+          "after_node_id": "node_confirm_1013"
+        }
       ],
       "dependency_constraints": [
-        {"dependent_node_id": "node_confirm_1011", "required_node_id": "node_approval_1011"},
-        {"dependent_node_id": "node_confirm_1013", "required_node_id": "node_approval_1013"}
+        {
+          "dependent_node_id": "node_confirm_1011",
+          "required_node_id": "node_approval_1011",
+          "bindings": [
+            {
+              "argument_pointer": "/approval_id",
+              "result_pointer": "/approval_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_confirm_1013",
+          "required_node_id": "node_approval_1013",
+          "bindings": [
+            {
+              "argument_pointer": "/approval_id",
+              "result_pointer": "/approval_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_approval_1011",
+          "required_node_id": "node_hold_1011",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_confirm_1011",
+          "required_node_id": "node_hold_1011",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_approval_1013",
+          "required_node_id": "node_hold_1013",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_confirm_1013",
+          "required_node_id": "node_hold_1013",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        }
       ]
     }
   ],

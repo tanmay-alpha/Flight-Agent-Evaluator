@@ -13,9 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import pytest
 
-from flight_agent_evaluator.agent.errors import ModelReplayMissingExchangeError
 from flight_agent_evaluator.agent.loop import ModelToolCallingAgent
 from flight_agent_evaluator.agent.model_client import (
     MODEL_EXCHANGE_MANIFEST_SUFFIX,
@@ -272,7 +270,15 @@ def test_benchmark_model_replay_fails_clearly_when_manifest_missing(tmp_path: Pa
     registry = BenchmarkAgentRegistry(
         model_settings=ModelAgentSettings(mode="replay", replay_dir=tmp_path)
     )
-    with pytest.raises(ModelReplayMissingExchangeError, match="not found"):
-        CanonicalBenchmarkEngine(registry=registry).run_benchmark(
-            agent_ids=["model"], scenario_filter=["jfk-lhr-delay"]
-        )
+    result = CanonicalBenchmarkEngine(registry=registry).run_benchmark(
+        agent_ids=["model"], scenario_filter=["jfk-lhr-delay"]
+    )
+    assert len(result.case_results) == 1
+    case = result.case_results[0]
+    assert not case.task_success
+    assert case.stop_reason == AgentStopReason.ERROR
+    assert case.evaluator_status == "execution_error"
+    assert case.overall_score == 0
+    assert "AGENT.EXECUTION_ERROR" in case.failure_codes
+    assert any(detail.code == "AGENT.EXECUTION_ERROR" for detail in case.failure_details)
+    assert case.journal_digest is not None

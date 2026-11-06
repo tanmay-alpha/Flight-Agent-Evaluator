@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.metadata
 import importlib.resources
-import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +16,7 @@ from flight_agent_evaluator.resources.contracts import (
     ResourceRef,
 )
 from flight_agent_evaluator.resources.locator import get_builtin_locator
+from flight_agent_evaluator.strict_json import loads_strict
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +202,7 @@ class ReleaseVerifier:
                     origin=ResourceOrigin.BUILTIN, logical_path=f, kind=ResourceKind.FIXTURE
                 )
                 raw = loc.read_bytes(ref)
-                json.loads(raw.decode("utf-8"))
+                loads_strict(raw)
             checks.append(
                 ReleaseCheckItem(
                     check_id="REL-06-FIXTURE-DATA",

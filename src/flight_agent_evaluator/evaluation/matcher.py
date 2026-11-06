@@ -17,6 +17,8 @@ from flight_agent_evaluator.canonical import canonical_json
 from flight_agent_evaluator.contracts.json_pointer import MISSING, resolve_json_pointer
 from flight_agent_evaluator.contracts.trajectory_expectation import (
     ArgumentConstraint,
+    DependencyConstraint,
+    ExpectedAction,
     ValidPath,
 )
 from flight_agent_evaluator.evaluation.observation import ObservedToolAction, ObservedTrajectory
@@ -52,6 +54,8 @@ def evaluate_argument_constraint(
     constraint: ArgumentConstraint,
     arguments: dict[str, Any],
     aligned_mapping: dict[str, ObservedToolAction] | None = None,
+    *,
+    dependent_action: ObservedToolAction | None = None,
 ) -> bool:
     """Evaluate a single ArgumentConstraint predicate against tool arguments."""
     actual = resolve_json_pointer(arguments, constraint.field_pointer)
@@ -84,14 +88,18 @@ def evaluate_argument_constraint(
             actual is MISSING
             or isinstance(actual, bool)
             or not isinstance(actual, (int, float))
-            or math.isnan(actual)
-            or math.isinf(actual)
+            or (isinstance(actual, float) and not math.isfinite(actual))
             or not isinstance(expected, (list, tuple))
             or len(expected) != 2
+            or any(
+                isinstance(bound, bool)
+                or not isinstance(bound, (int, float))
+                or (isinstance(bound, float) and not math.isfinite(bound))
+                for bound in expected
+            )
         ):
             return False
         return bool(expected[0] <= actual <= expected[1])
-
     if op == "datetime_range":
         if actual is MISSING or not isinstance(expected, (list, tuple)) or len(expected) != 2:
             return False
@@ -125,15 +133,59 @@ def evaluate_argument_constraint(
             return False
         ref_node_id = constraint.reference_node_id
         ref_pointer = constraint.reference_field_pointer
-        if ref_node_id and ref_pointer and aligned_mapping and ref_node_id in aligned_mapping:
+        if (
+            ref_node_id is not None
+            and ref_pointer is not None
+            and aligned_mapping
+            and ref_node_id in aligned_mapping
+            and dependent_action is not None
+        ):
             target_action = aligned_mapping[ref_node_id]
-            if target_action.result:
+            if _is_prior_success(target_action, dependent_action) and target_action.result is not None:
                 ref_val = resolve_json_pointer(target_action.result, ref_pointer)
-                if ref_val is not MISSING and ref_val == actual:
-                    return True
+                return ref_val is not MISSING and ref_val == actual
         return False
 
     return False
+
+
+def _is_prior_success(required: ObservedToolAction, dependent: ObservedToolAction) -> bool:
+    """A dependency consumes a completed result, not a future or failed call."""
+    return (
+        required.is_successful
+        and required.sequence_number < dependent.sequence_number
+        and (
+            required.result_journal_sequence is None
+            or dependent.journal_sequence is None
+            or required.result_journal_sequence < dependent.journal_sequence
+        )
+    )
+
+
+def _dependency_holds(
+    dependency: DependencyConstraint, mapping: dict[str, ObservedToolAction]
+) -> bool:
+    required = mapping.get(dependency.required_node_id)
+    dependent = mapping.get(dependency.dependent_node_id)
+    if required is None or dependent is None or not _is_prior_success(required, dependent):
+        return False
+    for binding in dependency.bindings:
+        actual = resolve_json_pointer(dependent.arguments, binding.argument_pointer)
+        expected = resolve_json_pointer(required.result, binding.result_pointer)
+        if actual is MISSING or expected is MISSING or actual != expected:
+            return False
+    return True
+
+
+def _node_qualifies(
+    node: ExpectedAction, action: ObservedToolAction, mapping: dict[str, ObservedToolAction]
+) -> bool:
+    return _qualifies_result_status(node.expected_result_status, action) and all(
+        evaluate_argument_constraint(
+            constraint, action.arguments, mapping, dependent_action=action
+        )
+        for constraint in node.selector.argument_constraints
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +219,7 @@ class PathAlignmentResult(BaseModel):
         default_factory=dict, description="Map of node_id -> primary matched ObservedToolAction."
     )
     node_actions: dict[str, list[ObservedToolAction]] = Field(
-        default_factory=dict, description="Map of node_id -> all qualifying matching actions."
+        default_factory=dict, description="Exclusively assigned occurrences, including allowed retry attempts."
     )
     unmatched_node_ids: list[str] = Field(
         default_factory=list, description="Expected required node IDs not satisfied."
@@ -359,7 +411,7 @@ class DeterministicBoundedMatcher:
                     args_ok = True
                     for arg_c in n.selector.argument_constraints:
                         if evaluate_argument_constraint(
-                            arg_c, act.arguments, aligned_mapping=current_map
+                            arg_c, act.arguments, aligned_mapping=current_map, dependent_action=act
                         ):
                             passed_args += 1
                         else:
@@ -373,15 +425,9 @@ class DeterministicBoundedMatcher:
 
             satisfied_deps = 0
             for dep in path.dependency_constraints:
-                if dep.dependent_node_id in current_map and dep.required_node_id in current_map:
-                    req_act = current_map[dep.required_node_id]
-                    req_node = next(
-                        (node for node in expected_nodes if node.node_id == dep.required_node_id),
-                        None,
-                    )
-                    if req_node and _qualifies_result_status(
-                        req_node.expected_result_status, req_act
-                    ):
+                if _dependency_holds(dep, current_map):
+                    req_node = node_list[node_index[dep.required_node_id]]
+                    if _node_qualifies(req_node, current_map[dep.required_node_id], current_map):
                         satisfied_deps += 1
 
             satisfied_precs = 0
@@ -449,49 +495,69 @@ class DeterministicBoundedMatcher:
 
         search(0, {}, set())
 
-        # Step 3: Evaluate final metrics on best mapping
-        matched_call_ids = {act.call_id for act in best_mapping.values()}
+        # Assign each qualifying call to exactly one node. Primary anchors remain
+        # injective; additional occurrences fill minima then available capacity,
+        # with nearest-anchor sequence and node id as deterministic tie-breaks.
+        node_actions: dict[str, list[ObservedToolAction]] = {
+            node.node_id: [] for node in expected_nodes
+        }
+        primary_ids = {act.call_id for act in best_mapping.values()}
+        for node in expected_nodes:
+            primary = best_mapping.get(node.node_id)
+            if primary is not None and _node_qualifies(node, primary, best_mapping):
+                node_actions[node.node_id].append(primary)
+        for act in observed_actions:
+            if act.call_id in primary_ids:
+                continue
+            eligible = [
+                node for node in expected_nodes
+                if node.node_id in best_mapping
+                and (not node.selector.tool_name or fnmatch.fnmatch(act.tool_name, node.selector.tool_name))
+                and (not node.selector.mutation_class or act.mutation_class == node.selector.mutation_class)
+                and (
+                    _node_qualifies(node, act, best_mapping)
+                    or (
+                        node.expected_result_status == "success"
+                        and _node_qualifies(node, best_mapping[node.node_id], best_mapping)
+                        and all(
+                            evaluate_argument_constraint(
+                                constraint, act.arguments, best_mapping, dependent_action=act
+                            )
+                            for constraint in node.selector.argument_constraints
+                        )
+                    )
+                )
+            ]
+            if not eligible:
+                continue
+            chosen = min(
+                eligible,
+                key=lambda node: (
+                    len(node_actions[node.node_id]) >= node.occurrence.min_occurs,
+                    node.occurrence.max_occurs is not None
+                    and len(node_actions[node.node_id]) >= node.occurrence.max_occurs,
+                    abs(act.sequence_number - best_mapping[node.node_id].sequence_number),
+                    node.node_id,
+                ),
+            )
+            node_actions[chosen.node_id].append(act)
+        matched_call_ids = {
+            act.call_id for actions in node_actions.values() for act in actions
+        }
         unmatched_call_ids = [
             act.call_id for act in observed_actions if act.call_id not in matched_call_ids
         ]
 
         total_args = 0
         passed_args = 0
-        node_actions: dict[str, list[ObservedToolAction]] = {}
+        # node_actions above is the exclusive occurrence assignment, not all selectors.
         satisfied_node_ids: list[str] = []
         result_status_violations: list[str] = []
         occurrence_violations: list[str] = []
         occurrence_satisfied = True
 
         for node in expected_nodes:
-            # Find all matching qualifying actions for occurrence checking
-            matching_calls: list[ObservedToolAction] = []
-            for act in observed_actions:
-                if node.selector.tool_name and not fnmatch.fnmatch(
-                    act.tool_name, node.selector.tool_name
-                ):
-                    continue
-                if (
-                    node.selector.mutation_class
-                    and act.mutation_class != node.selector.mutation_class
-                ):
-                    continue
-                # Check arguments
-                args_valid = True
-                for arg_c in node.selector.argument_constraints:
-                    if not evaluate_argument_constraint(
-                        arg_c, act.arguments, aligned_mapping=best_mapping
-                    ):
-                        args_valid = False
-                        break
-                if not args_valid:
-                    continue
-                # Check result status
-                if not _qualifies_result_status(node.expected_result_status, act):
-                    continue
-                matching_calls.append(act)
-
-            node_actions[node.node_id] = matching_calls
+            matching_calls = node_actions[node.node_id]
             count = len(matching_calls)
             min_o = node.occurrence.min_occurs
             max_o = node.occurrence.max_occurs
@@ -509,7 +575,7 @@ class DeterministicBoundedMatcher:
                 for arg_c in node.selector.argument_constraints:
                     total_args += 1
                     if evaluate_argument_constraint(
-                        arg_c, act.arguments, aligned_mapping=best_mapping
+                        arg_c, act.arguments, aligned_mapping=best_mapping, dependent_action=act
                     ):
                         passed_args += 1
                     else:
@@ -572,14 +638,14 @@ class DeterministicBoundedMatcher:
         dependency_satisfied = True
         dep_violations: list[str] = []
         for dep in path.dependency_constraints:
-            if (
-                dep.dependent_node_id in best_mapping
-                and dep.required_node_id not in satisfied_node_ids
+            if dep.dependent_node_id in best_mapping and (
+                dep.required_node_id not in satisfied_node_ids
+                or not _dependency_holds(dep, best_mapping)
             ):
                 dependency_satisfied = False
                 dep_violations.append(
-                    f"Dependency violation: node '{dep.dependent_node_id}' depends on required node '{dep.required_node_id}', "
-                    f"which was not successfully satisfied."
+                    f"Dependency violation: node '{dep.dependent_node_id}' depends on required node "
+                    f"'{dep.required_node_id}': an earlier successful call with matching bound result values is required."
                 )
 
         return PathAlignmentResult(

@@ -13,6 +13,7 @@ from typing import Any, Final, Literal
 from pydantic import Field, field_validator, model_validator
 
 from flight_agent_evaluator.contracts.base import ContractModel, _assert_json_serialisable
+from flight_agent_evaluator.strict_json import loads_strict
 
 # Maximum bounded limits to prevent malicious/unbounded evaluation work
 MAX_VALID_PATHS: Final[int] = 20
@@ -119,7 +120,7 @@ class ExpectedAction(ContractModel):
     )
     expected_result_status: Literal["success", "error", "any"] = Field(
         default="success",
-        description="Expected execution outcome of the tool call ('success', 'error', or 'any').",
+        description="Required primary completion status; bounded retries may include failed attempts.",
     )
 
 
@@ -131,11 +132,25 @@ class PrecedenceConstraint(ContractModel):
     description: str = Field(default="", description="Description of ordering requirement.")
 
 
+class DependencyBinding(ContractModel):
+    """A dependent argument must equal a value returned by the required call."""
+
+    argument_pointer: str = Field(..., description="JSON Pointer in dependent arguments.")
+    result_pointer: str = Field(..., description="JSON Pointer in required call result.")
+
+
 class DependencyConstraint(ContractModel):
-    """Data/execution dependency requiring required_node_id prior to dependent_node_id."""
+    """Require an earlier successful call and equality of every declared data binding."""
 
     dependent_node_id: str = Field(..., description="Node ID that depends on required_node_id.")
-    required_node_id: str = Field(..., description="Node ID that must be present in trajectory.")
+    required_node_id: str = Field(
+        ..., description="Node ID whose successful result must precede the dependent call."
+    )
+    bindings: list[DependencyBinding] = Field(
+        default_factory=list,
+        max_length=MAX_CONSTRAINTS_PER_NODE,
+        description="Required successful earlier result values consumed by the dependent call.",
+    )
     description: str = Field(default="", description="Description of dependency.")
 
 
@@ -280,7 +295,11 @@ class ScoringProfile(ContractModel):
             + self.weight_ordering
             + self.weight_efficiency
         )
-        if abs(total_weight - 1.0) > 1e-5 and total_weight > 0:
+        if total_weight <= 0:
+            raise ValueError(
+                "Scoring weights must have a positive total; all-zero weights are invalid."
+            )
+        if abs(total_weight - 1.0) > 1e-5:
             # Auto-normalize component weights to ensure sum == 1.0
             object.__setattr__(self, "weight_outcome", self.weight_outcome / total_weight)
             object.__setattr__(
@@ -397,6 +416,25 @@ def validate_trajectory_expectation(expectation: TrajectoryExpectation) -> list[
                     f"Path '{path.path_id}' precedence after_node_id '{prec.after_node_id}' not in expected nodes."
                 )
 
+        for expected_node in path.expected_actions:
+            for constraint in expected_node.selector.argument_constraints:
+                if constraint.operator != "reference_equals":
+                    continue
+                if constraint.reference_node_id not in unique_node_ids:
+                    errors.append(
+                        f"Path '{path.path_id}' reference_node_id "
+                        f"'{constraint.reference_node_id}' not in expected nodes."
+                    )
+                if constraint.reference_node_id == expected_node.node_id:
+                    errors.append(
+                        f"Path '{path.path_id}' contains self-reference for node '{expected_node.node_id}'."
+                    )
+                if constraint.reference_field_pointer is None:
+                    errors.append(
+                        f"Path '{path.path_id}' reference on node '{expected_node.node_id}' needs "
+                        "reference_field_pointer."
+                    )
+
         # Validate node references in dependency constraints
         for dep in path.dependency_constraints:
             if dep.dependent_node_id == dep.required_node_id:
@@ -484,7 +522,6 @@ def load_expectation_bytes(
 ) -> TrajectoryExpectation:
     """Load and validate a TrajectoryExpectation from raw bytes with SHA-256 checking."""
     import hashlib
-    import json
 
     if expected_sha256:
         actual_sha = hashlib.sha256(raw).hexdigest()
@@ -494,7 +531,7 @@ def load_expectation_bytes(
             )
 
     try:
-        data = json.loads(raw.decode("utf-8"))
+        data = loads_strict(raw, source="TrajectoryExpectation")
         expectation = TrajectoryExpectation.model_validate(data)
     except Exception as exc:
         raise ValueError(f"Failed to parse TrajectoryExpectation: {exc}") from exc
@@ -529,23 +566,35 @@ def load_expectation_resource(
 def load_builtin_expectation(
     scenario_id_or_path: str,
 ) -> TrajectoryExpectation:
-    """Load a built-in TrajectoryExpectation by scenario ID or logical path."""
-    from flight_agent_evaluator.resources.contracts import ResourceKind, ResourceOrigin, ResourceRef
+    """Load an authored expectation; bare ids search root before transactional."""
+    from flight_agent_evaluator.resources.contracts import (
+        BuiltinResourceNotFound,
+        ResourceKind,
+        ResourceOrigin,
+        ResourceRef,
+    )
     from flight_agent_evaluator.resources.locator import get_builtin_locator, sanitize_logical_path
 
     logical = scenario_id_or_path.strip()
-    if not logical.endswith(".json") and "/" not in logical and "\\" not in logical:
-        logical = f"expectations/{logical}.json"
-    elif not logical.startswith("expectations/"):
-        logical = f"expectations/{logical}"
-
-    sanitized = sanitize_logical_path(logical)
-    ref = ResourceRef(
-        origin=ResourceOrigin.BUILTIN,
-        logical_path=sanitized,
-        kind=ResourceKind.EXPECTATION,
-    )
-    return load_expectation_resource(ref, get_builtin_locator())
+    bare = "/" not in logical and "\\" not in logical
+    if bare:
+        filename = logical if logical.endswith(".json") else f"{logical}.json"
+        candidates = [f"expectations/{filename}", f"expectations/transactional/{filename}"]
+    else:
+        candidates = [logical if logical.startswith("expectations/") else f"expectations/{logical}"]
+    locator = get_builtin_locator()
+    for index, candidate in enumerate(candidates):
+        ref = ResourceRef(
+            origin=ResourceOrigin.BUILTIN,
+            logical_path=sanitize_logical_path(candidate),
+            kind=ResourceKind.EXPECTATION,
+        )
+        try:
+            return load_expectation_resource(ref, locator)
+        except BuiltinResourceNotFound:
+            if index == len(candidates) - 1:
+                raise
+    raise BuiltinResourceNotFound(f"Expectation not found: {scenario_id_or_path}")
 
 
 def load_expectation_from_path(

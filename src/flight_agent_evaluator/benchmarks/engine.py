@@ -6,6 +6,7 @@ import asyncio
 import importlib.metadata
 import logging
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from flight_agent_evaluator.benchmarks.results import (
     BenchmarkExecutionIdentity,
     BenchmarkInvocation,
     BenchmarkRunArtifact,
+    FailureDetail,
     compute_source_tree_digest,
     ensure_bundle_output_dir,
     render_reproduction_command,
@@ -33,7 +35,9 @@ from flight_agent_evaluator.benchmarks.results import (
     source_commit_sha,
 )
 from flight_agent_evaluator.canonical import canonical_hash
+from flight_agent_evaluator.contracts.model import AgentStopReason
 from flight_agent_evaluator.engine.benchmark import BenchmarkRunner
+from flight_agent_evaluator.recording.journal import HashChainJournal
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +51,7 @@ def compute_run_semantic_id(
     taxonomy_version: str,
     scoring_profile_version: str,
     selected_scenarios: Sequence[BenchmarkCase],
-    executed_agents: Sequence[tuple[str, AgentPolicy, dict[str, Any]]],
+    executed_agents: Sequence[tuple[str, Any, dict[str, Any]]],
     run_policy: dict[str, Any],
 ) -> str:
     """Compute deterministic content-addressed run semantic ID from authoritative execution parameters."""
@@ -67,6 +71,7 @@ def compute_run_semantic_id(
                     "scenario_version": str(c.manifest_entry.scenario_version),
                     "scenario_sha256": c.scenario_raw_sha256,
                     "expectation_sha256": c.expectation_raw_sha256,
+                    "max_turns": c.scenario.limits.max_turns,
                 }
                 for c in selected_scenarios
             ],
@@ -91,6 +96,7 @@ def compute_run_semantic_id(
             "replay_policy": run_policy["replay_policy"],
             "failure_policy": run_policy["failure_policy"],
         },
+        "execution_mode": run_policy.get("execution_mode", "offline-reference"),
     }
     digest = canonical_hash(semantic_data)
     return f"bm_run_{digest[:16]}"
@@ -161,7 +167,10 @@ class CanonicalBenchmarkEngine:
             if declared is None or (
                 declared.agent_version != meta["agent_version"]
                 or declared.implementation != meta["implementation"]
-                or declared.configuration_digest != meta.get("configuration_digest")
+                or (
+                    declared.configuration_digest != meta.get("configuration_digest")
+                    and not (aid == "model" and declared.configuration_digest is None)
+                )
             ):
                 raise BenchmarkIntegrityError(
                     f"Manifest provenance disagrees with registry for '{aid}'."
@@ -185,16 +194,22 @@ class CanonicalBenchmarkEngine:
                             agent_configuration_digest=meta.get("configuration_digest"),
                             execution_seed=seed,
                             repetition_index=rep_idx,
+                            max_turns=case.scenario.limits.max_turns,
                         )
-                        case_res = asyncio.run(
-                            self.runner.run_case(
-                                case=case,
-                                agent=agent,
-                                repetition_index=rep_idx,
-                                execution_seed=seed,
-                                execution_run_id=identity.deterministic_run_id(),
+                        try:
+                            case_res = asyncio.run(
+                                self.runner.run_case(
+                                    case=case,
+                                    agent=agent,
+                                    repetition_index=rep_idx,
+                                    execution_seed=seed,
+                                    execution_run_id=identity.deterministic_run_id(),
+                                )
                             )
-                        )
+                        except Exception:
+                            # A broken case must not erase the rest of the execution matrix.
+                            # Never persist arbitrary exception strings or catch BaseException.
+                            case_res = _execution_error_result(identity)
                         # Bind manifest digest, agent ID, and agent metadata
                         updated_case = case_res.model_copy(
                             update={
@@ -257,6 +272,9 @@ class CanonicalBenchmarkEngine:
             "replay_policy": manifest.run_policy.replay_policy,
             "failure_policy": manifest.run_policy.failure_policy,
         }
+        execution_mode = self.registry.execution_mode(list(selected_agent_ids))
+        run_policy_dict["execution_mode"] = execution_mode
+        run_policy_dict["network_allowed"] = execution_mode in {"model-live", "model-record"}
 
         run_semantic_id = compute_run_semantic_id(
             manifest_digest=manifest_digest,
@@ -289,10 +307,17 @@ class CanonicalBenchmarkEngine:
             if scenario_filter
             else None,
             repetitions=repetitions,
+            output_dir=str(output_dir) if output_dir is not None else None,
+            model_options=(
+                self.registry.reproduction_model_options()
+                if execution_mode != "offline-reference"
+                else {}
+            ),
         )
         generation_command = render_reproduction_command(invocation)
         artifact = BenchmarkRunArtifact(
             run_semantic_id=run_semantic_id,
+            execution_mode=execution_mode,
             benchmark_id=manifest.benchmark_id,
             benchmark_version=manifest.benchmark_version,
             manifest_digest=manifest_digest,
@@ -331,3 +356,58 @@ class CanonicalBenchmarkEngine:
             validate_benchmark_bundle(output_dir, manifest_id_or_path=str(manifest_path))
 
         return artifact
+
+
+def _execution_error_result(identity: BenchmarkExecutionIdentity) -> BenchmarkCaseResult:
+    """Close an actual error journal even when a case fails outside agent execution."""
+    run_id = identity.deterministic_run_id()
+    journal = HashChainJournal()
+    for event_type, payload in (
+        ("run_started", {"scenario_id": identity.scenario_id, "agent_id": identity.agent_id}),
+        (
+            "run_completed",
+            {
+                "stop_reason": "error",
+                "failure_code": "AGENT.EXECUTION_ERROR",
+                "message": "Case execution failed.",
+            },
+        ),
+    ):
+        journal.append_event(
+            entry_type=event_type,
+            run_id=run_id,
+            correlation_id=run_id,
+            time=datetime(2026, 1, 1, tzinfo=UTC),
+            payload=dict(payload),
+        )
+    return BenchmarkCaseResult(
+        benchmark_id=identity.benchmark_id,
+        benchmark_version=identity.benchmark_version,
+        manifest_digest=identity.manifest_digest,
+        scenario_id=identity.scenario_id,
+        scenario_version=identity.scenario_version,
+        scenario_resource_digest=identity.scenario_resource_digest,
+        expectation_resource_digest=identity.expectation_resource_digest,
+        agent_id=identity.agent_id,
+        agent_version=identity.agent_version,
+        agent_configuration_digest=identity.agent_configuration_digest,
+        seed=identity.execution_seed,
+        repetition_index=identity.repetition_index,
+        max_turns=identity.max_turns,
+        stop_reason=AgentStopReason.ERROR,
+        task_success=False,
+        safety_pass=False,
+        overall_score=0.0,
+        evaluator_status="execution_error",
+        failure_codes=["AGENT.EXECUTION_ERROR"],
+        failure_details=[
+            FailureDetail(
+                code="AGENT.EXECUTION_ERROR",
+                severity="high",
+                message="Case execution failed.",
+                evidence_sequences=[journal.entries[-1].seq],
+            )
+        ],
+        run_id=run_id,
+        journal_digest=journal.final_digest(),
+    )
