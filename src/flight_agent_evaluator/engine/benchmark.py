@@ -8,7 +8,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 class BenchmarkMetricVector(BaseModel):
     """Objective metric vector for a single agent scenario run."""
 
+    schema_version: Literal["0.4.0"] = "0.4.0"
     scenario_id: str
     agent_id: str
     task_success: bool

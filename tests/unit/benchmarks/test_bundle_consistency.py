@@ -326,7 +326,7 @@ def test_case_digest_binds_run_id_and_declares_its_version(tmp_path: Path) -> No
     changed_journal = original.model_copy(update={"journal_digest": "0" * 64})
     changed_wall_time = original.model_copy(update={"wall_time_ms": 999.0})
 
-    assert benchmark_results.CASE_RESULT_DIGEST_VERSION == "benchmark-case-result-v2"
+    assert benchmark_results.CASE_RESULT_DIGEST_VERSION == "benchmark-case-result-v3"
     assert (
         changed_run_id.compute_semantic_result_digest() != original.compute_semantic_result_digest()
     )

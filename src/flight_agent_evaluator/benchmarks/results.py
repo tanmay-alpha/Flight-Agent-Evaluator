@@ -22,7 +22,7 @@ from flight_agent_evaluator.contracts.model import AgentStopReason, ModelProvena
 ExecutionMode = Literal["offline-reference", "model-replay", "model-record", "model-live"]
 
 SOURCE_TREE_DIGEST_VERSION = "source-tree-v1"
-CASE_RESULT_DIGEST_VERSION = "benchmark-case-result-v2"
+CASE_RESULT_DIGEST_VERSION = "benchmark-case-result-v3"
 EVALUATOR_ERROR_STATUS = "evaluator_error"
 """``BenchmarkCaseResult.evaluator_status`` when the evaluator could not score the case."""
 _SEMANTIC_SOURCE_PREFIXES = ("src/flight_agent_evaluator/", "resources/")
@@ -284,6 +284,7 @@ class BenchmarkCaseResult(ContractModel):
 class BenchmarkAggregateMetrics(ContractModel):
     """Aggregate statistics across executed benchmark cases."""
 
+    schema_version: Literal["0.4.0"] = "0.4.0"
     total_cases: int
     total_runs: int
     task_success_rate: float = Field(..., ge=0.0, le=1.0)
@@ -317,6 +318,14 @@ class BenchmarkInvocation(ContractModel):
 def render_reproduction_command(invocation: BenchmarkInvocation) -> str | None:
     """Render an exact portable CLI command, or None when CLI cannot express the invocation."""
     if not invocation.manifest_reference.startswith("builtin:") or invocation.scenario_ids:
+        return None
+    if "model" in invocation.agent_ids and (
+        not invocation.model_options
+        or (
+            invocation.model_options.get("model-mode") == "replay"
+            and not invocation.model_options.get("model-replay-dir")
+        )
+    ):
         return None
     command = (
         "flight-evaluator benchmark run "
