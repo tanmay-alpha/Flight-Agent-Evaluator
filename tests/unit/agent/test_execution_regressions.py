@@ -27,6 +27,8 @@ from flight_agent_evaluator.contracts.model import (
     AgentStopReason,
     AgentTask,
     ModelConfiguration,
+    ModelErrorType,
+    ModelExchangeManifest,
     ModelRequest,
     ModelResponse,
     ModelToolCall,
@@ -175,6 +177,57 @@ def test_model_call_timeout_returns_typed_warning() -> None:
     assert result.stop_reason == AgentStopReason.ERROR
     assert any("timeout" in warning for warning in result.warnings)
     assert result.model_latency_ms is not None and result.model_latency_ms > 0
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_error"),
+    [
+        (500, ModelErrorType.PROVIDER_UNAVAILABLE),
+        (200, ModelErrorType.INVALID_RESPONSE),
+    ],
+    ids=["http-500", "invalid-json"],
+)
+def test_provider_failure_returns_typed_warning_and_persists_manifest(
+    tmp_path: Path, status_code: int, expected_error: ModelErrorType
+) -> None:
+    secret = "sk-planted-provider-response-key"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status_code,
+            content=f"invalid JSON provider payload {secret}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    async def record() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as transport:
+            client = OpenAIChatCompletionsClient(
+                api_key="mock-key", record_dir=tmp_path, http_client=transport
+            )
+            result = await ModelToolCallingAgent(client).execute(
+                AgentTask(task_id="t", scenario_id="test", public_request="status"),
+                _executor(HashChainJournal()),
+                StateSnapshot(),
+                _make_context(),
+            )
+            assert result.stop_reason == AgentStopReason.ERROR
+            assert result.final_response is None
+            assert any(warning.startswith(f"{expected_error.value}:") for warning in result.warnings)
+            assert secret not in result.model_dump_json()
+            manifests = list(tmp_path.glob("*.model-exchanges.json"))
+            assert len(manifests) == 1
+            manifest = ModelExchangeManifest.model_validate_json(
+                manifests[0].read_text(encoding="utf-8")
+            )
+            assert manifest.exchanges == []
+            assert result.model_exchange_digest == manifest.semantic_digest()
+            assert result.model_provenance is not None
+            assert (
+                result.model_provenance.model_exchange_manifest_digest == manifest.semantic_digest()
+            )
+            assert secret not in manifests[0].read_text(encoding="utf-8")
+
+    asyncio.run(record())
 
 
 def test_manifest_names_and_provenance_bind_model_configuration(tmp_path: Path) -> None:
