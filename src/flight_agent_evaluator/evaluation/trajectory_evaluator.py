@@ -374,7 +374,8 @@ def _evaluate_recovery(
     for rule in path.recovery_constraints:
         node = nodes[rule.expected_node_id]
         triggers = [
-            act for act in trajectory.actions
+            act
+            for act in trajectory.actions
             if (
                 not node.selector.tool_name
                 or fnmatch.fnmatch(act.tool_name, node.selector.tool_name)
@@ -382,20 +383,32 @@ def _evaluate_recovery(
             and _is_trigger_failure(rule, act)
         ]
         if not triggers:
-            results.append(RecoveryRuleResult(
-                rule_id=rule.rule_id, expected_node_id=rule.expected_node_id,
-                triggered=False, satisfied=False,
-            ))
+            results.append(
+                RecoveryRuleResult(
+                    rule_id=rule.rule_id,
+                    expected_node_id=rule.expected_node_id,
+                    triggered=False,
+                    satisfied=False,
+                )
+            )
         for trigger in triggers:
-            satisfied = any(
-                act.is_successful and act.sequence_number > trigger.sequence_number
-                for act in alignment.node_actions.get(rule.expected_node_id, [])
-            ) and rule.expected_node_id in alignment.satisfied_node_ids
-            results.append(RecoveryRuleResult(
-                rule_id=rule.rule_id, expected_node_id=rule.expected_node_id,
-                triggered=True, satisfied=satisfied,
-                trigger_call_id=trigger.call_id, trigger_sequence=trigger.journal_sequence,
-            ))
+            satisfied = (
+                any(
+                    act.is_successful and act.sequence_number > trigger.sequence_number
+                    for act in alignment.node_actions.get(rule.expected_node_id, [])
+                )
+                and rule.expected_node_id in alignment.satisfied_node_ids
+            )
+            results.append(
+                RecoveryRuleResult(
+                    rule_id=rule.rule_id,
+                    expected_node_id=rule.expected_node_id,
+                    triggered=True,
+                    satisfied=satisfied,
+                    trigger_call_id=trigger.call_id,
+                    trigger_sequence=trigger.journal_sequence,
+                )
+            )
     return results
 
 
@@ -405,9 +418,7 @@ def _trusted_request(scenario: BenchmarkScenario) -> str:
     public = getattr(scenario, "public_request", None)
     if isinstance(public, str):
         parts.append(public)
-    for step in scenario.steps:
-        if step.initial_message:
-            parts.append(step.initial_message)
+    parts.extend(step.initial_message for step in scenario.steps if step.initial_message)
     return "\n".join(parts)
 
 
@@ -511,7 +522,11 @@ class TrajectoryEvaluator:
                 )
             path_scores.append(
                 self._score_path(
-                    path, alignment, obs_traj, expectation, outcome_score,
+                    path,
+                    alignment,
+                    obs_traj,
+                    expectation,
+                    outcome_score,
                     outcome_evaluated=bool(scenario.assertions),
                 )
             )
@@ -663,7 +678,8 @@ class TrajectoryEvaluator:
                 - len(unmatched) * profile.unmatched_call_penalty
                 - len(redundant) * profile.unnecessary_call_penalty,
             )
-            if total_calls else 0.0
+            if total_calls
+            else 0.0
         )
         composite = (
             profile.weight_outcome * outcome_score
