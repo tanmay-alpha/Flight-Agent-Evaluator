@@ -79,7 +79,8 @@ def installed_wheel(
     built_distribution: BuiltDistribution, tmp_path_factory: pytest.TempPathFactory
 ) -> InstalledWheel:
     """Create a clean venv outside the repo and install only the built wheel into it."""
-    venv_dir = tmp_path_factory.mktemp("installed") / "venv"
+    install_tmp = tmp_path_factory.mktemp("installed")
+    venv_dir = install_tmp / "venv"
     assert not venv_dir.resolve().is_relative_to(REPO_ROOT)
     res = subprocess.run(  # noqa: S603
         [sys.executable, "-m", "venv", str(venv_dir)],
@@ -95,14 +96,85 @@ def installed_wheel(
     python = scripts / f"python{exe}"
     cli = scripts / f"flight-evaluator{exe}"
 
+    # Install wheel with --no-deps to avoid unconstrained network resolution.
     res = subprocess.run(  # noqa: S603
-        [_uv(), "pip", "install", "--python", str(python), str(built_distribution.wheel)],
+        [
+            _uv(),
+            "pip",
+            "install",
+            "--no-deps",
+            "--python",
+            str(python),
+            str(built_distribution.wheel),
+        ],
         check=False,
         capture_output=True,
         text=True,
         timeout=_SUBPROCESS_TIMEOUT_S,
     )
     assert res.returncode == 0, f"wheel install failed: {res.stderr}"
+
+    # Export dependencies constrained to exact versions in uv.lock.
+    req_file = install_tmp / "requirements-locked.txt"
+    export_res = subprocess.run(  # noqa: S603
+        [
+            _uv(),
+            "export",
+            "--frozen",
+            "--no-dev",
+            "--no-hashes",
+            "--no-emit-project",
+            "-o",
+            str(req_file),
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=_SUBPROCESS_TIMEOUT_S,
+    )
+    assert export_res.returncode == 0, f"uv export failed: {export_res.stderr}"
+
+    # Install dependencies offline; fall back to online if cache is cold.
+    deps_res = subprocess.run(  # noqa: S603
+        [
+            _uv(),
+            "pip",
+            "install",
+            "--offline",
+            "--python",
+            str(python),
+            "-r",
+            str(req_file),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=_SUBPROCESS_TIMEOUT_S,
+    )
+    if deps_res.returncode != 0:
+        offline_err = deps_res.stderr
+        deps_res = subprocess.run(  # noqa: S603
+            [
+                _uv(),
+                "pip",
+                "install",
+                "--python",
+                str(python),
+                "-r",
+                str(req_file),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=_SUBPROCESS_TIMEOUT_S,
+        )
+        assert deps_res.returncode == 0, (
+            f"dependency install failed (both offline and online fallback failed):\n"
+            f"Offline error:\n{offline_err}\n"
+            f"Online error:\n{deps_res.stderr}"
+        )
+
     assert cli.is_file(), f"console script missing: {cli}"
 
     # Nothing from the source checkout may leak into the installed runtime.
