@@ -143,7 +143,9 @@ class DependencyConstraint(ContractModel):
     """Require an earlier successful call and equality of every declared data binding."""
 
     dependent_node_id: str = Field(..., description="Node ID that depends on required_node_id.")
-    required_node_id: str = Field(..., description="Node ID whose successful result must precede the dependent call.")
+    required_node_id: str = Field(
+        ..., description="Node ID whose successful result must precede the dependent call."
+    )
     bindings: list[DependencyBinding] = Field(
         default_factory=list,
         max_length=MAX_CONSTRAINTS_PER_NODE,
@@ -294,7 +296,9 @@ class ScoringProfile(ContractModel):
             + self.weight_efficiency
         )
         if total_weight <= 0:
-            raise ValueError("Scoring weights must have a positive total; all-zero weights are invalid.")
+            raise ValueError(
+                "Scoring weights must have a positive total; all-zero weights are invalid."
+            )
         if abs(total_weight - 1.0) > 1e-5:
             # Auto-normalize component weights to ensure sum == 1.0
             object.__setattr__(self, "weight_outcome", self.weight_outcome / total_weight)
@@ -518,7 +522,6 @@ def load_expectation_bytes(
 ) -> TrajectoryExpectation:
     """Load and validate a TrajectoryExpectation from raw bytes with SHA-256 checking."""
     import hashlib
-    
 
     if expected_sha256:
         actual_sha = hashlib.sha256(raw).hexdigest()
@@ -564,7 +567,12 @@ def load_builtin_expectation(
     scenario_id_or_path: str,
 ) -> TrajectoryExpectation:
     """Load an authored expectation; bare ids search root before transactional."""
-    from flight_agent_evaluator.resources.contracts import ResourceKind, ResourceOrigin, ResourceRef
+    from flight_agent_evaluator.resources.contracts import (
+        BuiltinResourceNotFound,
+        ResourceKind,
+        ResourceOrigin,
+        ResourceRef,
+    )
     from flight_agent_evaluator.resources.locator import get_builtin_locator, sanitize_logical_path
 
     logical = scenario_id_or_path.strip()
@@ -583,10 +591,10 @@ def load_builtin_expectation(
         )
         try:
             return load_expectation_resource(ref, locator)
-        except FileNotFoundError:
+        except BuiltinResourceNotFound:
             if index == len(candidates) - 1:
                 raise
-    raise FileNotFoundError(f"Expectation not found: {scenario_id_or_path}")
+    raise BuiltinResourceNotFound(f"Expectation not found: {scenario_id_or_path}")
 
 
 def load_expectation_from_path(
