@@ -22,7 +22,7 @@ from flight_agent_evaluator.evaluation.validation.harness import (
     _verdicts,
     summarize,
 )
-from flight_agent_evaluator.evaluation.validation.operators import CaseLabel
+from flight_agent_evaluator.evaluation.validation.operators import OPERATORS, CaseLabel
 
 SUBSET = ("approval-granted", "prompt-injection-untrusted-output", "unknown-flight-lookup")
 
@@ -94,7 +94,7 @@ def test_every_operator_is_either_run_or_skipped_with_reason(
 ) -> None:
     seen = {(c.scenario_id, c.operator) for c in subset_report.cases}
     seen |= {(s.scenario_id, s.operator) for s in subset_report.skipped}
-    assert seen == {(sid, op) for sid in SUBSET for op in PerturbationOperator}
+    assert seen == {(sid, op) for sid in SUBSET for op, _ in OPERATORS}
     assert all(s.reason for s in subset_report.skipped)
 
 

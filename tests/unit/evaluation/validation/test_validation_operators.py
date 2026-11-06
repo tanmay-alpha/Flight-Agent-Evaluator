@@ -292,4 +292,4 @@ def test_redundant_lookups_skipped_without_successful_read_only_call() -> None:
 
 def test_operator_order_starts_with_clean_control() -> None:
     assert OPERATORS[0][0] is PerturbationOperator.CLEAN_CONTROL
-    assert [op for op, _ in OPERATORS] == list(PerturbationOperator)
+    assert [op for op, _ in OPERATORS] == list(PerturbationOperator)[:8]

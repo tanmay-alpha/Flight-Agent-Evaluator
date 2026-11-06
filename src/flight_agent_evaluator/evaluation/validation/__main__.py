@@ -22,9 +22,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--output", required=True, type=Path, help="Output directory.")
     parser.add_argument("--benchmark", default="benchmark-v1", help="Built-in benchmark id.")
+    parser.add_argument(
+        "--suite",
+        choices=("dev", "heldout"),
+        help="V2 split; omitted selects the historical v1 baseline.",
+    )
+    parser.add_argument(
+        "--dev-report",
+        type=Path,
+        help="Prior v2 dev report.json with the same detector source digest (heldout only).",
+    )
     args = parser.parse_args(argv)
 
-    report = run_evaluator_validation(benchmark_id=args.benchmark)
+    try:
+        report = run_evaluator_validation(
+            benchmark_id=args.benchmark,
+            suite=args.suite or "v1",
+            dev_report=args.dev_report,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     output: Path = args.output
     output.mkdir(parents=True, exist_ok=True)
     (output / "report.json").write_bytes((report_to_canonical_json(report) + "\n").encode("utf-8"))
