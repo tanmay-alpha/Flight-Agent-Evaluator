@@ -20,13 +20,15 @@ from pathlib import Path
 from typing import Final
 
 from flight_agent_evaluator.recording.contracts import JournalEntry
+from flight_agent_evaluator.strict_json import loads_strict
 
 EMPTY_HASH: Final[str] = "0" * 64
 
 
 def _canonicalise_payload(obj: dict[str, object]) -> str:
     """Serialise *obj* as canonical JSON (sorted keys, no whitespace)."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    text = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return text.encode("utf-8", errors="backslashreplace").decode("utf-8")
 
 
 def compute_canonical_entry_hash(entry: JournalEntry) -> str:
@@ -221,7 +223,12 @@ class HashChainJournal:
                     raise JournalVerificationError(
                         f"Journal entry count exceeds limit {limits.max_entries}"
                     )
-                obj = json.loads(line)
+                obj = loads_strict(
+                    line,
+                    max_bytes=limits.max_line_bytes,
+                    max_depth=64,
+                    source=f"journal line {line_idx}",
+                )
                 j.append_raw(JournalEntry.model_validate(obj))
         return j
 
