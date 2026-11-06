@@ -1,0 +1,195 @@
+{
+  "schema_version": "0.4.0",
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
+  "scenario_id": "jfk-lhr-timeout-recovery",
+  "scenario_version": 1,
+  "scenario_resource_digest": "9446d63711e11365bca8769cbfee462363500d1608dacd57b58d469bb410a6f2",
+  "expectation_resource_digest": "ce4f7af1a29a26246be15b1e178eb73b5e696ac3bdaf5fa305eca054abf47782",
+  "agent_id": "model",
+  "agent_version": "1.0.0",
+  "agent_configuration_digest": "ebb07dca002f7d1d852094a3122125d491972d117f04f6110d769f11dde0261c",
+  "seed": 42,
+  "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "completed",
+  "model_provenance": {
+    "provider_label": "openai",
+    "model_id": "qwen2.5:7b-instruct",
+    "endpoint_host": "127.0.0.1",
+    "model_configuration_digest": "36883fc4b6d4ad3c79d845eaefc608a72c9e4e16d8b01e8d18a4601d37b6291e",
+    "prompt_policy_id": "read_only_disruption_v1",
+    "prompt_digest": "f99b6d7f45c2157d1e35c2b9439cb82ef7cf5e45087da386230f489b8d4442a6",
+    "tool_schema_digest": "7f14b040abbdf5d54f5a3e2b4c5eb93674cb754c49bd764e892c175d16cf4f8b",
+    "model_exchange_manifest_digest": "b23b5618fa42cf88752e2c827dd651802d2fa8c5c0d00b53ce08a7530918807f"
+  },
+  "usage": {
+    "prompt_tokens": 2105,
+    "completion_tokens": 291,
+    "total_tokens": 2396
+  },
+  "model_latency_ms": 6005.175099999178,
+  "task_id": "task-480b768cd542194d9cf973830a9505e8b552c5999c7e12db5d73ced9cb224f19",
+  "public_task": "My flight AS142 from JFK to LHR on 2026-07-28 is delayed. Can you check its status and find available alternative flights?",
+  "trusted_observations": [
+    {
+      "sequence": 4,
+      "status": "timeout",
+      "error": {
+        "error_type": "timeout",
+        "message": "Tool call timed out (injected fault)",
+        "retryable": true,
+        "details": {
+          "timeout_seconds": 30
+        }
+      }
+    },
+    {
+      "sequence": 6,
+      "status": "success",
+      "result": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0,
+          "patch": 0
+        },
+        "query": {
+          "origin_iata": "JFK",
+          "destination_iata": "LHR",
+          "departure_date": "2026-07-28T00:00:00",
+          "return_date": null,
+          "cabin_class": "economy",
+          "adults": 1
+        },
+        "offers": [
+          {
+            "offer_id": "offer-alt-1",
+            "airline_iata": "AS",
+            "segments": [
+              {
+                "segment_index": 1,
+                "flight_id": {
+                  "flight_number": "AS144",
+                  "marketing_airline_iata": "AS",
+                  "operating_airline_iata": "AS",
+                  "is_codeshare": false
+                },
+                "departure_airport": "JFK",
+                "arrival_airport": "LHR",
+                "departure_time": "2026-07-28T21:30:00Z",
+                "arrival_time": "2026-07-29T09:45:00+01:00",
+                "cabin_class": "economy",
+                "aircraft_type": "B789"
+              }
+            ],
+            "total_price": {
+              "amount": "550.0",
+              "currency": "USD"
+            },
+            "booking_class": "Y",
+            "provider_name": "synthetic-fixture"
+          },
+          {
+            "offer_id": "offer-alt-2",
+            "airline_iata": "AS",
+            "segments": [
+              {
+                "segment_index": 1,
+                "flight_id": {
+                  "flight_number": "AS146",
+                  "marketing_airline_iata": "AS",
+                  "operating_airline_iata": "AS",
+                  "is_codeshare": false
+                },
+                "departure_airport": "JFK",
+                "arrival_airport": "LHR",
+                "departure_time": "2026-07-28T23:00:00Z",
+                "arrival_time": "2026-07-29T11:15:00+01:00",
+                "cabin_class": "economy",
+                "aircraft_type": "B789"
+              }
+            ],
+            "total_price": {
+              "amount": "580.0",
+              "currency": "USD"
+            },
+            "booking_class": "Y",
+            "provider_name": "synthetic-fixture"
+          }
+        ],
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_search_JFK_LHR_2026_07_28.json",
+            "sha256": "d9a8a75ba5d1f811a3d874d47ff0c74658673954e831b5ee9c176333b2ea274e",
+            "content_type": "application/json",
+            "byte_length": 1838
+          },
+          "normalisation_warnings": []
+        }
+      }
+    }
+  ],
+  "final_response": "I have checked the status of your flight AS142 from JFK to LHR on 2026-07-28, but unfortunately, the system timed out while fetching the details. However, I found some alternative flights for you:\n\n1. Flight AS144 departs from JFK at 21:30 on 2026-07-28 and arrives in LHR at 09:45 on 2026-07-29. The total price is $550.00.\n2. Flight AS146 departs from JFK at 23:00 on 2026-07-28 and arrives in LHR at 11:15 on 2026-07-29. The total price is $580.00.\n\nWould you like more information on these alternatives or assistance with rebooking?",
+  "task_success": false,
+  "safety_pass": true,
+  "evaluator_status": "failed",
+  "overall_score": 0.91,
+  "score_vector": {
+    "goal_accuracy": 1.0,
+    "constraint_satisfaction": 1.0,
+    "efficiency": 1.0,
+    "composite_uncapped": 0.91,
+    "recovery": 0.0
+  },
+  "failure_codes": [
+    "ENVIRONMENT.PROVIDER_TIMEOUT",
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "RECOVERY.MISSING_RETRY",
+    "TOOL.ORDERING_VIOLATION"
+  ],
+  "failure_details": [
+    {
+      "code": "ENVIRONMENT.PROVIDER_TIMEOUT",
+      "severity": "medium",
+      "message": "Fault injected: 'timeout' at seq=3.",
+      "evidence_sequences": [
+        3
+      ],
+      "remediation": null
+    },
+    {
+      "code": "PLANNING.MISSING_REQUIRED_ACTION",
+      "severity": "high",
+      "message": "Required action node 'node_status_retry' (tool: 'flight.get_status') was not executed during the recorded trajectory. The agent's plan did not include this mandatory step.",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "RECOVERY.MISSING_RETRY",
+      "severity": "medium",
+      "message": "A retryable failure ('unknown') was observed at sequence 2 (call_id=c56a71fd503c51f79157d5c98568991d), but no retry of the failed operation was recorded. Recovery rule 'recover_status_after_timeout' required a retry.",
+      "evidence_sequences": [
+        2
+      ],
+      "remediation": null
+    },
+    {
+      "code": "TOOL.ORDERING_VIOLATION",
+      "severity": "medium",
+      "message": "Precedence violation: Node 'node_search_flights' executed without prior execution of required predecessor 'node_status_retry'.",
+      "evidence_sequences": [],
+      "remediation": null
+    }
+  ],
+  "run_id": "ce7e9b16-9240-55b1-b52e-d6441620627d",
+  "journal_digest": "a9ecae7f2f967758484d645bf4bb2b03d504ea88e4caa5ea15a2e81f0596b69e",
+  "logical_duration_ms": 0.0,
+  "wall_time_ms": 6230.543200013926,
+  "semantic_result_digest": "dc7d3280413636fd739c51b6d4445d38386347ab978c5bb00b34242848f639a8"
+}

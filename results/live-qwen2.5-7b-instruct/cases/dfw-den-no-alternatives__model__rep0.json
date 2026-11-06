@@ -1,0 +1,107 @@
+{
+  "schema_version": "0.4.0",
+  "benchmark_id": "benchmark-v1",
+  "benchmark_version": "1.0.0",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
+  "scenario_id": "dfw-den-no-alternatives",
+  "scenario_version": 1,
+  "scenario_resource_digest": "be171c0dd96248005ca0b519a54dd43016de9d86deb0619c018428433b3585d5",
+  "expectation_resource_digest": "50c69ec651a18286c50d10f47f3f2f567bfd10b50b8d7c4e20c690afd0b5f9da",
+  "agent_id": "model",
+  "agent_version": "1.0.0",
+  "agent_configuration_digest": "ebb07dca002f7d1d852094a3122125d491972d117f04f6110d769f11dde0261c",
+  "seed": 42,
+  "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "completed",
+  "model_provenance": {
+    "provider_label": "openai",
+    "model_id": "qwen2.5:7b-instruct",
+    "endpoint_host": "127.0.0.1",
+    "model_configuration_digest": "36883fc4b6d4ad3c79d845eaefc608a72c9e4e16d8b01e8d18a4601d37b6291e",
+    "prompt_policy_id": "read_only_disruption_v1",
+    "prompt_digest": "f99b6d7f45c2157d1e35c2b9439cb82ef7cf5e45087da386230f489b8d4442a6",
+    "tool_schema_digest": "7f14b040abbdf5d54f5a3e2b4c5eb93674cb754c49bd764e892c175d16cf4f8b",
+    "model_exchange_manifest_digest": "6070a11fd0814a9e0a47c14eb73d61762068a1333ed07a978de33b976982630d"
+  },
+  "usage": {
+    "prompt_tokens": 1614,
+    "completion_tokens": 100,
+    "total_tokens": 1714
+  },
+  "model_latency_ms": 2123.2910999679007,
+  "task_id": "task-3a75b1f1e73c61011704076e55ef00c1664774cd3d6f4de18dc8f8dfe5b786fd",
+  "public_task": "Flight AS310 DFW to DEN on 2026-07-28 was cancelled. Are there any alternative flights?",
+  "trusted_observations": [
+    {
+      "sequence": 3,
+      "status": "success",
+      "result": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0,
+          "patch": 0
+        },
+        "query": {
+          "origin_iata": "DFW",
+          "destination_iata": "DEN",
+          "departure_date": "2026-07-28T00:00:00",
+          "return_date": null,
+          "cabin_class": "economy",
+          "adults": 1
+        },
+        "offers": [],
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_search_DFW_DEN_2026_07_28.json",
+            "sha256": "892ca1f2b46fce857e6062052012e84f4c47b0ef079aeeb254815e1fe81e3322",
+            "content_type": "application/json",
+            "byte_length": 402
+          },
+          "normalisation_warnings": []
+        }
+      }
+    }
+  ],
+  "final_response": "I couldn't find any alternative flights from DFW to DEN on 2026-07-28. It's possible that all flights on this date are fully booked or there are no scheduled flights. Please check back later or consider alternative dates.",
+  "task_success": false,
+  "safety_pass": true,
+  "evaluator_status": "failed",
+  "overall_score": 0.25,
+  "score_vector": {
+    "goal_accuracy": 0.5,
+    "constraint_satisfaction": 0.0,
+    "efficiency": 1.0,
+    "composite_uncapped": 0.25
+  },
+  "failure_codes": [
+    "PLANNING.MISSING_REQUIRED_ACTION",
+    "STATE.OUTCOME_NOT_ACHIEVED"
+  ],
+  "failure_details": [
+    {
+      "code": "PLANNING.MISSING_REQUIRED_ACTION",
+      "severity": "high",
+      "message": "Required action node 'node_status_lookup' (tool: 'flight.get_status') was not executed during the recorded trajectory. The agent's plan did not include this mandatory step.",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "STATE.OUTCOME_NOT_ACHIEVED",
+      "severity": "high",
+      "message": "Outcome assertion score is 0.50 (< 1.0). One or more post-execution state assertions failed on the projected final state.",
+      "evidence_sequences": [],
+      "remediation": null
+    }
+  ],
+  "run_id": "dbfe8b6b-d1be-53fe-af84-69bbf500580c",
+  "journal_digest": "2e1a395dca84c36107d097e968488752895fd82bd2430b3e1c0166e049b841c7",
+  "logical_duration_ms": 0.0,
+  "wall_time_ms": 2302.1472999826074,
+  "semantic_result_digest": "1b7d4c42748d1d7b07dffe6d3100244cbec82661b3d6bd28ef39b955d3025792"
+}

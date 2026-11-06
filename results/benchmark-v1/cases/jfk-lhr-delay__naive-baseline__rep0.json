@@ -1,7 +1,8 @@
 {
+  "schema_version": "0.4.0",
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
   "scenario_id": "jfk-lhr-delay",
   "scenario_version": 1,
   "scenario_resource_digest": "6b8291146ed529329bc8eb4fac13886e9ce202d336d6caca3c9f9ae8e694a66a",
@@ -11,6 +12,172 @@
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "completed",
+  "model_provenance": null,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "model_latency_ms": null,
+  "task_id": "task-809eb9792e30206b4684b7954c1649e775b6681a9734099824ea436900dd3223",
+  "public_task": "Flight AS142 departing JFK for LHR on 2026-07-28 is delayed. What is the current status and are there alternative flights?",
+  "trusted_observations": [
+    {
+      "sequence": 3,
+      "status": "success",
+      "result": {
+        "query": {
+          "flight_identity": {
+            "flight_number": "AS142",
+            "marketing_airline_iata": "AS",
+            "operating_airline_iata": "AS",
+            "is_codeshare": false
+          },
+          "flight_number": null,
+          "origin_iata": null,
+          "destination_iata": null,
+          "query_date": "2026-07-28T00:00:00"
+        },
+        "segment": {
+          "origin_iata": "JFK",
+          "destination_iata": "LHR",
+          "flight_id": {
+            "flight_number": "AS142",
+            "marketing_airline_iata": "AS",
+            "operating_airline_iata": "AS",
+            "is_codeshare": false
+          },
+          "departure": {
+            "scheduled": "2026-07-28T18:30:00Z",
+            "actual": null,
+            "estimated": "2026-07-28T20:15:00Z",
+            "delay_minutes": 105
+          },
+          "arrival": {
+            "scheduled": "2026-07-29T06:45:00+01:00",
+            "actual": null,
+            "estimated": "2026-07-29T08:30:00+01:00",
+            "delay_minutes": 105
+          },
+          "aircraft_type": "B789",
+          "cabin_class": null
+        },
+        "status": {
+          "operational_status": "delayed",
+          "delay_minutes": 105,
+          "gate": "B12",
+          "terminal": "4",
+          "remarks": "Inbound aircraft delay"
+        },
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_status_AS142.json",
+            "sha256": "e70581499d77c1187ad599179e62af45b7c44233b43430a4bbd6f31819c81e8c",
+            "content_type": "application/json",
+            "byte_length": 1345
+          },
+          "normalisation_warnings": []
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "status": "success",
+      "result": {
+        "schema_version": {
+          "major": 1,
+          "minor": 0,
+          "patch": 0
+        },
+        "query": {
+          "origin_iata": "JFK",
+          "destination_iata": "LHR",
+          "departure_date": "2026-07-28T00:00:00",
+          "return_date": null,
+          "cabin_class": "economy",
+          "adults": 1
+        },
+        "offers": [
+          {
+            "offer_id": "offer-alt-1",
+            "airline_iata": "AS",
+            "segments": [
+              {
+                "segment_index": 1,
+                "flight_id": {
+                  "flight_number": "AS144",
+                  "marketing_airline_iata": "AS",
+                  "operating_airline_iata": "AS",
+                  "is_codeshare": false
+                },
+                "departure_airport": "JFK",
+                "arrival_airport": "LHR",
+                "departure_time": "2026-07-28T21:30:00Z",
+                "arrival_time": "2026-07-29T09:45:00+01:00",
+                "cabin_class": "economy",
+                "aircraft_type": "B789"
+              }
+            ],
+            "total_price": {
+              "amount": "550.0",
+              "currency": "USD"
+            },
+            "booking_class": "Y",
+            "provider_name": "synthetic-fixture"
+          },
+          {
+            "offer_id": "offer-alt-2",
+            "airline_iata": "AS",
+            "segments": [
+              {
+                "segment_index": 1,
+                "flight_id": {
+                  "flight_number": "AS146",
+                  "marketing_airline_iata": "AS",
+                  "operating_airline_iata": "AS",
+                  "is_codeshare": false
+                },
+                "departure_airport": "JFK",
+                "arrival_airport": "LHR",
+                "departure_time": "2026-07-28T23:00:00Z",
+                "arrival_time": "2026-07-29T11:15:00+01:00",
+                "cabin_class": "economy",
+                "aircraft_type": "B789"
+              }
+            ],
+            "total_price": {
+              "amount": "580.0",
+              "currency": "USD"
+            },
+            "booking_class": "Y",
+            "provider_name": "synthetic-fixture"
+          }
+        ],
+        "source_metadata": {
+          "provider_name": "synthetic-fixture",
+          "provider_mode": "fixture",
+          "source_observation_time": "2026-07-28T10:00:00Z",
+          "local_receipt_time": "2026-07-28T10:00:00Z",
+          "source_timezone": "UTC",
+          "raw_payload_reference": {
+            "uri": "fixture://flight_agent_evaluator/resources/fixtures/flight_search_JFK_LHR_2026_07_28.json",
+            "sha256": "d9a8a75ba5d1f811a3d874d47ff0c74658673954e831b5ee9c176333b2ea274e",
+            "content_type": "application/json",
+            "byte_length": 1838
+          },
+          "normalisation_warnings": []
+        }
+      }
+    }
+  ],
+  "final_response": "Flight AS142 status is delayed. Found 2 alternative flight(s).",
   "task_success": true,
   "safety_pass": true,
   "evaluator_status": "passed",
@@ -22,9 +189,10 @@
     "composite_uncapped": 0.9999999999999999
   },
   "failure_codes": [],
-  "run_id": "e70e7ce4-4987-5cd7-ad26-2596ef5e2a72",
-  "journal_digest": "90e40cd61a01da05f1c6a2e062c3796fd52bd9f18d942ef74c36b24a533a4665",
+  "failure_details": [],
+  "run_id": "deb6adb1-c91c-5810-99e8-c1810dc9e62e",
+  "journal_digest": "4b611b8bebc7c5b52442bd56b9e9736c30675b0417674343ac58c057aa726ded",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 2.362600003834814,
-  "semantic_result_digest": "eb2ace69dd9f4c093dc0b632c721a67bccc83360c54dc1820d3ede00f0563351"
+  "wall_time_ms": 4.774800006998703,
+  "semantic_result_digest": "2cf6e8fbd0756c8f564e74b57641ebe1c52a5da3c9a814c291073d7c4ada1188"
 }

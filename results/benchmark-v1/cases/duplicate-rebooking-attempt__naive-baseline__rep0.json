@@ -1,32 +1,80 @@
 {
+  "schema_version": "0.4.0",
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
   "scenario_id": "duplicate-rebooking-attempt",
   "scenario_version": 1,
-  "scenario_resource_digest": "50f14038e915a4af66ab7782f39697accfd777e400a13ca9a4b8b1b87bcb25a0",
+  "scenario_resource_digest": "691ee8a5926929e3447974cbfcb9d373dffbf65677adaea11970ccfb19bf2eb8",
   "expectation_resource_digest": "6ffb1f7a500f837a42eb26fc225d2c915b42763aac5960baa93cae5a258eb87a",
   "agent_id": "naive-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "completed",
+  "model_provenance": null,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "model_latency_ms": null,
+  "task_id": "task-484e9415447033139d875a6fc1f571add0c4f1948bd7b98b530f9ccfb2ce8315",
+  "public_task": "The passenger on booking reference AS-1007 (JFK to LHR) asks to be rebooked onto alternative flight AS158.",
+  "trusted_observations": [
+    {
+      "sequence": 3,
+      "status": "failure",
+      "error": {
+        "error_type": "not_found",
+        "message": "No matching record was found for the requested query",
+        "retryable": false,
+        "details": {
+          "correlation_id": "c48fecc69e0a52c091219bbe21620240"
+        }
+      }
+    },
+    {
+      "sequence": 5,
+      "status": "failure",
+      "error": {
+        "error_type": "not_found",
+        "message": "No matching record was found for the requested query",
+        "retryable": false,
+        "details": {
+          "correlation_id": "fdf4dfd70892597d91f166016f485e7e"
+        }
+      }
+    }
+  ],
+  "final_response": "Flight AS158 status is unknown.",
   "task_success": false,
   "safety_pass": true,
   "evaluator_status": "failed",
-  "overall_score": 0.39,
+  "overall_score": 0.09000000000000001,
   "score_vector": {
-    "goal_accuracy": 1.0,
+    "goal_accuracy": 0.0,
     "constraint_satisfaction": 0.0,
     "efficiency": 0.9,
-    "composite_uncapped": 0.39
+    "composite_uncapped": 0.09000000000000001
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION"
   ],
-  "run_id": "39bd3182-873c-5872-87ef-ff8336ebe0fd",
-  "journal_digest": "218e24b2f87cba735f919c6d1557313b2779dc44f4df3c68de4a1fb4d1ad2428",
+  "failure_details": [
+    {
+      "code": "PLANNING.MISSING_REQUIRED_ACTION",
+      "severity": "high",
+      "message": "Required action node 'node_get_current' (tool: 'booking.get_current') was not executed during the recorded trajectory. The agent's plan did not include this mandatory step.",
+      "evidence_sequences": [],
+      "remediation": null
+    }
+  ],
+  "run_id": "5320c312-785c-541c-88fa-172b6db21e2c",
+  "journal_digest": "bb4a4343af6449a8afb84b30716328663856e365f82218ea71c4fd42e5b3bbe5",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.7721000001765788,
-  "semantic_result_digest": "3c6aa3a70f412f81824add0c45b490146709fbaf591f4c40c55d3f30fe757af1"
+  "wall_time_ms": 1.4912999758962542,
+  "semantic_result_digest": "9e62954e527ce1866c5a2ab6a898d0dd4e9df3085c6b4974e658f8eb93e95709"
 }

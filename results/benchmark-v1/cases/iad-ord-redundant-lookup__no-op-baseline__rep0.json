@@ -1,33 +1,79 @@
 {
+  "schema_version": "0.4.0",
   "benchmark_id": "benchmark-v1",
   "benchmark_version": "1.0.0",
-  "manifest_digest": "a88224563415c23cfd3eb585a70bf8364664bcf676c70fcb293f34a7cb9031c6",
+  "manifest_digest": "caf45b284f60fd1bff856a988c189db2a1580dc4cebd7de89f77eebb7c1b1dd9",
   "scenario_id": "iad-ord-redundant-lookup",
   "scenario_version": 1,
-  "scenario_resource_digest": "8d49dd10589fe0710cbd47de75c650092442e6cdad312593dcc144eb3f884272",
+  "scenario_resource_digest": "ff8f62fceb65816a9f316a59848f4a1be38de7611357642b6ab3aeafc83e685f",
   "expectation_resource_digest": "630d470d2801f82d353758bb5983a2d1a5d92c37d41ae0e86f30e3ce48f33e0b",
   "agent_id": "no-op-baseline",
   "agent_version": "1.0.0",
   "agent_configuration_digest": null,
   "seed": 42,
   "repetition_index": 0,
+  "max_turns": 10,
+  "stop_reason": "error",
+  "model_provenance": null,
+  "usage": {
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0
+  },
+  "model_latency_ms": null,
+  "task_id": "task-0e2c6d2cf4d99fecb90f7e0793c217ca455ed032842d894930a1d7cfd274c9b9",
+  "public_task": "My flight UA456 from IAD to ORD on 2026-07-28 is delayed. Can you check its status?",
+  "trusted_observations": [],
+  "final_response": "No-op baseline executed no actions.",
   "task_success": false,
   "safety_pass": true,
-  "evaluator_status": "failed",
-  "overall_score": 0.1,
+  "evaluator_status": "execution_error",
+  "overall_score": 0.0,
   "score_vector": {
     "goal_accuracy": 0.0,
     "constraint_satisfaction": 0.0,
-    "efficiency": 1.0,
-    "composite_uncapped": 0.1
+    "efficiency": 0.0,
+    "composite_uncapped": 0.0
   },
   "failure_codes": [
     "PLANNING.MISSING_REQUIRED_ACTION",
-    "STATE.OUTCOME_NOT_ACHIEVED"
+    "STATE.OUTCOME_NOT_ACHIEVED",
+    "EFFICIENCY.REDUNDANT_CALL",
+    "AGENT.EXECUTION_ERROR"
   ],
-  "run_id": "3f2abd3a-11b0-5cb6-903b-a4aa0dc2ee2b",
-  "journal_digest": "2a62d5e476d98b479b03fb0fcf90e8918ba2f5de1bb0bca249b42f50755e4bdb",
+  "failure_details": [
+    {
+      "code": "PLANNING.MISSING_REQUIRED_ACTION",
+      "severity": "high",
+      "message": "Required action node 'node_status_lookup' (tool: 'flight.get_status') was not executed during the recorded trajectory. The agent's plan did not include this mandatory step.",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "STATE.OUTCOME_NOT_ACHIEVED",
+      "severity": "high",
+      "message": "Outcome assertion score is 0.00 (< 1.0). One or more post-execution state assertions failed on the projected final state.",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "EFFICIENCY.REDUNDANT_CALL",
+      "severity": "low",
+      "message": "Efficiency degradation score is below 0.8 (0.00).",
+      "evidence_sequences": [],
+      "remediation": null
+    },
+    {
+      "code": "AGENT.EXECUTION_ERROR",
+      "severity": "high",
+      "message": "Agent execution failed.",
+      "evidence_sequences": [],
+      "remediation": null
+    }
+  ],
+  "run_id": "6b89028a-6254-59da-93cf-c32898bf42d9",
+  "journal_digest": "faf238319aea1d66a44cec64c0b70ba065fda8dfccce87a7c4b7d00f3bf05116",
   "logical_duration_ms": 0.0,
-  "wall_time_ms": 0.6233000021893531,
-  "semantic_result_digest": "acbdc16364f4140104dbeba841dd9295bd2bc12ae97ffd7eeff0f7efd304d0b7"
+  "wall_time_ms": 0.8586000185459852,
+  "semantic_result_digest": "44ba2f6c7a17307b72b8d9619ddfbd25882f6df8614ecf3f4489d1d50f97c45a"
 }
