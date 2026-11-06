@@ -10,35 +10,62 @@
         {
           "node_id": "node_get_current",
           "label": "Get Current Booking",
-          "selector": {"tool_name": "booking.get_current", "mutation_class": "read_only"},
-          "occurrence": {"min_occurs": 1, "max_occurs": 3},
+          "selector": {
+            "tool_name": "booking.get_current",
+            "mutation_class": "read_only"
+          },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
           "node_id": "node_hold_alternative",
           "label": "Hold Alternative Seats",
-          "selector": {"tool_name": "booking.hold_alternative", "mutation_class": "simulated_mutation"},
+          "selector": {
+            "tool_name": "booking.hold_alternative",
+            "mutation_class": "simulated_mutation"
+          },
           "required": true
         },
         {
           "node_id": "node_initial_approval",
           "label": "Initial Approval",
-          "selector": {"tool_name": "approval.request", "mutation_class": "simulated_mutation"},
-          "occurrence": {"min_occurs": 1, "max_occurs": 3},
+          "selector": {
+            "tool_name": "approval.request",
+            "mutation_class": "simulated_mutation"
+          },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
           "node_id": "node_recheck_booking",
           "label": "Re-read Booking After Approval",
-          "selector": {"tool_name": "booking.get_current", "mutation_class": "read_only"},
-          "occurrence": {"min_occurs": 1, "max_occurs": 3},
+          "selector": {
+            "tool_name": "booking.get_current",
+            "mutation_class": "read_only"
+          },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
           "node_id": "node_reapproval",
           "label": "Re-approval At Current Price",
-          "selector": {"tool_name": "approval.request", "mutation_class": "simulated_mutation"},
-          "occurrence": {"min_occurs": 1, "max_occurs": 3},
+          "selector": {
+            "tool_name": "approval.request",
+            "mutation_class": "simulated_mutation"
+          },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
@@ -60,13 +87,64 @@
         }
       ],
       "precedence_constraints": [
-        {"before_node_id": "node_hold_alternative", "after_node_id": "node_initial_approval"},
-        {"before_node_id": "node_initial_approval", "after_node_id": "node_recheck_booking"},
-        {"before_node_id": "node_recheck_booking", "after_node_id": "node_reapproval"},
-        {"before_node_id": "node_reapproval", "after_node_id": "node_confirm_rebooking"}
+        {
+          "before_node_id": "node_hold_alternative",
+          "after_node_id": "node_initial_approval"
+        },
+        {
+          "before_node_id": "node_initial_approval",
+          "after_node_id": "node_recheck_booking"
+        },
+        {
+          "before_node_id": "node_recheck_booking",
+          "after_node_id": "node_reapproval"
+        },
+        {
+          "before_node_id": "node_reapproval",
+          "after_node_id": "node_confirm_rebooking"
+        }
       ],
       "dependency_constraints": [
-        {"dependent_node_id": "node_confirm_rebooking", "required_node_id": "node_reapproval"}
+        {
+          "dependent_node_id": "node_confirm_rebooking",
+          "required_node_id": "node_reapproval",
+          "bindings": [
+            {
+              "argument_pointer": "/approval_id",
+              "result_pointer": "/approval_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_initial_approval",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_reapproval",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_confirm_rebooking",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        }
       ]
     }
   ],

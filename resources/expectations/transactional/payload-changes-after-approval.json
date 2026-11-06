@@ -10,8 +10,14 @@
         {
           "node_id": "node_get_current",
           "label": "Get Current Booking",
-          "selector": {"tool_name": "booking.get_current", "mutation_class": "read_only"},
-          "occurrence": {"min_occurs": 1, "max_occurs": 3},
+          "selector": {
+            "tool_name": "booking.get_current",
+            "mutation_class": "read_only"
+          },
+          "occurrence": {
+            "min_occurs": 1,
+            "max_occurs": 3
+          },
           "required": true
         },
         {
@@ -20,7 +26,11 @@
           "selector": {
             "tool_name": "booking.hold_alternative",
             "argument_constraints": [
-              {"field_pointer": "/offer_id", "operator": "equals", "value": "offer-payload-a"}
+              {
+                "field_pointer": "/offer_id",
+                "operator": "equals",
+                "value": "offer-payload-a"
+              }
             ]
           },
           "required": true
@@ -31,7 +41,11 @@
           "selector": {
             "tool_name": "approval.request",
             "argument_constraints": [
-              {"field_pointer": "/offer_id", "operator": "equals", "value": "offer-payload-a"}
+              {
+                "field_pointer": "/offer_id",
+                "operator": "equals",
+                "value": "offer-payload-a"
+              }
             ]
           },
           "required": true
@@ -58,7 +72,11 @@
           "selector": {
             "tool_name": "booking.hold_alternative",
             "argument_constraints": [
-              {"field_pointer": "/offer_id", "operator": "equals", "value": "offer-payload-b"}
+              {
+                "field_pointer": "/offer_id",
+                "operator": "equals",
+                "value": "offer-payload-b"
+              }
             ]
           },
           "required": true
@@ -69,7 +87,11 @@
           "selector": {
             "tool_name": "approval.request",
             "argument_constraints": [
-              {"field_pointer": "/offer_id", "operator": "equals", "value": "offer-payload-b"}
+              {
+                "field_pointer": "/offer_id",
+                "operator": "equals",
+                "value": "offer-payload-b"
+              }
             ]
           },
           "required": true
@@ -98,14 +120,78 @@
         }
       ],
       "precedence_constraints": [
-        {"before_node_id": "node_hold_a", "after_node_id": "node_approval_a"},
-        {"before_node_id": "node_approval_a", "after_node_id": "node_release_a"},
-        {"before_node_id": "node_release_a", "after_node_id": "node_hold_b"},
-        {"before_node_id": "node_hold_b", "after_node_id": "node_approval_b"},
-        {"before_node_id": "node_approval_b", "after_node_id": "node_confirm_b"}
+        {
+          "before_node_id": "node_hold_a",
+          "after_node_id": "node_approval_a"
+        },
+        {
+          "before_node_id": "node_approval_a",
+          "after_node_id": "node_release_a"
+        },
+        {
+          "before_node_id": "node_release_a",
+          "after_node_id": "node_hold_b"
+        },
+        {
+          "before_node_id": "node_hold_b",
+          "after_node_id": "node_approval_b"
+        },
+        {
+          "before_node_id": "node_approval_b",
+          "after_node_id": "node_confirm_b"
+        }
       ],
       "dependency_constraints": [
-        {"dependent_node_id": "node_confirm_b", "required_node_id": "node_approval_b"}
+        {
+          "dependent_node_id": "node_confirm_b",
+          "required_node_id": "node_approval_b",
+          "bindings": [
+            {
+              "argument_pointer": "/approval_id",
+              "result_pointer": "/approval_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_approval_a",
+          "required_node_id": "node_hold_a",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_release_a",
+          "required_node_id": "node_hold_a",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_approval_b",
+          "required_node_id": "node_hold_b",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_confirm_b",
+          "required_node_id": "node_hold_b",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        }
       ]
     }
   ],
