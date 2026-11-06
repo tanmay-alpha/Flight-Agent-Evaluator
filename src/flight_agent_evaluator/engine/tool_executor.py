@@ -24,8 +24,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import math
 import logging
+import math
 import uuid
 from collections.abc import Callable
 from typing import Any, Protocol, runtime_checkable
@@ -144,10 +144,10 @@ class ToolExecutor:
     def call_count(self) -> int:
         """Number of tool calls attempted (including failed/limit-exceeded)."""
         return self._call_count
+
     def restrict_tool_call_limit(self, limit: int) -> None:
         """Apply a task budget without broadening the runner's existing limit."""
         self._tool_call_limit = min(self._tool_call_limit, limit)
-
 
     @property
     def execution_policy(self) -> ExecutionToolPolicy | None:
@@ -292,7 +292,6 @@ class ToolExecutor:
                 if authoritative_class != "read_only" and fault.status in ("timeout", "cancelled"):
                     self._mutation_count += 1
                 return self._fault_result(tool_call, fault, now_dt, context)
-
 
         # 6. Invoke handler.
         self._call_count += 1
@@ -520,8 +519,7 @@ class ToolExecutor:
     ) -> ToolResult:
         definition = self._registry.definition_for(call.tool_name)
         mutation_unknown = (
-            unknown_outcome and definition is not None
-            and definition.mutation_class != "read_only"
+            unknown_outcome and definition is not None and definition.mutation_class != "read_only"
         )
         if mutation_unknown:
             self._mutation_count += 1
@@ -645,15 +643,17 @@ class ToolExecutor:
         authorization_decision: str,
     ) -> bool:
         """Journal bounded request evidence and return whether it is valid JSON."""
-        arguments = call.model_dump(mode="json")["arguments"]
-        raw = json.dumps(arguments, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        finite = _finite_json(call.arguments)
+        arguments = call.model_dump(mode="json")["arguments"] if finite else call.arguments
+        raw = json.dumps(arguments, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        canonical_bytes = raw.encode("utf-8", errors="backslashreplace")
         raw_arguments = call.raw_arguments
         evidence_bytes = (
             raw_arguments.encode("utf-8", errors="backslashreplace")
-            if raw_arguments is not None else raw.encode("utf-8")
+            if raw_arguments is not None
+            else canonical_bytes
         )
-        finite = _finite_json(arguments)
-        bounded = len(raw.encode("utf-8")) <= 65536 and len(evidence_bytes) <= 65536
+        bounded = len(canonical_bytes) <= 65536 and len(evidence_bytes) <= 65536
         if finite and bounded:
             evidence: dict[str, Any] = {"arguments": arguments}
             if raw_arguments is not None:

@@ -31,7 +31,11 @@ class CapturingClient:
         self.requests: list[ModelRequest] = []
 
     def begin_run(
-        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration,
+        self,
+        *,
+        scenario_id: str,
+        run_id: str,
+        configuration: ModelConfiguration,
         prompt_digest: str | None = None,
     ) -> None:
         self._manifest = ModelExchangeManifest(
