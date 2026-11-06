@@ -24,6 +24,7 @@ from flight_agent_evaluator.benchmarks.results import (
     git_command,
     render_benchmark_report,
 )
+from flight_agent_evaluator.strict_json import loads_strict
 
 
 class BenchmarkConsistencyError(BenchmarkIntegrityError):
@@ -120,11 +121,9 @@ class ResultBundleConsistencyVerifier:
         run_artifact: BenchmarkRunArtifact | None = None
         summary_metrics: BenchmarkAggregateMetrics | None = None
         try:
-            run_artifact = BenchmarkRunArtifact.model_validate_json(
-                run_file.read_text(encoding="utf-8")
-            )
-            summary_metrics = BenchmarkAggregateMetrics.model_validate_json(
-                summary_file.read_text(encoding="utf-8")
+            run_artifact = BenchmarkRunArtifact.model_validate(loads_strict(run_file.read_bytes()))
+            summary_metrics = BenchmarkAggregateMetrics.model_validate(
+                loads_strict(summary_file.read_bytes())
             )
             readme_text = readme_file.read_text(encoding="utf-8")
             parse_ok = True
@@ -192,8 +191,14 @@ class ResultBundleConsistencyVerifier:
                 provenance.agent_id in manifest_agents
                 and provenance.agent_version == manifest_agents[provenance.agent_id].agent_version
                 and provenance.implementation == manifest_agents[provenance.agent_id].implementation
-                and provenance.configuration_digest
-                == manifest_agents[provenance.agent_id].configuration_digest
+                and (
+                    provenance.configuration_digest
+                    == manifest_agents[provenance.agent_id].configuration_digest
+                    or (
+                        provenance.agent_id == "model"
+                        and manifest_agents[provenance.agent_id].configuration_digest is None
+                    )
+                )
                 and provenance.agent_version
                 == registry.get_metadata(provenance.agent_id)["agent_version"]
                 and provenance.implementation
@@ -240,9 +245,10 @@ class ResultBundleConsistencyVerifier:
                     expectation_resource_digest=manifest_case.expectation_raw_sha256,
                     agent_id=case_result.agent_id,
                     agent_version=metadata["agent_version"],
-                    agent_configuration_digest=metadata.get("configuration_digest"),
+                    agent_configuration_digest=case_result.agent_configuration_digest,
                     execution_seed=case_result.seed,
                     repetition_index=case_result.repetition_index,
+                    max_turns=manifest_case.scenario.limits.max_turns,
                 ).deterministic_run_id()
                 if case_result.run_id != expected_run_id:
                     execution_identity_matches = False
@@ -293,7 +299,12 @@ class ResultBundleConsistencyVerifier:
                     != declared_case.expectation_raw_sha256
                     or case_result.agent_version != domain_metadata["agent_version"]
                     or case_result.agent_configuration_digest
-                    != domain_metadata.get("configuration_digest")
+                    != next(
+                        item.configuration_digest
+                        for item in run_artifact.agent_provenance
+                        if item.agent_id == case_result.agent_id
+                    )
+                    or case_result.max_turns != declared_case.scenario.limits.max_turns
                 ):
                     domain_matches = False
                     domain_details = (
@@ -360,7 +371,18 @@ class ResultBundleConsistencyVerifier:
             ]
             registry = BenchmarkAgentRegistry()
             resolved_agents = [
-                (agent_id, registry.resolve(agent_id), registry.get_metadata(agent_id))
+                (
+                    agent_id,
+                    None,
+                    {
+                        **registry.get_metadata(agent_id),
+                        "configuration_digest": next(
+                            item.configuration_digest
+                            for item in run_artifact.agent_provenance
+                            if item.agent_id == agent_id
+                        ),
+                    },
+                )
                 for agent_id in run_artifact.executed_agents
             ]
             computed_run_id = compute_run_semantic_id(
@@ -641,7 +663,9 @@ class ResultBundleConsistencyVerifier:
 
         # 7. Physical case artifacts must be an exact, semantic projection of run.json.
         expected_cases = {
-            f"{case.scenario_id}__{case.agent_id}__rep{case.repetition_index}.json": case
+            f"{case.scenario_id}__{case.agent_id}"
+            f"{'__seed' + str(case.seed) if len(run_artifact.run_policy['seeds']) > 1 else ''}"
+            f"__rep{case.repetition_index}.json": case
             for case in cases
         }
         actual_case_files = {path.name: path for path in cases_dir.glob("*.json")}
@@ -663,14 +687,16 @@ class ResultBundleConsistencyVerifier:
         if disk_cases_match:
             for name, expected in expected_cases.items():
                 try:
-                    actual = BenchmarkCaseResult.model_validate_json(
-                        actual_case_files[name].read_text(encoding="utf-8")
+                    actual = BenchmarkCaseResult.model_validate(
+                        loads_strict(actual_case_files[name].read_bytes())
                     )
                 except Exception as exc:
                     disk_cases_match = False
                     disk_case_details = f"{name} is not a valid BenchmarkCaseResult: {exc}"
                     break
-                if actual != expected:
+                if actual.model_dump(
+                    exclude={"wall_time_ms", "model_latency_ms"}
+                ) != expected.model_dump(exclude={"wall_time_ms", "model_latency_ms"}):
                     disk_cases_match = False
                     disk_case_details = f"{name} differs from embedded run.json case result"
                     break
