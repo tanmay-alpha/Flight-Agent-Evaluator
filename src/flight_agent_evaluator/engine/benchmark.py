@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import json
 import logging
 import uuid
 from pathlib import Path
@@ -13,8 +14,15 @@ from pydantic import BaseModel, Field
 
 from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
 from flight_agent_evaluator.agent.protocol import AgentPolicy
+from flight_agent_evaluator.benchmarks.results import FailureDetail
 from flight_agent_evaluator.canonical import canonical_hash
-from flight_agent_evaluator.contracts.model import AgentRunResult, AgentStopReason, AgentTask
+from flight_agent_evaluator.contracts.model import (
+    AgentRunResult,
+    AgentStopReason,
+    AgentTask,
+    ModelProvenance,
+    ModelUsage,
+)
 from flight_agent_evaluator.contracts.scenarios import BenchmarkScenario
 from flight_agent_evaluator.contracts.trajectory_expectation import TrajectoryExpectation
 from flight_agent_evaluator.engine.execution_policy import ExecutionToolPolicy
@@ -30,6 +38,7 @@ from flight_agent_evaluator.providers.fixture import FixtureFlightProvider
 from flight_agent_evaluator.recording.contracts import RecordingBundleManifest, RunRecording
 from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.recording.store import FileRecordingStore
+from flight_agent_evaluator.resources.contracts import BuiltinResourceNotFound
 from flight_agent_evaluator.runtime.clock import DeterministicVirtualClock
 from flight_agent_evaluator.runtime.context import RunContext
 from flight_agent_evaluator.runtime.ids import DeterministicIdFactory
@@ -49,6 +58,14 @@ class BenchmarkMetricVector(BaseModel):
     overall_score: float = 1.0
     score_vector: dict[str, float] = Field(default_factory=dict)
     failure_codes: list[str] = Field(default_factory=list)
+    failure_details: list[FailureDetail] = Field(default_factory=list)
+    stop_reason: AgentStopReason | None = None
+    model_provenance: ModelProvenance | None = None
+    usage: ModelUsage = Field(default_factory=ModelUsage)
+    model_latency_ms: float | None = None
+    public_task: str = ""
+    trusted_observations: list[dict[str, Any]] = Field(default_factory=list)
+    final_response: str | None = None
     evaluator_error: str | None = None
     model_calls: int = 0
     tool_calls: int = 0
@@ -125,6 +142,8 @@ class BenchmarkRunner:
             expectation_resource_digest=case.expectation_raw_sha256,
             agent_id=getattr(agent, "agent_id", str(agent)),
             agent_version=agent_ver,
+            agent_configuration_digest=getattr(agent, "configuration_digest", None),
+            max_turns=scenario.limits.max_turns,
             execution_seed=execution_seed if execution_seed is not None else scenario.seed,
             repetition_index=repetition_index,
         )
@@ -157,6 +176,29 @@ class BenchmarkRunner:
             expectation_resource_digest=case.expectation_raw_sha256,
             agent_id=getattr(agent, "agent_id", str(agent)),
             agent_version=agent_ver,
+            agent_configuration_digest=getattr(agent, "configuration_digest", None),
+            max_turns=scenario.limits.max_turns,
+            stop_reason=mv.stop_reason,
+            model_provenance=mv.model_provenance,
+            usage=mv.usage,
+            model_latency_ms=mv.model_latency_ms,
+            public_task=mv.public_task,
+            trusted_observations=mv.trusted_observations,
+            final_response=mv.final_response,
+            task_id="task-"
+            + hashlib.sha256(
+                json.dumps(
+                    {
+                        "public_task": mv.public_task,
+                        "trusted_observations": mv.trusted_observations,
+                        "final_response": mv.final_response,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest(),
             seed=execution_seed if execution_seed is not None else scenario.seed,
             repetition_index=repetition_index,
             task_success=mv.task_success,
@@ -164,11 +206,16 @@ class BenchmarkRunner:
             evaluator_status=(
                 EVALUATOR_ERROR_STATUS
                 if mv.evaluator_error is not None
-                else ("passed" if mv.task_success else "failed")
+                else (
+                    "execution_error"
+                    if mv.stop_reason == AgentStopReason.ERROR
+                    else ("passed" if mv.task_success else "failed")
+                )
             ),
             overall_score=mv.overall_score,
             score_vector=mv.score_vector,
             failure_codes=mv.failure_codes,
+            failure_details=mv.failure_details,
             run_id=effective_run_id,
             journal_digest=mv.journal_digest,
             wall_time_ms=elapsed_ms,
@@ -187,6 +234,7 @@ class BenchmarkRunner:
         execution_seed: int | None = None,
         execution_run_id: str | None = None,
         scenario_source_digest: str | None = None,
+        allow_development_expectation: bool = False,
     ) -> BenchmarkMetricVector:
         """Run a single benchmark scenario against an agent policy.
 
@@ -203,6 +251,21 @@ class BenchmarkRunner:
                 "Persisting a replayable recording requires scenario_source_digest "
                 "(the scenario file's byte digest)."
             )
+        if expectation is None:
+            from flight_agent_evaluator.contracts.trajectory_expectation import (
+                load_builtin_expectation,
+            )
+
+            try:
+                expectation = load_builtin_expectation(scenario.scenario_id.id)
+            except (FileNotFoundError, BuiltinResourceNotFound) as exc:
+                if not allow_development_expectation:
+                    raise ValueError(
+                        f"No authored expectation for scenario '{scenario.scenario_id.id}'. "
+                        "Development runs require allow_development_expectation=True."
+                    ) from exc
+                expectation = self._build_development_expectation(scenario)
+        effective_seed = execution_seed if execution_seed is not None else scenario.seed
         # Ensure scenario mode matches scenario configuration
         scenario_mode = getattr(scenario, "scenario_mode", "read_only")
 
@@ -221,14 +284,14 @@ class BenchmarkRunner:
             public_request=public_req,
             allowed_tools=allowed_tools,
             scenario_mode=scenario_mode,
-            max_turns=10,
+            max_turns=scenario.limits.max_turns,
             tool_call_limit=scenario.limits.tool_call_limit,
         )
 
         id_factory = DeterministicIdFactory(
             scenario_id=scenario.scenario_id.id,
             scenario_version=scenario.scenario_id.version,
-            seed=scenario.seed,
+            seed=effective_seed,
         )
         # Deterministic, but distinct per agent so recordings of different agents on the
         # same scenario never overwrite each other.
@@ -237,7 +300,8 @@ class BenchmarkRunner:
             if execution_run_id is not None
             else uuid.uuid5(
                 id_factory.next(record_type="run", sequence=0),
-                str(getattr(agent, "agent_id", type(agent).__name__)),
+                f"{getattr(agent, 'agent_id', type(agent).__name__)}|"
+                f"{getattr(agent, 'configuration_digest', None)}|{scenario.canonical_digest()}",
             )
         )
         start_time: datetime.datetime
@@ -253,7 +317,7 @@ class BenchmarkRunner:
             run_id=run_id,
             scenario_id=scenario.scenario_id.id,
             scenario_version=scenario.scenario_id.version,
-            seed=execution_seed if execution_seed is not None else scenario.seed,
+            seed=effective_seed,
             clock=clock,
             id_factory=id_factory,
             tool_call_limit=scenario.limits.tool_call_limit,
@@ -276,6 +340,7 @@ class BenchmarkRunner:
             journal=journal,
             provider=provider,
             tool_call_limit=context.tool_call_limit,
+            logical_time_limit_ns=context.time_limit_seconds * 1_000_000_000,
             execution_policy=ExecutionToolPolicy.for_task(
                 scenario_id=scenario.scenario_id.id,
                 allowed_tool_names=allowed_tools,
@@ -316,12 +381,36 @@ class BenchmarkRunner:
                     golden.append({"type": "final_response", "content": step.response})
             agent = ScriptedOracleAgent(golden_steps=golden)
 
-        agent_result: AgentRunResult = await agent.execute(
-            task=task,
-            executor=executor,
-            state=state,
-            context=context,
-        )
+        execution_error = False
+        try:
+            agent_result: AgentRunResult = await agent.execute(
+                task=task,
+                executor=executor,
+                state=state,
+                context=context,
+            )
+        except Exception:
+            # Exception messages may contain credentials or arbitrary provider payloads.
+            # Do not serialize them; cancellation and process interrupts are BaseException.
+            execution_error = True
+            journal.append_event(
+                entry_type="domain_event",
+                run_id=str(run_id),
+                correlation_id=context.correlation_id,
+                time=clock.now(),
+                payload={
+                    "event_type": "agent_execution_error",
+                    "failure_code": "AGENT.EXECUTION_ERROR",
+                    "message": "Agent execution failed.",
+                },
+            )
+            agent_result = AgentRunResult(
+                run_id=str(run_id),
+                agent_id=getattr(agent, "agent_id", type(agent).__name__),
+                agent_version=str(getattr(agent, "agent_version", "1.0.0")),
+                stop_reason=AgentStopReason.ERROR,
+                tool_call_count=executor.call_count,
+            )
         if authoritative and agent_result.run_id != str(context.run_id):
             from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
 
@@ -345,18 +434,8 @@ class BenchmarkRunner:
                 },
             )
 
-        # Trajectory evaluation
-        if expectation is not None:
-            exp = expectation
-        else:
-            try:
-                from flight_agent_evaluator.contracts.trajectory_expectation import (
-                    load_builtin_expectation,
-                )
-
-                exp = load_builtin_expectation(scenario.scenario_id.id)
-            except Exception:
-                exp = self._build_development_expectation(scenario)
+        # Expectations are resolved before executing any agent or allocating a journal.
+        exp = expectation
 
         scorecard = self.evaluator.evaluate(
             scenario=scenario,
@@ -384,7 +463,11 @@ class BenchmarkRunner:
             and scorecard.overall_pass
             and scorecard.evaluator_error is None
         )
-        overall_score = apply_safety_cap(scorecard.composite_score, safety_pass)
+        overall_score = (
+            0.0
+            if agent_result.stop_reason == AgentStopReason.ERROR
+            else apply_safety_cap(scorecard.composite_score, safety_pass)
+        )
 
         # Lifecycle Gate: record run_completed event
         journal.append_event(
@@ -398,6 +481,7 @@ class BenchmarkRunner:
                 "overall_pass": scorecard.overall_pass,
                 "composite_score": scorecard.composite_score,
                 "overall_score": overall_score,
+                "stop_reason": agent_result.stop_reason.value,
             },
         )
 
@@ -405,8 +489,40 @@ class BenchmarkRunner:
             f.failure_code.value if hasattr(f.failure_code, "value") else str(f.failure_code)
             for f in report.failures
         ]
-        if not safety_pass and "safety_violation" not in failure_codes:
-            failure_codes.append("safety_violation")
+        evidence = {item.evidence_id: item for item in report.evidence_collection}
+        failure_details = [
+            FailureDetail(
+                code=failure.failure_code.value,
+                severity=failure.severity.value,
+                message=failure.explanation,
+                evidence_sequences=sorted(
+                    {
+                        item.journal_sequence
+                        for ref in failure.evidence_refs
+                        if (item := evidence.get(ref)) is not None
+                        and item.journal_sequence is not None
+                    }
+                ),
+            )
+            for failure in report.failures
+        ]
+        if (
+            execution_error or agent_result.stop_reason == AgentStopReason.ERROR
+        ) and "AGENT.EXECUTION_ERROR" not in failure_codes:
+            failure_codes.append("AGENT.EXECUTION_ERROR")
+            failure_details.append(
+                FailureDetail(
+                    code="AGENT.EXECUTION_ERROR",
+                    severity="high",
+                    message="Agent execution failed.",
+                    evidence_sequences=[
+                        entry.seq
+                        for entry in journal.entries
+                        if entry.type == "domain_event"
+                        and entry.payload.get("event_type") == "agent_execution_error"
+                    ],
+                )
+            )
 
         score_vector = {
             "goal_accuracy": scorecard.goal_accuracy,
@@ -425,6 +541,25 @@ class BenchmarkRunner:
             overall_score=overall_score,
             score_vector=score_vector,
             failure_codes=failure_codes,
+            failure_details=failure_details,
+            stop_reason=agent_result.stop_reason,
+            model_provenance=agent_result.model_provenance,
+            usage=agent_result.usage,
+            model_latency_ms=agent_result.model_latency_ms,
+            public_task=public_req,
+            trusted_observations=[
+                {
+                    "sequence": entry.seq,
+                    **{
+                        key: value
+                        for key, value in entry.payload.items()
+                        if key in {"tool_name", "arguments", "status", "result", "error"}
+                    },
+                }
+                for entry in journal.entries
+                if entry.type == "tool_result"
+            ],
+            final_response=agent_result.final_response,
             evaluator_error=scorecard.evaluator_error,
             model_calls=agent_result.model_call_count,
             tool_calls=agent_result.tool_call_count,
@@ -447,6 +582,7 @@ class BenchmarkRunner:
                 journal=journal,
                 agent_result=agent_result,
                 metric_vector=metric_vector,
+                execution_seed=effective_seed,
             )
         return metric_vector
 
@@ -461,6 +597,7 @@ class BenchmarkRunner:
         journal: HashChainJournal,
         agent_result: AgentRunResult,
         metric_vector: BenchmarkMetricVector,
+        execution_seed: int,
     ) -> None:
         """Write the recording bundle (replayable by the CLI) and the metric vector."""
         run_id = str(metric_vector.run_id)
@@ -469,7 +606,7 @@ class BenchmarkRunner:
             run_id=uuid.UUID(run_id),
             scenario_id=scenario.scenario_id.id,
             scenario_version=scenario.scenario_id.version,
-            seed=scenario.seed,
+            seed=execution_seed,
             entry_count=len(journal.entries),
             final_digest=journal.final_digest(),
             started_at=journal.entries[0].time,
@@ -496,7 +633,7 @@ class BenchmarkRunner:
             agent_id=metric_vector.agent_id,
             agent_version=str(getattr(agent, "agent_version", "1.0.0")),
             execution_runner="benchmark-runner",
-            seed=scenario.seed,
+            seed=execution_seed,
             semantic_recording_digest=hashlib.sha256(
                 (journal.final_digest() + scenario_digest).encode("utf-8")
             ).hexdigest(),
@@ -547,10 +684,6 @@ class BenchmarkRunner:
                 )
             ],
         )
-
-    def _build_default_expectation(self, scenario: BenchmarkScenario) -> TrajectoryExpectation:
-        """Deprecated: use _build_development_expectation."""
-        return self._build_development_expectation(scenario)
 
     async def run_suite(
         self,
