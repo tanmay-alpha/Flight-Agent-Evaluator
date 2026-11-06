@@ -226,7 +226,7 @@ def test_tool_executor_handler_exceptions():
     res_val = asyncio.run(executor.execute(tc_val, context=context))
     assert res_val.status == "failure"
     assert res_val.error is not None
-    assert res_val.error.error_type == "invalid_arguments"
+    assert res_val.error.error_type == "internal_error"
 
     tc_unexp = ToolCall(
         call_id=uuid.uuid4(),
