@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from flight_agent_evaluator.agent.baselines import ScriptedOracleAgent
 from flight_agent_evaluator.contracts.trajectory_expectation import load_builtin_expectation
@@ -13,7 +14,7 @@ from flight_agent_evaluator.engine.scenario_loader import ScenarioLoader
 def test_live_qwen_approval_denied_pattern_has_concrete_messages() -> None:
     # Reproduces the first live qwen2.5:7b-instruct run: it skipped the booking lookup and
     # the hold, then requested approval with a malformed booking reference.
-    steps = [
+    steps: list[dict[str, Any]] = [
         {
             "type": "tool_call",
             "tool_name": "approval.request",
