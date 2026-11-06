@@ -13,13 +13,18 @@ replay policy only uses it to detect divergence; it never reaches the journal.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from flight_agent_evaluator.agent.tool_names import from_provider_tool_name
+from flight_agent_evaluator.strict_json import (
+    DEFAULT_MAX_DEPTH,
+    StrictJSONError,
+    load_strict_path,
+    loads_strict,
+)
 
 TRACE_SCHEMA_VERSION = "1.0"
 """Current (and only) supported trace ``schema_version``."""
@@ -88,9 +93,10 @@ class TraceToolCall(_StrictModel):
     ``observed_result`` is the payload the agent says it received; set it to
     any JSON value (including ``null``) to have it checked for divergence.
     ``observed_error`` instead records that the agent saw a failure. Both are
-    optional and mutually exclusive. Arguments may use ``{"$ref_step": i,
-    "json_pointer": "/x"}`` or ``"$ref:i/x"`` to reference the *environment*
-    result of an earlier successful call (0-based index into ``calls``).
+    optional and mutually exclusive. Native-format arguments may use
+    ``{"$ref_step": i, "json_pointer": "/x"}`` or ``"$ref:i/x"`` to reference
+    the *environment* result of an earlier successful call (0-based index into
+    ``calls``). OpenAI transcript arguments are always literal.
     """
 
     call_id: str | None = Field(default=None, min_length=1, max_length=256)
@@ -116,6 +122,22 @@ class TraceToolCall(_StrictModel):
         return "observed_result" in self.model_fields_set
 
 
+class TraceAssistantContent(_StrictModel):
+    """Intermediate assistant text retained for inspection, never for scoring."""
+
+    message_index: int = Field(ge=0)
+    content: str
+    tool_call_ids: list[str] = Field(default_factory=list)
+
+
+class TraceSourceMetadata(_StrictModel):
+    """Provenance retained when normalizing a provider transcript."""
+
+    format: Literal["openai_chat"]
+    user_messages: list[str] = Field(default_factory=list)
+    intermediate_assistant_content: list[TraceAssistantContent] = Field(default_factory=list)
+
+
 class AgentTrace(_StrictModel):
     """Native trace format (``"format": "tool_calls"``), schema version 1.0."""
 
@@ -124,6 +146,7 @@ class AgentTrace(_StrictModel):
     scenario: ScenarioReference
     agent: AgentMetadata
     calls: list[TraceToolCall] = Field(default_factory=list, max_length=1000)
+    source: TraceSourceMetadata | None = None
     final_response: str | None = None
     usage: TraceUsage | None = None
     latency_ms: float | None = Field(default=None, ge=0)
@@ -183,9 +206,21 @@ class OpenAIChatTrace(_StrictModel):
         calls: list[dict[str, Any]] = []
         index_by_id: dict[str, int] = {}
         final_response: str | None = None
+        final_response_index: int | None = None
+        assistant_content: list[TraceAssistantContent] = []
+        user_messages: list[str] = []
 
         for position, message in enumerate(self.messages):
             if message.role == "assistant":
+                text = _message_text(message.content)
+                if text is not None:
+                    assistant_content.append(
+                        TraceAssistantContent(
+                            message_index=position,
+                            content=text,
+                            tool_call_ids=[tc.id for tc in message.tool_calls or []],
+                        )
+                    )
                 if message.tool_calls:
                     for tc in message.tool_calls:
                         if tc.id in index_by_id:
@@ -201,8 +236,14 @@ class OpenAIChatTrace(_StrictModel):
                             }
                         )
                     final_response = None
+                    final_response_index = None
                 else:
                     final_response = _message_text(message.content)
+                    final_response_index = position
+            elif message.role == "user":
+                text = _message_text(message.content)
+                if text is not None:
+                    user_messages.append(text)
             elif message.role == "tool":
                 if message.tool_call_id is None or message.tool_call_id not in index_by_id:
                     raise TraceFormatError(
@@ -225,6 +266,15 @@ class OpenAIChatTrace(_StrictModel):
                 "agent": self.agent.model_dump(exclude_none=True),
                 "calls": calls,
                 "final_response": final_response,
+                "source": TraceSourceMetadata(
+                    format="openai_chat",
+                    user_messages=user_messages,
+                    intermediate_assistant_content=[
+                        item
+                        for item in assistant_content
+                        if item.message_index != final_response_index
+                    ],
+                ),
                 "usage": self.usage.model_dump() if self.usage else None,
                 "latency_ms": self.latency_ms,
                 "notes": self.notes,
@@ -234,10 +284,10 @@ class OpenAIChatTrace(_StrictModel):
 
 def _parse_arguments(raw: str, position: int) -> dict[str, Any]:
     try:
-        parsed = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError as exc:
+        parsed = loads_strict(raw if raw.strip() else raw + "{}")
+    except StrictJSONError as exc:
         raise TraceFormatError(
-            f"messages[{position}]: tool_call arguments are not valid JSON: {exc.msg}"
+            f"messages[{position}]: tool_call arguments are not valid JSON"
         ) from exc
     if not isinstance(parsed, dict):
         raise TraceFormatError(f"messages[{position}]: tool_call arguments must be a JSON object")
@@ -256,9 +306,11 @@ def _parse_tool_content(content: str | list[dict[str, Any]] | None) -> Any:
     if text is None:
         return None
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return text
+        return loads_strict(text)
+    except StrictJSONError as exc:
+        if "invalid JSON at line" in str(exc):
+            return text
+        raise TraceFormatError("Tool observation is not strict, bounded JSON") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +334,15 @@ def _validate(model: type[_ModelT], data: Any) -> _ModelT:
 
 def parse_trace(data: Any) -> AgentTrace:
     """Validate a decoded JSON document in either supported form."""
+    stack = [(data, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if not isinstance(node, (dict, list)):
+            continue
+        if depth > DEFAULT_MAX_DEPTH:
+            raise TraceFormatError("Trace document exceeds the JSON nesting limit")
+        children = node.values() if isinstance(node, dict) else node
+        stack.extend((child, depth + 1) for child in children)
     if not isinstance(data, dict):
         raise TraceFormatError("Trace document must be a JSON object")
     version = data.get("schema_version")
@@ -302,16 +363,13 @@ def parse_trace(data: Any) -> AgentTrace:
 def load_trace(path: Path) -> AgentTrace:
     """Read, decode and validate a trace file."""
     try:
-        size = path.stat().st_size
+        data = load_strict_path(path, max_bytes=MAX_TRACE_BYTES)
     except OSError as exc:
-        raise TraceFormatError(f"Cannot read trace file {path}: {exc}") from exc
-    if size > MAX_TRACE_BYTES:
-        raise TraceFormatError(f"Trace file {path} exceeds {MAX_TRACE_BYTES} bytes")
-    raw = path.read_bytes()
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise TraceFormatError(f"Trace file {path} is not valid UTF-8 JSON: {exc}") from exc
+        raise TraceFormatError("Cannot read trace file") from exc
+    except StrictJSONError as exc:
+        raise TraceFormatError(
+            f"Trace file is not valid UTF-8 JSON or exceeds {MAX_TRACE_BYTES} bytes"
+        ) from exc
     return parse_trace(data)
 
 
@@ -324,6 +382,8 @@ __all__ = [
     "OpenAIChatTrace",
     "ScenarioReference",
     "TraceFormatError",
+    "TraceAssistantContent",
+    "TraceSourceMetadata",
     "TraceToolCall",
     "TraceUsage",
     "load_trace",
