@@ -39,21 +39,21 @@ def test_cli_trajectory_validate_not_found(capsys):
 
 
 def test_cli_benchmark_validate(capsys):
-    args = argparse.Namespace(scenarios="resources/scenarios", json=False)
+    args = argparse.Namespace(manifest="builtin:benchmark-v1", json=False)
     assert cmd_benchmark_validate(args) == 0
     captured = capsys.readouterr()
     assert "All benchmark scenarios & expectations are valid" in captured.out
 
 
 def test_cli_benchmark_validate_json(capsys):
-    args = argparse.Namespace(scenarios="resources/scenarios", json=True)
+    args = argparse.Namespace(manifest="builtin:benchmark-v1", json=True)
     assert cmd_benchmark_validate(args) == 0
     captured = capsys.readouterr()
     assert '"valid": true' in captured.out
 
 
 def test_cli_benchmark_validate_not_found(capsys):
-    args = argparse.Namespace(scenarios="nonexistent_dir", json=False)
+    args = argparse.Namespace(manifest="nonexistent.json", json=False)
     assert cmd_benchmark_validate(args) == 1
 
 
