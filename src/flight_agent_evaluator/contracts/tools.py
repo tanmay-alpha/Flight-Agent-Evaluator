@@ -86,6 +86,7 @@ class ToolError(ContractModel):
         "duplicate_side_effect",
         "transaction_conflict",
         "ambiguous_commit",
+        "not_found",
         "provider_error",
         "internal_error",
     ]

@@ -14,7 +14,7 @@
     {
       "step_id": "step1",
       "description": "Check WN678 status in read-only investigation mode.",
-      "initial_message": "Flight WN678 BWI to MCO is delayed. Please check status using read-only tools only."
+      "initial_message": "My flight WN678 from BWI to MCO on 2026-07-28 is delayed. Can you check its status? Please don't change anything on my booking."
     }
   ],
   "limits": {

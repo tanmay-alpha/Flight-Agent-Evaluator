@@ -10,7 +10,7 @@ from typing import Any
 
 from flight_agent_evaluator.agent.errors import ModelProviderError, ModelReplayError
 from flight_agent_evaluator.agent.model_client import configuration_identity, tool_schema_digest
-from flight_agent_evaluator.agent.prompt import get_default_prompt_policy
+from flight_agent_evaluator.agent.prompt import get_default_prompt_policy, render_system_prompt
 from flight_agent_evaluator.agent.protocol import AgentPolicy, ModelClient
 from flight_agent_evaluator.agent.security import redact_secrets
 from flight_agent_evaluator.contracts.model import (
@@ -78,14 +78,15 @@ class ModelToolCallingAgent(AgentPolicy):
         context: RunContext,
     ) -> AgentRunResult:
         """Execute the agent task using only public_request, prompt policy, and tool results."""
+        prompt = render_system_prompt(self.prompt_policy, task)
         self.model_client.begin_run(
             scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             configuration=self.model_configuration,
-            prompt_digest=self.prompt_policy.canonical_digest(),
+            prompt_digest=prompt.canonical_digest(),
         )
         try:
-            result = await self._run_turns(task, executor, context)
+            result = await self._run_turns(task, executor, context, prompt)
         except BaseException:
             await self.model_client.end_run()
             raise
@@ -120,6 +121,7 @@ class ModelToolCallingAgent(AgentPolicy):
         task: AgentTask,
         executor: ToolExecutor,
         context: RunContext,
+        prompt: PromptPolicy,
     ) -> AgentRunResult:
         registry = executor.registry
         task_policy = ExecutionToolPolicy.for_task(
@@ -138,9 +140,9 @@ class ModelToolCallingAgent(AgentPolicy):
         tool_schemas = self._tool_schemas(registry, visible_tools)
         executor.restrict_tool_call_limit(task.tool_call_limit)
 
-        # Base conversation: ONLY public_request, system prompt policy, and tool responses
+        # Base conversation: ONLY public_request, the rendered system prompt, and tool responses
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": self.prompt_policy.content},
+            {"role": "system", "content": prompt.content},
             {"role": "user", "content": task.public_request},
         ]
 
@@ -162,9 +164,9 @@ class ModelToolCallingAgent(AgentPolicy):
 
             request = ModelRequest(
                 model_id=self.model_configuration.model_id,
-                prompt_policy_id=self.prompt_policy.policy_id,
-                prompt_policy_version=self.prompt_policy.version,
-                prompt_digest=self.prompt_policy.canonical_digest(),
+                prompt_policy_id=prompt.policy_id,
+                prompt_policy_version=prompt.version,
+                prompt_digest=prompt.canonical_digest(),
                 turn_index=turn,
                 messages=messages,
                 tools=tool_schemas,
@@ -271,8 +273,8 @@ class ModelToolCallingAgent(AgentPolicy):
                 model_id=self.model_configuration.model_id,
                 endpoint_host=getattr(self.model_client, "endpoint_host", None),
                 model_configuration_digest=self.model_configuration.canonical_digest(),
-                prompt_policy_id=self.prompt_policy.policy_id,
-                prompt_digest=self.prompt_policy.canonical_digest(),
+                prompt_policy_id=prompt.policy_id,
+                prompt_digest=prompt.canonical_digest(),
                 tool_schema_digest=tool_schema_digest(tool_schemas),
             ),
             model_latency_ms=model_latency_ms,

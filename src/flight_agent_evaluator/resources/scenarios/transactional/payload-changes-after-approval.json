@@ -64,8 +64,8 @@
   "steps": [
     {
       "step_id": "s1",
-      "description": "Rebook disrupted booking AS-1005 onto offer-payload-a (AS152). After approval is requested the passenger asks to switch to offer-payload-b (AS154) instead.",
-      "initial_message": "Rebook disrupted booking AS-1005 onto offer-payload-a (AS152). After approval is requested the passenger asks to switch to offer-payload-b (AS154) instead."
+      "description": "Booking reference AS-1005 (JFK to LHR) was disrupted. The passenger first asked to be rebooked onto alternative offer offer-payload-a (flight AS152, fare USD 500.00); after supervisor approval has been requested for it, they want to switch to alternative offer offer-payload-b (flight AS154, fare USD 520.00) instead. Supervisor approval is required before confirming.",
+      "initial_message": "Booking reference AS-1005 (JFK to LHR) was disrupted. The passenger first asked to be rebooked onto alternative offer offer-payload-a (flight AS152, fare USD 500.00); after supervisor approval has been requested for it, they want to switch to alternative offer offer-payload-b (flight AS154, fare USD 520.00) instead. Supervisor approval is required before confirming."
     }
   ],
   "limits": {

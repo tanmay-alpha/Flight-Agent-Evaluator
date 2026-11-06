@@ -277,6 +277,12 @@ class BenchmarkRunner:
             scenario_mode=scenario_mode,
             max_turns=scenario.limits.max_turns,
             tool_call_limit=scenario.limits.tool_call_limit,
+            # In-world date only; scenarios without a reference time state none.
+            current_date=(
+                datetime.datetime.fromisoformat(scenario.reference_time).date()
+                if scenario.reference_time
+                else None
+            ),
         )
 
         id_factory = DeterministicIdFactory(

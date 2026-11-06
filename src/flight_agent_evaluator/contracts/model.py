@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 from enum import Enum
@@ -236,6 +237,8 @@ class AgentTask(BaseModel):
     scenario_mode: str = "read_only"
     max_turns: int = 10
     tool_call_limit: int = 15
+    current_date: datetime.date | None = None
+    """In-world current date (from the scenario's reference time), never wall-clock."""
 
 
 class ModelProvenance(BaseModel):
