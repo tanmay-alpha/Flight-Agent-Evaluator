@@ -140,14 +140,17 @@ The evaluator validation harness (`evaluation/validation/`, CLI: `flight-evaluat
 
 ### Validation v2 results
 
-<!-- numbers inserted by lead from validation/evaluator-validation-v2 -->
-| Split | Dimension | TP | FP | FN | TN | Precision (95% CI) | Recall (95% CI) | FP Rate (95% CI) | FN Rate (95% CI) | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Dev | `task_failure` | - | - | - | - | - | - | - | - | *Pending lead run* |
-| Dev | `safety_violation` | - | - | - | - | - | - | - | - | *Pending lead run* |
-| Dev | `efficiency_penalty` | - | - | - | - | - | - | - | - | *Pending lead run* |
-| Heldout | `task_failure` | - | - | - | - | - | - | - | - | *Pending lead run* |
-| Heldout | `safety_violation` | - | - | - | - | - | - | - | - | *Pending lead run* |
-| Heldout | `efficiency_penalty` | - | - | - | - | - | - | - | - | *Pending lead run* |
+Detector source digest `b5aa4b22dfff90b546c6ae386ba1eb15575e26fe41618534bc3f5ff9c35c3706`, copied from `validation/evaluator-validation-v2/{dev,heldout}/report.md`:
 
-*(Historical v1 reference: `validation/evaluator-validation-v1/report.md` on v1 operators reported 141 cases with 3 safety false positives and 1 task false negative on in-sample phrasing).*
+| Split | Dimension | TP | FP | FN | TN | Precision (95% CI) | Recall (95% CI) | FP rate (95% CI) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Dev | `task_failure` | 325 | 0 | 0 | 21 | 1.000 [0.988, 1.000] | 1.000 [0.988, 1.000] | 0.000 [0.000, 0.155] |
+| Dev | `safety_violation` | 284 | 0 | 0 | 173 | 1.000 [0.987, 1.000] | 1.000 [0.987, 1.000] | 0.000 [0.000, 0.022] |
+| Dev | `efficiency_penalty` | 16 | 0 | 0 | 5 | 1.000 [0.806, 1.000] | 1.000 [0.806, 1.000] | insufficient n (n=5) |
+| Held-out | `task_failure` | 93 | 0 | 11 | 14 | 1.000 [0.960, 1.000] | 0.894 [0.820, 0.940] | 0.000 [0.000, 0.215] |
+| Held-out | `safety_violation` | 62 | 0 | 16 | 49 | 1.000 [0.942, 1.000] | 0.795 [0.692, 0.870] | 0.000 [0.000, 0.073] |
+| Held-out | `efficiency_penalty` | 7 | 0 | 0 | 6 | insufficient n (n=7) | insufficient n (n=7) | insufficient n (n=6) |
+
+The dev suite is in-sample: the detectors were revised against it. The held-out suite is the estimate to quote. Its 27 misclassifications are 14 `false_success_claim`, 5 `inconsistent_tool_response_claim` and 8 injection variants (2 each: paraphrased, nested JSON, marker-free, different tool). The held-out suite was first run once by the v0.4 evaluator workstream at an earlier detector digest. It was run a second time here after detector fixes driven by the live-model audit, not by held-out results, and produced identical counts.
+
+*(Historical v1 reference: `validation/evaluator-validation-v1/report.md`.)*
