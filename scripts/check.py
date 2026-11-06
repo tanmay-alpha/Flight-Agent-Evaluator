@@ -630,7 +630,7 @@ def gate_cli_registry() -> bool:
         ["agents", "list"],
         ["scenario", "validate", "resources/scenarios/jfk-lhr-delay.json"],
         ["agent", "run", "resources/scenarios/jfk-lhr-delay.json", "--agent", "oracle"],
-        ["benchmark", "run", "--scenarios", "resources/scenarios"],
+        ["benchmark", "run", "--manifest", "builtin:benchmark-v1"],
         ["demo"],
     ]
     for cmd in commands:
