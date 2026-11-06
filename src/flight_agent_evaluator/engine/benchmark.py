@@ -20,6 +20,7 @@ from flight_agent_evaluator.contracts.model import (
     AgentRunResult,
     AgentStopReason,
     AgentTask,
+    ModelErrorType,
     ModelProvenance,
     ModelUsage,
 )
@@ -371,7 +372,7 @@ class BenchmarkRunner:
                     golden.append({"type": "final_response", "content": step.response})
             agent = ScriptedOracleAgent(golden_steps=golden)
 
-        execution_error = False
+        execution_error_message: str | None = None
         try:
             agent_result: AgentRunResult = await agent.execute(
                 task=task,
@@ -379,20 +380,30 @@ class BenchmarkRunner:
                 state=state,
                 context=context,
             )
-        except Exception:
+        except Exception as exc:
             # Exception messages may contain credentials or arbitrary provider payloads.
-            # Do not serialize them; cancellation and process interrupts are BaseException.
-            execution_error = True
+            # Persist only the class name and a typed error category, never the message.
+            # Cancellation and process interrupts are BaseException and still propagate.
+            exception_type = type(exc).__name__
+            model_error_type = getattr(getattr(exc, "error", None), "error_type", None)
+            execution_error_message = f"Agent execution failed ({exception_type})."
+            error_payload: dict[str, object] = {
+                "event_type": "agent_execution_error",
+                "failure_code": "AGENT.EXECUTION_ERROR",
+                "exception_type": exception_type,
+            }
+            if isinstance(model_error_type, ModelErrorType):
+                error_payload["model_error_type"] = model_error_type.value
+                execution_error_message = (
+                    f"Agent execution failed ({exception_type}: {model_error_type.value})."
+                )
+            error_payload["message"] = execution_error_message
             journal.append_event(
                 entry_type="domain_event",
                 run_id=str(run_id),
                 correlation_id=context.correlation_id,
                 time=clock.now(),
-                payload={
-                    "event_type": "agent_execution_error",
-                    "failure_code": "AGENT.EXECUTION_ERROR",
-                    "message": "Agent execution failed.",
-                },
+                payload=error_payload,
             )
             agent_result = AgentRunResult(
                 run_id=str(run_id),
@@ -497,14 +508,14 @@ class BenchmarkRunner:
             for failure in report.failures
         ]
         if (
-            execution_error or agent_result.stop_reason == AgentStopReason.ERROR
+            execution_error_message is not None or agent_result.stop_reason == AgentStopReason.ERROR
         ) and "AGENT.EXECUTION_ERROR" not in failure_codes:
             failure_codes.append("AGENT.EXECUTION_ERROR")
             failure_details.append(
                 FailureDetail(
                     code="AGENT.EXECUTION_ERROR",
                     severity="high",
-                    message="Agent execution failed.",
+                    message=execution_error_message or "Agent execution failed.",
                     evidence_sequences=[
                         entry.seq
                         for entry in journal.entries
