@@ -1,6 +1,9 @@
 """Canonical benchmark execution, manifest loading, and verification package."""
 
-from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from flight_agent_evaluator.benchmarks.loader import (
     BenchmarkCase,
     BenchmarkIntegrityError,
@@ -39,6 +42,20 @@ from flight_agent_evaluator.benchmarks.validator import (
     CorpusValidationError,
     CorpusValidationReport,
 )
+
+if TYPE_CHECKING:
+    from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
+
+
+def __getattr__(name: str) -> type[CanonicalBenchmarkEngine]:
+    """Load orchestration only on demand so importing pure contracts never loads a runner."""
+    if name == "CanonicalBenchmarkEngine":
+        from flight_agent_evaluator.benchmarks.engine import CanonicalBenchmarkEngine
+
+        globals()[name] = CanonicalBenchmarkEngine
+        return CanonicalBenchmarkEngine
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "BenchmarkAgentEntry",
