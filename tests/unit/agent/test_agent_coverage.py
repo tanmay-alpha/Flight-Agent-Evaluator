@@ -42,7 +42,11 @@ class ScriptedModelClient:
         return "scripted"
 
     def begin_run(
-        self, *, scenario_id: str, run_id: str, configuration: ModelConfiguration,
+        self,
+        *,
+        scenario_id: str,
+        run_id: str,
+        configuration: ModelConfiguration,
         prompt_digest: str | None = None,
     ) -> None:
         self._run = (scenario_id, run_id, configuration)

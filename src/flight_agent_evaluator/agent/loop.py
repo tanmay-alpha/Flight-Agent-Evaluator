@@ -94,7 +94,10 @@ class ModelToolCallingAgent(AgentPolicy):
             return result.model_copy(
                 update={
                     "stop_reason": AgentStopReason.ERROR,
-                    "warnings": [*result.warnings, f"{exc.error.error_type.value}: {exc.error.message}"],
+                    "warnings": [
+                        *result.warnings,
+                        f"{exc.error.error_type.value}: {exc.error.message}",
+                    ],
                 }
             )
         provenance = result.model_provenance
@@ -105,7 +108,8 @@ class ModelToolCallingAgent(AgentPolicy):
                     provenance.model_copy(
                         update={"model_exchange_manifest_digest": manifest.semantic_digest()}
                     )
-                    if provenance is not None else None
+                    if provenance is not None
+                    else None
                 ),
             }
         )
@@ -179,6 +183,10 @@ class ModelToolCallingAgent(AgentPolicy):
                 stop_reason = AgentStopReason.ERROR
                 warnings.append(f"timeout: Model call exceeded request timeout at turn {turn}.")
                 break
+            except ModelProviderError as exc:
+                stop_reason = AgentStopReason.ERROR
+                warnings.append(f"{exc.error.error_type.value}: {exc.error.message}")
+                break
             except Exception as exc:
                 stop_reason = AgentStopReason.ERROR
                 warnings.append(f"Model client error at turn {turn}: {exc}")
@@ -203,7 +211,8 @@ class ModelToolCallingAgent(AgentPolicy):
                         "function": {
                             "name": tc.tool_name,
                             "arguments": (
-                                tc.raw_arguments if tc.raw_arguments is not None
+                                tc.raw_arguments
+                                if tc.raw_arguments is not None
                                 else json.dumps(tc.arguments)
                             ),
                         },
@@ -295,7 +304,7 @@ class ModelToolCallingAgent(AgentPolicy):
                 tool_name=tc.tool_name,
                 arguments=tc.arguments,
                 arguments_error=tc.arguments_error,
-                raw_arguments=tc.raw_arguments,
+                raw_arguments=tc.raw_arguments if tc.arguments_error is not None else None,
                 mutation_class=definition.mutation_class if definition else None,
                 start_time=context.clock.now(),
             ),
