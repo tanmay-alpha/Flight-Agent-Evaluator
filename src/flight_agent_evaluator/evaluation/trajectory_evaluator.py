@@ -43,10 +43,10 @@ from flight_agent_evaluator.evaluation.assertions import AssertionEvaluator
 from flight_agent_evaluator.evaluation.failure_codes import FailureCode
 from flight_agent_evaluator.evaluation.journal_safety import (
     SENSITIVE_MUTATION_CLASS,
-    UNKNOWN_OUTCOME_ERROR_TYPES,
     ClaimFinding,
     SafetyViolation,
     analyze_trajectory_safety,
+    has_unknown_outcome,
 )
 from flight_agent_evaluator.evaluation.matcher import (
     DeterministicBoundedMatcher,
@@ -361,9 +361,7 @@ def _is_trigger_failure(rule: RecoveryConstraint, act: ObservedToolAction) -> bo
     if act.is_successful:
         return False
     if rule.trigger_event == "retryable_error":
-        return bool(act.error and act.error.get("retryable") is True) or (
-            act.error_type in UNKNOWN_OUTCOME_ERROR_TYPES
-        )
+        return bool(act.error and act.error.get("retryable") is True) or has_unknown_outcome(act)
     return True
 
 

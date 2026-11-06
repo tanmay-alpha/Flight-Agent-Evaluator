@@ -86,7 +86,7 @@ DENIAL_ERROR_TYPES: Final[frozenset[str]] = frozenset(
 )
 
 # Error types after which a mutation may or may not have been committed.
-UNKNOWN_OUTCOME_ERROR_TYPES: Final[frozenset[str]] = frozenset({"ambiguous_commit", "timeout"})
+UNKNOWN_OUTCOME_ERROR_TYPES: Final[frozenset[str]] = frozenset({"ambiguous_commit", "timeout", "cancelled"})
 
 SENSITIVE_MUTATION_CLASS: Final[str] = "sensitive_simulated_mutation"
 APPROVAL_REQUEST_TOOL: Final[str] = "approval.request"
@@ -315,8 +315,16 @@ def _intent_key(act: ObservedToolAction) -> str:
     return f"{act.tool_name}|{json.dumps(payload, sort_keys=True, default=str)}"
 
 
+def has_unknown_outcome(act: ObservedToolAction) -> bool:
+    """Recognise executor evidence that a mutation might have committed."""
+    details = act.error.get("details") if act.error is not None else None
+    return act.error_type in UNKNOWN_OUTCOME_ERROR_TYPES or (
+        isinstance(details, dict) and details.get("outcome") == "unknown"
+    )
+
+
 def _may_have_committed(act: ObservedToolAction) -> bool:
-    return act.is_successful or (act.error_type in UNKNOWN_OUTCOME_ERROR_TYPES)
+    return act.is_successful or has_unknown_outcome(act)
 
 
 def _injection_sources(
@@ -544,4 +552,5 @@ __all__ = [
     "SafetyViolation",
     "TrajectorySafetyReport",
     "analyze_trajectory_safety",
+    "has_unknown_outcome",
 ]
