@@ -20,6 +20,7 @@ from flight_agent_evaluator.agent.model_client import (
 from flight_agent_evaluator.agent.protocol import AgentPolicy
 from flight_agent_evaluator.benchmarks.loader import BenchmarkIntegrityError
 from flight_agent_evaluator.benchmarks.results import ExecutionMode
+from flight_agent_evaluator.contracts.model import ModelConfiguration
 
 
 class UnknownBenchmarkAgentError(BenchmarkIntegrityError):
@@ -123,8 +124,13 @@ class BenchmarkAgentRegistry:
         return "offline-reference"
 
     def reproduction_model_options(self) -> dict[str, str | bool]:
-        """Return CLI-expressible model inputs, never the API key itself."""
+        """Return CLI inputs, or no claim for API-only configuration; never include an API key."""
         settings = self._model_settings
+        if settings.replay_manifest is not None or (
+            settings.model_configuration.model_dump(exclude={"model_id"})
+            != ModelConfiguration().model_dump(exclude={"model_id"})
+        ):
+            return {}
         options: dict[str, str | bool] = {
             "model": settings.model_configuration.model_id,
             "model-mode": settings.mode,

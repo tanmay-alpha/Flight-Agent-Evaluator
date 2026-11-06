@@ -203,6 +203,16 @@ def test_reproduction_command_retains_model_flags_and_output() -> None:
     assert "--model-mode live" in command
     assert "--allow-live-model" in command
     assert command.endswith("--output custom-output")
+    assert (
+        render_reproduction_command(
+            invocation.model_copy(
+                update={
+                    "model_options": {"model": "different-model", "model-mode": "replay"},
+                }
+            )
+        )
+        is None
+    )
 
 
 def test_manifest_loader_rejects_duplicate_keys(tmp_path: Path) -> None:
@@ -377,3 +387,16 @@ def test_multiple_seeds_persist_every_case_without_overwriting(tmp_path: Path) -
     artifact.persist_verified_bundle(tmp_path)
     assert len(list((tmp_path / "cases").glob("*.json"))) == 2
     assert ResultBundleConsistencyVerifier(loader=loader).verify_bundle(tmp_path).valid
+
+
+def test_bundle_parity_excludes_model_and_wall_latency(tmp_path: Path) -> None:
+    CanonicalBenchmarkEngine().run_benchmark(
+        agent_ids=["no-op-baseline"],
+        scenario_filter=["lax-sfo-ontime"],
+        output_dir=tmp_path,
+    )
+    path = next((tmp_path / "cases").glob("*.json"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update(model_latency_ms=999.0, wall_time_ms=999.0)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert ResultBundleConsistencyVerifier().verify_bundle(tmp_path).valid
