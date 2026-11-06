@@ -122,6 +122,7 @@ class ScenarioFixtureReference(ContractModel):
 class ScenarioLimits(ContractModel):
     tool_call_limit: PositiveInt  # type: ignore[valid-type]
     time_limit_seconds: PositiveInt  # type: ignore[valid-type]
+    max_turns: int = Field(default=10, ge=1)
 
 
 class ScenarioStep(ContractModel):
@@ -149,7 +150,7 @@ class BenchmarkScenario(ContractModel):
     reference_time: str | None = Field(default=None)
     assertions: tuple[Assertion, ...] = Field(default_factory=tuple)  # type: ignore[valid-type]
     trajectory: ScriptedTrajectory  # type: ignore[valid-type]
-    scenario_mode: str = Field(default="read_only")
+    scenario_mode: Literal["read_only", "transactional"] = "read_only"
     allowed_tools: tuple[NonEmptyIdentifier, ...] | None = None  # type: ignore[valid-type]
     environment: ScenarioEnvironment | None = None
 

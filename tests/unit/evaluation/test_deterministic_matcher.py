@@ -202,11 +202,15 @@ def test_all_argument_predicate_operators():
         result={"ref_id": "123"},
         start_time="2026-01-01T00:00:00Z",
     )
+    dependent = ObservedToolAction(
+        call_id="c1", sequence_number=2, tool_name="flight.get_status",
+        start_time="2026-01-01T00:00:01Z",
+    )
     assert evaluate_argument_constraint(
-        c_ref, {"id": "123"}, aligned_mapping={"prev_node": prev_act}
+        c_ref, {"id": "123"}, aligned_mapping={"prev_node": prev_act}, dependent_action=dependent
     )
     assert not evaluate_argument_constraint(
-        c_ref, {"id": "456"}, aligned_mapping={"prev_node": prev_act}
+        c_ref, {"id": "456"}, aligned_mapping={"prev_node": prev_act}, dependent_action=dependent
     )
 
 

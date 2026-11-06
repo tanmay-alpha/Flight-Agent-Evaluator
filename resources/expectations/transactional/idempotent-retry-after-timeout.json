@@ -59,6 +59,38 @@
           },
           "required": true
         }
+      ],
+      "dependency_constraints": [
+        {
+          "dependent_node_id": "node_request_approval",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_confirm_rebooking",
+          "required_node_id": "node_hold_alternative",
+          "bindings": [
+            {
+              "argument_pointer": "/hold_id",
+              "result_pointer": "/hold_id"
+            }
+          ]
+        },
+        {
+          "dependent_node_id": "node_confirm_rebooking",
+          "required_node_id": "node_request_approval",
+          "bindings": [
+            {
+              "argument_pointer": "/approval_id",
+              "result_pointer": "/approval_id"
+            }
+          ]
+        }
       ]
     }
   ],

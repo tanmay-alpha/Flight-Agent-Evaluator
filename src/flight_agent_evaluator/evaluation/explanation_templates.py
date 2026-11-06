@@ -148,6 +148,10 @@ EXPLANATION_TEMPLATES: Final[dict[str, str]] = {
         "The agent did not produce a final response before the trajectory ended. "
         "No 'final_response' journal entry was recorded."
     ),
+    "tmpl-agent-execution-error-v1": (
+        "The agent policy raised an exception and did not complete the run; the case "
+        "was recorded as an error without trajectory scoring: {details}."
+    ),
     # ENVIRONMENT
     "tmpl-environment-provider-timeout-v1": (
         "Provider call for tool '{tool_name}' (call_id={call_id}) timed out "
@@ -232,6 +236,7 @@ _CODE_TO_TEMPLATE: Final[dict[str, str]] = {
     "AGENT.INVALID_MODEL_OUTPUT": "tmpl-agent-invalid-model-output-v1",
     "AGENT.MODEL_ERROR": "tmpl-agent-model-error-v1",
     "AGENT.NO_FINAL_RESPONSE": "tmpl-agent-no-final-response-v1",
+    "AGENT.EXECUTION_ERROR": "tmpl-agent-execution-error-v1",
     "ENVIRONMENT.PROVIDER_TIMEOUT": "tmpl-environment-provider-timeout-v1",
     "ENVIRONMENT.PROVIDER_RATE_LIMIT": "tmpl-environment-provider-rate-limit-v1",
     "ENVIRONMENT.PROVIDER_UNAVAILABLE": "tmpl-environment-provider-unavailable-v1",

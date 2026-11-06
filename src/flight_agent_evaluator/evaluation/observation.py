@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from flight_agent_evaluator.canonical import canonical_json
 from flight_agent_evaluator.recording.journal import HashChainJournal
 
 NO_RESULT_STATUS = "no_result"
@@ -105,6 +106,25 @@ class ObservedTrajectory(BaseModel):
     @property
     def total_calls(self) -> int:
         return len(self.actions)
+
+
+def redundant_call_ids(trajectory: ObservedTrajectory) -> set[str]:
+    """Identical calls after success without an intervening state-changing call.
+
+    Failed attempts do not make retries redundant. Every mutating attempt
+    invalidates cached reads, including ambiguous outcomes whose state is unknown.
+    """
+    seen: set[tuple[str, str]] = set()
+    redundant: set[str] = set()
+    for action in trajectory.actions:
+        key = (action.tool_name, canonical_json(action.arguments))
+        if key in seen:
+            redundant.add(action.call_id)
+        if action.is_mutating:
+            seen.clear()
+        if action.is_successful:
+            seen.add(key)
+    return redundant
 
 
 def _resolve_mutation_class(payload: dict[str, Any], tool_name: str) -> str:

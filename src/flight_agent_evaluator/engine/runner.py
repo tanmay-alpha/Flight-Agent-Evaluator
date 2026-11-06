@@ -177,9 +177,9 @@ class ScenarioRunner:
             tool_calls_made = driver_result.tool_calls_made
             final_response = driver_result.final_response
             checkpoints = list(driver_result.checkpoints)
-        except Exception as exc:
-            # Record driver failure; differentiate from normal completion
-            driver_error = f"{type(exc).__name__}: {exc}"
+        except Exception:
+            # Provider and driver exception text can contain secrets or private payloads.
+            driver_error = "Driver execution failed."
             journal.append_event(
                 "domain_event",
                 run_id=str(run_id),
@@ -187,8 +187,8 @@ class ScenarioRunner:
                 time=clock.now().isoformat(),
                 payload={
                     "event_type": "driver_failed",
-                    "error_type": type(exc).__name__,
-                    "error_message": str(exc),
+                    "failure_code": "AGENT.EXECUTION_ERROR",
+                    "error_message": driver_error,
                 },
             )
 
