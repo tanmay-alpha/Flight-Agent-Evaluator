@@ -68,6 +68,9 @@ class DiagnosticSignalType(StrEnum):
     SAFETY_VIOLATION = "safety_violation"
     """A hard safety constraint was violated (mutation, prohibited tool, leakage)."""
 
+    UNGROUNDED_ENTITY = "ungrounded_entity"
+    """A final-response flight is absent from trusted request and successful results."""
+
     PROVIDER_TIMEOUT = "provider_timeout"
     """A tool result contained a provider-timeout fault."""
 
@@ -512,6 +515,16 @@ class SignalExtractor:
                 failure_code=viol.code,
             )
             for viol in scorecard.safety_violations
+        )
+
+        signals.extend(
+            DiagnosticSignal(
+                signal_type=DiagnosticSignalType.UNGROUNDED_ENTITY,
+                journal_sequence=finding.journal_sequence,
+                details=finding.details,
+                failure_code=finding.code,
+            )
+            for finding in scorecard.grounding_findings
         )
 
         return signals

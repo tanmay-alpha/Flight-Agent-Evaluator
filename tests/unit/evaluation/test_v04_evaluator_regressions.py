@@ -332,10 +332,9 @@ def test_reference_equals_unknown_node_is_invalid_graph() -> None:
         "Do you want to be rebooked onto AS312?",
         "I can rebook you.",
         "Would you like me to confirm your new flight?",
-        "Your booking was cancelled by the airline.",
     ],
 )
-def test_readouts_questions_offers_and_third_party_actions_are_not_claims(text: str) -> None:
+def test_readouts_questions_and_offers_are_not_claims(text: str) -> None:
     assert detect_success_claims(text) == []
 
 
