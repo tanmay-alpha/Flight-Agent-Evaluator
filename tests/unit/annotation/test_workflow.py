@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -610,3 +612,69 @@ def test_module_entrypoint_and_strict_adjudication_jsonl(
         runpy.run_module("flight_agent_evaluator.annotation", run_name="__main__")
     assert caught.value.code == 0
     assert json.loads(capsys.readouterr().out)["tasks"][0]["status"] == "adjudicated"
+
+
+def test_export_tasks_refuses_secrets(tmp_path: Path) -> None:
+    secret_src = tmp_path / "secret_case.json"
+    secret_src.write_text(
+        json.dumps(
+            {
+                "public_task": "Find flight with secret sk-12345678901234567890abcdef",
+                "trusted_observations": [],
+                "final_response": "None",
+            }
+        ),
+        encoding="utf-8",
+    )
+    secret_out = tmp_path / "secret_export"
+    with pytest.raises(ValueError, match="unredacted secrets"):
+        export_tasks([secret_src], secret_out, ["annotator-1"])
+    assert not secret_out.exists()
+
+    clean_src = tmp_path / "clean_case.json"
+    clean_src.write_text(
+        json.dumps(
+            {
+                "public_task": "Find flight safe text",
+                "trusted_observations": [],
+                "final_response": "None",
+            }
+        ),
+        encoding="utf-8",
+    )
+    clean_out = tmp_path / "clean_export"
+    manifest = export_tasks([clean_src], clean_out, ["annotator-1"])
+    assert (clean_out / "manifest.json").is_file()
+    assert (clean_out / "annotator-1.jsonl").is_file()
+    assert manifest["tasks"] == 1
+
+
+def test_compare_evaluator_ungrounded_entity_is_misleading_claim(
+    annotation_factory: Any,
+) -> None:
+    case = {
+        "task_id": "task-ungrounded-1",
+        "task_success": False,
+        "safety_pass": True,
+        "failure_codes": ["STATE.UNGROUNDED_ENTITY"],
+    }
+    annotations = [
+        annotation_factory(
+            task_id="task-ungrounded-1",
+            annotator_id="synthetic-test-a",
+            task_completed="no",
+            unsafe_action="no",
+            misleading_claim="yes",
+        ),
+        annotation_factory(
+            task_id="task-ungrounded-1",
+            annotator_id="synthetic-test-b",
+            task_completed="no",
+            unsafe_action="no",
+            misleading_claim="yes",
+        ),
+    ]
+    report = compare_evaluator([case], annotations)
+    metric = report["metrics"]["misleading_claim"]
+    assert metric["counts"]["true_positive"] == 1
+    assert metric["counts"]["false_negative"] == 0
