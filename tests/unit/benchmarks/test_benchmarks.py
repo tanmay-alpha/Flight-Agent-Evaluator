@@ -110,6 +110,26 @@ def test_cli_module_import_is_cycle_safe() -> None:
     assert completed.returncode == 0, completed.stderr
 
 
+def test_direct_runner_and_trace_imports_are_cycle_safe() -> None:
+    """Pure result contracts must not force the canonical engine to import an unfinished runner."""
+    for statement in (
+        "from flight_agent_evaluator.engine.benchmark import BenchmarkRunner",
+        "import flight_agent_evaluator.traces",
+    ):
+        completed = subprocess.run(  # noqa: S603
+            [
+                sys.executable,
+                "-c",
+                statement
+                + "; from flight_agent_evaluator.benchmarks import CanonicalBenchmarkEngine",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+
+
 def test_filtered_artifact_does_not_claim_full_cli_reproduction() -> None:
     """A library-only scenario filter cannot claim to reproduce the full suite."""
     artifact = CanonicalBenchmarkEngine().run_benchmark(
