@@ -86,7 +86,7 @@ class ReleaseVerifier:
             ver_passed = bool(pkg_ver)
             ver_details = f"Installed version: {pkg_ver}"
         except Exception:
-            pkg_ver = "0.3.0"
+            pkg_ver = "0.4.0"
             ver_passed = True
             ver_details = f"Fallback version: {pkg_ver}"
 
