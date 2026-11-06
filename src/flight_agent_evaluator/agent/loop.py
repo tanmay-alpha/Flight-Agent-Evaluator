@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
 from typing import Any
 
-from flight_agent_evaluator.agent.errors import ModelReplayError
+from flight_agent_evaluator.agent.errors import ModelProviderError, ModelReplayError
+from flight_agent_evaluator.agent.model_client import configuration_identity, tool_schema_digest
 from flight_agent_evaluator.agent.prompt import get_default_prompt_policy
 from flight_agent_evaluator.agent.protocol import AgentPolicy, ModelClient
 from flight_agent_evaluator.agent.security import redact_secrets
@@ -15,6 +18,7 @@ from flight_agent_evaluator.contracts.model import (
     AgentStopReason,
     AgentTask,
     ModelConfiguration,
+    ModelProvenance,
     ModelRequest,
     ModelToolCall,
     ModelUsage,
@@ -56,6 +60,15 @@ class ModelToolCallingAgent(AgentPolicy):
     def agent_version(self) -> str:
         return "1.0.0"
 
+    @property
+    def configuration_digest(self) -> str:
+        """Stable identity consumed by benchmark run-id generation."""
+        return configuration_identity(
+            self.model_configuration,
+            self.prompt_policy.canonical_digest(),
+            getattr(self.model_client, "endpoint_host", None),
+        )
+
     async def execute(
         self,
         task: AgentTask,
@@ -68,12 +81,34 @@ class ModelToolCallingAgent(AgentPolicy):
             scenario_id=task.scenario_id,
             run_id=str(context.run_id),
             configuration=self.model_configuration,
+            prompt_digest=self.prompt_policy.canonical_digest(),
         )
         try:
             result = await self._run_turns(task, executor, context)
-        finally:
+        except BaseException:
+            await self.model_client.end_run()
+            raise
+        try:
             manifest = await self.model_client.end_run()
-        return result.model_copy(update={"model_exchange_digest": manifest.semantic_digest()})
+        except ModelProviderError as exc:
+            return result.model_copy(
+                update={
+                    "stop_reason": AgentStopReason.ERROR,
+                    "warnings": [*result.warnings, f"{exc.error.error_type.value}: {exc.error.message}"],
+                }
+            )
+        provenance = result.model_provenance
+        return result.model_copy(
+            update={
+                "model_exchange_digest": manifest.semantic_digest(),
+                "model_provenance": (
+                    provenance.model_copy(
+                        update={"model_exchange_manifest_digest": manifest.semantic_digest()}
+                    )
+                    if provenance is not None else None
+                ),
+            }
+        )
 
     async def _run_turns(
         self,
@@ -96,6 +131,7 @@ class ModelToolCallingAgent(AgentPolicy):
             policy = task_policy
         visible_tools = [name for name in task.allowed_tools if policy.permits_tool(name)]
         tool_schemas = self._tool_schemas(registry, visible_tools)
+        executor.restrict_tool_call_limit(task.tool_call_limit)
 
         # Base conversation: ONLY public_request, system prompt policy, and tool responses
         messages: list[dict[str, Any]] = [
@@ -111,6 +147,7 @@ class ModelToolCallingAgent(AgentPolicy):
         warnings: list[str] = []
         accumulated_usage = ModelUsage()
         tool_calls_remaining = task.tool_call_limit
+        model_latency_ms = 0.0
 
         for turn in range(task.max_turns):
             if tool_calls_remaining <= 0:
@@ -129,15 +166,25 @@ class ModelToolCallingAgent(AgentPolicy):
                 model_configuration=self.model_configuration,
             )
 
+            started = time.perf_counter()
             try:
-                response = await self.model_client.create_completion(request)
+                response = await asyncio.wait_for(
+                    self.model_client.create_completion(request),
+                    timeout=self.model_configuration.request_timeout_seconds,
+                )
             except ModelReplayError:
                 # Replay integrity failures are evaluator errors, not agent behaviour.
                 raise
+            except TimeoutError:
+                stop_reason = AgentStopReason.ERROR
+                warnings.append(f"timeout: Model call exceeded request timeout at turn {turn}.")
+                break
             except Exception as exc:
                 stop_reason = AgentStopReason.ERROR
                 warnings.append(f"Model client error at turn {turn}: {exc}")
                 break
+            finally:
+                model_latency_ms += (time.perf_counter() - started) * 1000
 
             model_calls += 1
             accumulated_usage = ModelUsage(
@@ -155,7 +202,10 @@ class ModelToolCallingAgent(AgentPolicy):
                         "type": "function",
                         "function": {
                             "name": tc.tool_name,
-                            "arguments": json.dumps(tc.arguments),
+                            "arguments": (
+                                tc.raw_arguments if tc.raw_arguments is not None
+                                else json.dumps(tc.arguments)
+                            ),
                         },
                     }
                     for tc in response.tool_calls
@@ -168,9 +218,6 @@ class ModelToolCallingAgent(AgentPolicy):
                 break
 
             for tc in response.tool_calls:
-                if tool_calls_remaining <= 0:
-                    stop_reason = AgentStopReason.TOOL_LIMIT_EXCEEDED
-                    break
                 safety_violation = await self._execute_tool_call(
                     tc,
                     registry=registry,
@@ -188,6 +235,9 @@ class ModelToolCallingAgent(AgentPolicy):
                     if safety_violation:
                         stop_reason = AgentStopReason.SAFETY_VIOLATION
 
+            if tool_calls_remaining <= 0:
+                stop_reason = AgentStopReason.TOOL_LIMIT_EXCEEDED
+                break
             if stop_reason == AgentStopReason.SAFETY_VIOLATION:
                 break
 
@@ -199,7 +249,16 @@ class ModelToolCallingAgent(AgentPolicy):
             run_id=str(context.run_id),
             agent_id=self.agent_id,
             agent_version=self.agent_version,
-            model_config_digest=self.model_configuration.canonical_digest(),
+            model_provenance=ModelProvenance(
+                provider_label=self.model_configuration.provider,
+                model_id=self.model_configuration.model_id,
+                endpoint_host=getattr(self.model_client, "endpoint_host", None),
+                model_configuration_digest=self.model_configuration.canonical_digest(),
+                prompt_policy_id=self.prompt_policy.policy_id,
+                prompt_digest=self.prompt_policy.canonical_digest(),
+                tool_schema_digest=tool_schema_digest(tool_schemas),
+            ),
+            model_latency_ms=model_latency_ms,
             stop_reason=stop_reason,
             final_response=final_response,
             model_call_count=model_calls,
@@ -235,6 +294,8 @@ class ModelToolCallingAgent(AgentPolicy):
                 run_id=context.run_id,
                 tool_name=tc.tool_name,
                 arguments=tc.arguments,
+                arguments_error=tc.arguments_error,
+                raw_arguments=tc.raw_arguments,
                 mutation_class=definition.mutation_class if definition else None,
                 start_time=context.clock.now(),
             ),
