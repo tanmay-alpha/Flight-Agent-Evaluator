@@ -60,6 +60,7 @@ from flight_agent_evaluator.environment.errors import (
     UnknownOfferError,
 )
 from flight_agent_evaluator.providers.base import FlightProvider
+from flight_agent_evaluator.providers.errors import ProviderDataNotFoundError, ProviderError
 from flight_agent_evaluator.recording.contracts import JournalEntry
 from flight_agent_evaluator.recording.journal import HashChainJournal
 from flight_agent_evaluator.runtime.clock import VirtualClock
@@ -341,6 +342,24 @@ class ToolExecutor:
                 context=context,
                 retryable=retryable,
                 unknown_outcome=error_type in ("ambiguous_commit", "internal_error"),
+            )
+        except ProviderError as exc:
+            logger.debug("Handler raised provider error", exc_info=exc)
+            if isinstance(exc, ProviderDataNotFoundError):
+                return self._handler_error(
+                    tool_call,
+                    error_type="not_found",
+                    message="No matching record was found for the requested query",
+                    now_dt=now_dt,
+                    context=context,
+                )
+            return self._handler_error(
+                tool_call,
+                error_type="provider_error",
+                message="The data provider could not complete the request",
+                now_dt=now_dt,
+                context=context,
+                retryable=exc.retryable,
             )
         except (ValueError, TypeError, LookupError) as exc:
             logger.debug("Handler raised expected error", exc_info=exc)
